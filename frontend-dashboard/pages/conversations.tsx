@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import ConversationList from '../components/chat/ConversationList';
 import ChatWindow from '../components/chat/ChatWindow';
@@ -10,6 +10,9 @@ export default function ConversationsPage() {
   const [activeConversation, setActiveConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]); 
   const [socket, setSocket] = useState<Socket | null>(null);
+
+  // We use a ref to always have access to the currently active conversation inside the socket listener
+  const activeConvoRef = useRef<any>(null);
 
   const fetchConversations = async () => {
     try {
@@ -24,12 +27,25 @@ export default function ConversationsPage() {
   useEffect(() => {
     fetchConversations();
 
-    const newSocket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
+    const newSocket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'); // Ensure this points to your backend port 4000
     setSocket(newSocket);
 
     newSocket.on('whatsapp_message', (msg: any) => {
-      console.log("Real-time message received:", msg);
-      setMessages(prev => [...prev, msg]);
+      console.log("🔔 Socket Ping:", msg);
+      
+      // Refresh the sidebar so the "Waiting" badges update live
+      fetchConversations();
+
+      // ONLY append the message if the user is looking at THIS specific chat
+      const currentActive = activeConvoRef.current;
+      if (currentActive && msg.from === currentActive.wa_number) {
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          text: msg.text,
+          sender: msg.isBot ? "bot" : "user",
+          timestamp: new Date().toISOString()
+        }]);
+      }
     });
 
     return () => {
@@ -37,18 +53,31 @@ export default function ConversationsPage() {
     };
   }, []);
 
-  const handleSelectConversation = (convo: any) => {
+  const handleSelectConversation = async (convo: any) => {
     setActiveConversation(convo);
+    activeConvoRef.current = convo;
+    
+    // TEMPORARY: Clear messages. Next patch we will fetch history from DB here!
     setMessages([]); 
   };
 
   const handleResumeBot = () => {
     fetchConversations(); 
-    setActiveConversation((prev: any) => ({ ...prev, human_active: false }));
+    setActiveConversation((prev: any) => {
+      const updated = { ...prev, human_active: false };
+      activeConvoRef.current = updated;
+      return updated;
+    });
   };
 
   const handleMessageSent = (msg: any) => {
-    setMessages(prev => [...prev, msg]);
+    // Standardize the payload to match the socket
+    setMessages(prev => [...prev, {
+      id: msg.id || Date.now(),
+      text: msg.message || msg.text,
+      sender: "agent",
+      timestamp: msg.timestamp || new Date().toISOString()
+    }]);
   };
 
   return (
@@ -58,15 +87,9 @@ export default function ConversationsPage() {
         <div className="w-1/3 border-r border-slate-100 flex flex-col bg-slate-50">
           <div className="p-5 border-b border-slate-200 bg-white">
             <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Active Chats</h2>
-            <p className="text-xs text-slate-500 font-medium mt-1">Manage bot handoffs and human support</p>
           </div>
-          
           <div className="flex-1 overflow-y-auto">
-            <ConversationList 
-              list={conversations} 
-              activeId={activeConversation?.id}
-              onSelect={handleSelectConversation} 
-            />
+            <ConversationList list={conversations} activeId={activeConversation?.id} onSelect={handleSelectConversation} />
           </div>
         </div>
 
