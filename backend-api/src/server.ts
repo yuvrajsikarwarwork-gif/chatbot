@@ -1,10 +1,11 @@
 import { app } from "./app";
 import { env } from "./config/env";
-import { db } from "./config/db";
+import { db, query } from "./config/db"; 
 import { redis } from "./config/redis";
 import http from "http";
 import { Server } from "socket.io";
-import 'dotenv/config'; // Ensures environment variables are loaded immediately
+import cron from "node-cron"; 
+import 'dotenv/config';
 
 async function start() {
   try {
@@ -12,7 +13,6 @@ async function start() {
     await db.connect();
     console.log("✅ DB connected");
 
-    // Optional: Redis check (wrapped in try/catch to prevent boot failure if redis is down)
     try {
       await redis.ping();
       console.log("✅ Redis connected");
@@ -26,23 +26,36 @@ async function start() {
     // 3. Initialize Socket.io
     const io = new Server(server, {
       cors: {
-        origin: ["http://localhost:3000", "http://localhost:3001"], // Added 3001 just in case
+        origin: ["http://localhost:3000", "http://localhost:3001"],
         methods: ["GET", "POST"],
         credentials: true
       }
     });
 
-    /**
-     * GLOBAL ACCESS:
-     * This makes 'io' available inside app.ts via req.app.get("io").
-     * Crucial for the /webhook route to emit messages.
-     */
     app.set("io", io);
+
+    // --- PATCH: 10-Minute Auto-Timeout Cron Job ---
+    // This runs every minute to check for abandoned human chats
+    cron.schedule("* * * * *", async () => {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      try {
+        const result = await query(
+          `UPDATE leads 
+           SET human_active = false, bot_active = true, last_node_id = NULL 
+           WHERE human_active = true AND updated_at < $1`,
+          [tenMinutesAgo]
+        );
+        if (result.rowCount > 0) {
+          console.log(`🤖 Auto-resumed bot for ${result.rowCount} inactive sessions.`);
+        }
+      } catch (err) {
+        console.error("❌ Cron Job Error:", err);
+      }
+    });
 
     // 4. Socket Connection Logic
     io.on("connection", (socket) => {
-      console.log(`🖥️  Frontend connected | ID: ${socket.id}`);
-
+      console.log(`🖥️ Frontend connected | ID: ${socket.id}`);
       socket.on("disconnect", () => {
         console.log(`🔌 Frontend disconnected | ID: ${socket.id}`);
       });
@@ -51,10 +64,7 @@ async function start() {
     // 5. Start Listening
     const PORT = env.PORT || 4000;
     server.listen(PORT, () => {
-      console.log(`-----------------------------------------------`);
       console.log(`🚀 ENGINE LIVE | http://localhost:${PORT}`);
-      console.log(`📡 SOCKETS ACTIVE | Waiting for debugger...`);
-      console.log(`-----------------------------------------------`);
     });
 
   } catch (err) {
@@ -62,10 +72,5 @@ async function start() {
     process.exit(1);
   }
 }
-
-// Handle unhandled promise rejections
-process.on("unhandledRejection", (err) => {
-  console.error("Unhandled Rejection:", err);
-});
 
 start();

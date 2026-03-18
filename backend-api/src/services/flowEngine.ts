@@ -248,20 +248,33 @@ export const processIncomingMessage = async (from: string, waName: string, incom
     const text = (incomingText || "").toLowerCase().trim();
     const token = getActiveToken();
 
-    // ESCAPE HATCH
+    // 1. FETCH LEAD STATUS FIRST
+    const leadCheck = await query("SELECT * FROM leads WHERE wa_number = $1", [from]);
+    let lead = leadCheck.rows[0];
+
+    // 2. HUMAN MODE PROTECTION
+    // If a human is active, the bot MUST stay silent unless the user types 'reset'
+    if (lead?.human_active && text !== "reset") {
+      console.log(`👤 [Engine] Human is active for ${from}. Bot is ignoring input.`);
+      return; 
+    }
+
+    // ESCAPE HATCH (End/Stop)
     if (ESCAPE_KEYWORDS.includes(text)) {
-      const botIdRes = await query("SELECT bot_id FROM leads WHERE wa_number = $1", [from]);
-      let escapeMsg = "Session closed.";
-      if (botIdRes.rows[0]?.bot_id) {
-         const flowRes = await query("SELECT flow_json FROM flows WHERE bot_id = $1", [botIdRes.rows[0].bot_id]);
-         const endNode = flowRes.rows[0]?.flow_json?.nodes?.find((n:any) => n.type === 'end');
-         if (endNode?.data?.text) escapeMsg = endNode.data.text;
-      }
       clearUserTimers(from);
-      await query("UPDATE leads SET last_node_id = NULL, variables = '{}', retry_count = 0, human_active = false, bot_active = true WHERE wa_number = $1", [from]);
+      // Hard reset everything to defaults
+      await query(`
+        UPDATE leads 
+        SET last_node_id = NULL, 
+            variables = '{}', 
+            retry_count = 0, 
+            human_active = false, 
+            bot_active = true 
+        WHERE wa_number = $1`, [from]);
+        
       await axios({
         method: "POST", url: `https://graph.facebook.com/v18.0/${DEFAULT_PHONE_ID}/messages`,
-        data: { messaging_product: "whatsapp", to: from, type: "text", text: { body: escapeMsg } },
+        data: { messaging_product: "whatsapp", to: from, type: "text", text: { body: "Conversation ended. Type 'hi' to start again." } },
         headers: { Authorization: `Bearer ${token}` }
       });
       return; 
@@ -271,21 +284,18 @@ export const processIncomingMessage = async (from: string, waName: string, incom
     const activeBots = activeBotsRes.rows;
     if (!activeBots.length) return;
 
-    const leadCheck = await query("SELECT * FROM leads WHERE wa_number = $1", [from]);
-    let lead = leadCheck.rows[0];
-
-    if (lead?.human_active && text !== "reset") return; 
     clearUserTimers(from);
 
-    if (text === "reset" && lead?.last_node_id) {
-       await query("UPDATE leads SET retry_count = 0, human_active = false, bot_active = true WHERE id = $1", [lead.id]);
-       const flowRes = await query("SELECT flow_json FROM flows WHERE bot_id = $1", [lead.bot_id]);
-       if (flowRes.rows.length) {
-         const nodes = flowRes.rows[0].flow_json.nodes;
-         const currentNode = nodes.find((n:any) => String(n.id) === String(lead.last_node_id));
-         if (currentNode) return executeFlowFromNode(currentNode, lead.id, from, nodes, flowRes.rows[0].flow_json.edges || [], DEFAULT_PHONE_ID, token, "Bot", io);
-       }
+    // RESET LOGIC
+    if (text === "reset") {
+       console.log(`🔄 [Engine] Resetting session for ${from}`);
+       await query("UPDATE leads SET last_node_id = NULL, retry_count = 0, human_active = false, bot_active = true WHERE wa_number = $1", [from]);
+       // If it was a reset, we stop here so the user can send a new trigger keyword
+       return; 
     }
+
+    // ... (rest of your existing bot matching logic)
+
 
     let targetBot = null;
     let flowData = null;

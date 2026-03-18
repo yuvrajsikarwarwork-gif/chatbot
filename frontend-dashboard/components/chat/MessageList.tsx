@@ -1,14 +1,12 @@
 import React, { useEffect, useRef } from "react";
-import { Message } from "../../services/messageService";
 
 interface MessageListProps {
-  messages: Message[];
+  messages: any[]; // ✅ Removed the external dependency
 }
 
 export default function MessageList({ messages }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -29,15 +27,16 @@ export default function MessageList({ messages }: MessageListProps) {
         Conversation Started
       </div>
 
-      {messages.map((m) => {
-        const sender = m.sender?.toLowerCase() || "user";
+      {messages.map((m, index) => {
+        // ✅ Safely grab sender whether it's from the bot or the agent
+        const sender = (m.sender || m.from || "user").toLowerCase();
         const isBot = sender === "bot";
         const isAgent = sender === "agent";
         const isSystem = isBot || isAgent;
 
         return (
           <div 
-            key={m.id} 
+            key={m.id || index} // ✅ Fallback key to prevent React crashes
             className={`flex w-full ${isSystem ? "justify-end" : "justify-start"}`}
           >
             <div className={`flex flex-col max-w-[70%]`}>

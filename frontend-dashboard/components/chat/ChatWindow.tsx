@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import MessageList from "./MessageList";
 import { CheckCircle2, Send, User, Bot, Loader2 } from "lucide-react";
-import apiClient from "../../services/apiClient"; // ✅ Use apiClient directly
+import apiClient from "../../services/apiClient"; 
 
 interface ChatWindowProps {
   messages: any[];
@@ -14,6 +14,50 @@ export default function ChatWindow({ messages, activeConversation, onResumeBot, 
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
 
+  // Function to resume bot control
+  const handleResume = async () => {
+    if (!activeConversation) return;
+    try {
+      // Endpoint must match backend: /chat/resume
+      const res = await apiClient.post("/chat/resume", { 
+        wa_number: activeConversation.wa_number 
+      });
+
+      if (res.data.success) {
+        // Triggers the parent to refresh lead status and hide agent input
+        onResumeBot(); 
+        alert("Bot resumed successfully!");
+      }
+    } catch (err) {
+      console.error("Failed to resume bot", err);
+      alert("Error: Could not resume bot session. Check console for details.");
+    }
+  };
+
+  const handleSend = async () => {
+    if (!inputValue.trim() || isSending) return;
+    setIsSending(true);
+
+    try {
+      await apiClient.post("/chat/send", {
+        wa_number: activeConversation.wa_number,
+        message: inputValue
+      });
+      
+      onMessageSent({ 
+        id: Date.now(),
+        message: inputValue, 
+        sender: "agent", 
+        timestamp: new Date().toISOString() 
+      });
+      setInputValue(""); 
+    } catch (error) {
+      console.error("Failed to send message");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   if (!activeConversation) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 text-slate-400">
@@ -23,37 +67,6 @@ export default function ChatWindow({ messages, activeConversation, onResumeBot, 
       </div>
     );
   }
-
-  const handleSend = async () => {
-    if (!inputValue.trim() || isSending) return;
-    setIsSending(true);
-
-    try {
-      // ✅ Matches agentController.ts -> sendAgentMessage
-      await apiClient.post("/chat/send", {
-        wa_number: activeConversation.wa_number,
-        message: inputValue
-      });
-      
-      // Instantly show the message in the UI
-      onMessageSent({ text: inputValue, isBot: false, from: "Agent" });
-      setInputValue(""); 
-    } catch (error) {
-      console.error("Failed to send message");
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleResume = async () => {
-    try {
-      // ✅ Matches agentController.ts -> resumeBotManually
-      await apiClient.post("/chat/resume", { wa_number: activeConversation.wa_number });
-      onResumeBot();
-    } catch (err) {
-      console.error("Failed to resume bot");
-    }
-  };
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50 relative h-full">
@@ -79,7 +92,6 @@ export default function ChatWindow({ messages, activeConversation, onResumeBot, 
         )}
       </div>
 
-      {/* Message History */}
       <div className="flex-1 overflow-hidden relative">
         <MessageList messages={messages} />
       </div>
@@ -93,7 +105,7 @@ export default function ChatWindow({ messages, activeConversation, onResumeBot, 
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="Type your message to the user..."
+              placeholder="Type your message..."
               className="flex-1 border-2 border-slate-200 bg-slate-50 focus:bg-white rounded-xl p-3 text-sm focus:border-blue-500 outline-none transition-all"
             />
             <button 
@@ -107,7 +119,6 @@ export default function ChatWindow({ messages, activeConversation, onResumeBot, 
         ) : (
           <div className="bg-slate-100 border border-slate-200 rounded-xl p-4 text-center">
             <p className="text-sm font-bold text-slate-500">The Bot is currently handling this conversation.</p>
-            <p className="text-xs text-slate-400 mt-1">Wait for a human handoff or intercept manually via database triggers.</p>
           </div>
         )}
       </div>

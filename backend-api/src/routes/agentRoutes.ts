@@ -7,9 +7,13 @@ import {
 
 const router = Router();
 
-// These endpoints will be prefixed with /api/chat (from your index.ts)
+// Endpoint: /api/chat/leads
 router.get("/leads", getInboxLeads);
+
+// Endpoint: /api/chat/send
 router.post("/send", sendAgentMessage);
-router.post("/toggle-bot", resumeBotManually);
+
+// Endpoint: /api/chat/resume (Aligned with frontend)
+router.post("/resume", resumeBotManually); 
 
 export default router;
