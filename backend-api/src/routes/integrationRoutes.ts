@@ -1,28 +1,22 @@
-// src/routes/integrationRoutes.ts
+// backend-api/src/routes/integrationRoutes.ts
 
 import { Router } from "express";
-
 import {
   getIntegrations,
-  getIntegration,
-  createIntegrationCtrl,
-  updateIntegrationCtrl,
+  saveIntegrationConfig, // ✅ New controller method
   deleteIntegrationCtrl,
 } from "../controllers/integrationController";
-
-import { authMiddleware } from "../middleware/authMiddleware";
+import { authMiddleware, botAccessGuard } from "../middleware/authMiddleware";
 
 const router = Router();
 
 router.use(authMiddleware);
 
-router.get("/bot/:botId", getIntegrations);
+// ✅ Standardized endpoint for the "Copy-Paste" Integration Form
+router.post("/config", botAccessGuard, saveIntegrationConfig);
 
-router.get("/:id", getIntegration);
-
-router.post("/", createIntegrationCtrl);
-
-router.put("/:id", updateIntegrationCtrl);
+// List all integrations for a bot
+router.get("/bot/:botId", botAccessGuard, getIntegrations);
 
 router.delete("/:id", deleteIntegrationCtrl);
 

@@ -1,3 +1,5 @@
+// backend-api/src/services/flowEngine.ts
+
 import axios from "axios";
 import { query } from "../config/db";
 
@@ -122,7 +124,7 @@ export const executeFlowFromNode = async (
               headers: { Authorization: `Bearer ${token}` }
             }).catch(console.error);
             // Log timeout to DB
-            await query(`INSERT INTO messages (bot_id, wa_number, message, sender) VALUES ($1, $2, $3, 'system')`, [botId, from, timeoutMsg]);
+            await query(`INSERT INTO messages (bot_id, wa_number, message, sender, platform_user_id) VALUES ($1, $2, $3, 'system', $4)`, [botId, from, timeoutMsg, from]);
         }, AGENT_TIMEOUT_MS));
       }
       else if (currentNode.type === "resume_bot") {
@@ -207,7 +209,7 @@ export const executeFlowFromNode = async (
         if (io) io.emit("whatsapp_message", { botId, from: from, text: payload.text?.body || "[Interactive Element]", isBot: true });
         
         // Log bot reply to DB (Tenant Scoped)
-        await query(`INSERT INTO messages (bot_id, wa_number, message, sender) VALUES ($1, $2, $3, 'bot')`, [botId, from, payload.text?.body || "[Interactive Sent]"]);
+        await query(`INSERT INTO messages (bot_id, wa_number, message, sender, platform_user_id) VALUES ($1, $2, $3, 'bot', $4)`, [botId, from, payload.text?.body || "[Interactive Sent]", from]);
       }
 
       await query("UPDATE leads SET last_node_id = $1 WHERE id = $2", [currentNode.id, leadId]);
@@ -284,7 +286,7 @@ export const processIncomingMessage = async (botId: string, from: string, waName
 
     // 3. Log User Message & Update Timestamps
     if (text) {
-      await query(`INSERT INTO messages (bot_id, wa_number, message, sender) VALUES ($1, $2, $3, 'user')`, [botId, from, incomingText]);
+      await query(`INSERT INTO messages (bot_id, wa_number, message, sender, platform_user_id) VALUES ($1, $2, $3, 'user', $4)`, [botId, from, incomingText, from]);
       if (lead) {
           await query(`UPDATE leads SET last_user_msg_at = NOW(), updated_at = NOW() WHERE id = $1`, [lead.id]);
       }
@@ -310,7 +312,7 @@ export const processIncomingMessage = async (botId: string, from: string, waName
       });
 
       const systemMsg = "User forcibly ended the conversation.";
-      await query(`INSERT INTO messages (bot_id, wa_number, message, sender) VALUES ($1, $2, $3, 'system')`, [botId, from, systemMsg]);
+      await query(`INSERT INTO messages (bot_id, wa_number, message, sender, platform_user_id) VALUES ($1, $2, $3, 'system', $4)`, [botId, from, systemMsg, from]);
 
       if (io) io.emit("whatsapp_message", { botId, from, text: systemMsg, isBot: true, sender: "system" });
       return; 

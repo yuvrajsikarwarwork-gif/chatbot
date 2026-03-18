@@ -1,13 +1,16 @@
+// backend-api/src/routes/webhookRoutes.ts
+
 import { Router } from "express";
-// ✅ Match the names exactly from the controller
 import { verifyWebhook, receiveMessage } from "../controllers/webhookController";
 
 const router = Router();
 
-// This handles: GET http://localhost:4000/api/webhook
+// 1. Meta Webhook Verification (Universal for WA/FB/IG)
 router.get("/", verifyWebhook);
 
-// This handles: POST http://localhost:4000/api/webhook
+// 2. Meta Message Receiver (Universal)
+// In your vision, we use one webhook URL in Meta Dashboard for all bots.
+// The controller will determine the BotID based on Phone ID or Page ID.
 router.post("/", receiveMessage);
 
 export default router;
