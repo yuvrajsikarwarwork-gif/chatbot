@@ -55,29 +55,33 @@ export default function ConversationsPage() {
   }, []);
 
   const handleSelectConversation = async (convo: any) => {
-    setActiveConversation(convo);
-    activeConvoRef.current = convo;
-    
-    // Clear messages instantly for snappy UX while loading
-    setMessages([]); 
+  setActiveConversation(convo);
+  activeConvoRef.current = convo;
 
-    // ✅ Fetch the actual chat history from the DB
-    try {
-      const res = await apiClient.get(`/chat/messages/${convo.wa_number}`);
-      if (res.data && Array.isArray(res.data)) {
-        // Map the DB columns to the frontend expectations
-        const formattedHistory = res.data.map((msg: any) => ({
-          id: msg.id,
-          text: msg.text,
-          sender: msg.sender, // 'user', 'bot', 'agent', or 'system'
-          timestamp: msg.timestamp
-        }));
-        setMessages(formattedHistory);
-      }
-    } catch (err) {
-      console.error("Failed to fetch chat history:", err);
+  // Clear messages instantly for snappy UX while loading
+  setMessages([]);
+
+  // ✅ Fetch the actual chat history from the DB
+  try {
+    const res = await apiClient.get(`/chat/messages/${convo.wa_number}`);
+
+    if (res.data && Array.isArray(res.data)) {
+
+      // Map the DB columns to the frontend expectations
+      const formattedHistory = res.data.map((msg: any) => ({
+        id: msg.id,
+        text: msg.text,
+        sender: msg.sender,
+        timestamp: msg.timestamp,
+      }));
+
+      setMessages(formattedHistory);
     }
-  };
+
+  } catch (err) {
+    console.error("Failed to fetch chat history:", err);
+  }
+};
 
   const handleResumeBot = () => {
     fetchConversations(); 
@@ -123,4 +127,4 @@ export default function ConversationsPage() {
       </div>
     </DashboardLayout>
   );
-}
+};
