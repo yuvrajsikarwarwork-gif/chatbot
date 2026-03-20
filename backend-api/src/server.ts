@@ -35,7 +35,6 @@ async function start() {
     app.set("io", io);
 
     // CRON
-
     cron.schedule("* * * * *", async () => {
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
@@ -61,10 +60,11 @@ async function start() {
       console.log("Socket connected", socket.id);
     });
 
-    const PORT = env.PORT || 5001;
+    // 🔴 CRITICAL FIX: Lock to 4000 to match the tunnel and frontend expectations
+    const PORT = env.PORT || 4000;
 
     server.listen(PORT, "0.0.0.0", () => {
-      console.log(`API LIVE http://localhost:${PORT}`);
+      console.log(`✅ BACKEND API LIVE | http://localhost:${PORT}`);
     });
   } catch (err) {
     console.error(err);

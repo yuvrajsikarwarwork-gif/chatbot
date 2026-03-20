@@ -1,5 +1,3 @@
-// backend-api/src/controllers/whatsappWebhook.ts
-
 import { Request, Response } from "express";
 import * as FlowEngine from "../services/flowEngine";
 import { query } from "../config/db";
@@ -12,14 +10,22 @@ export const verifyWebhook = (req: Request, res: Response) => {
   const verifyToken = process.env.WA_VERIFY_TOKEN || process.env.VERIFY_TOKEN;
 
   if (mode === "subscribe" && token === verifyToken) {
+    console.log("✅ Meta Webhook Successfully Verified!");
     return res.status(200).send(challenge);
   }
+  console.warn("❌ Webhook Verification Failed. Token Mismatch.");
   return res.sendStatus(403);
 };
 
 export const receiveMessage = async (req: Request, res: Response) => {
   const body = req.body;
   const io = req.app.get("io");
+
+  // 🔴 ADDED LOGGING: See exactly what Meta is sending
+  console.log("\n=========================================");
+  console.log("📩 INCOMING WEBHOOK FROM META:");
+  console.log(JSON.stringify(body, null, 2));
+  console.log("=========================================\n");
 
   if (body.entry?.[0]?.changes?.[0]?.value?.statuses) return res.sendStatus(200);
   if (body.object !== "whatsapp_business_account") return res.sendStatus(404);
@@ -38,7 +44,13 @@ export const receiveMessage = async (req: Request, res: Response) => {
       [phoneNumberId]
     );
     const botId = botRes.rows[0]?.bot_id;
-    if (!botId) return res.sendStatus(200);
+    
+    // 🔴 ADDED LOGGING: Warn if phone number doesn't match the DB
+    if (!botId) {
+      console.warn(`\n⚠️ ALERT: Meta sent a message to Phone ID '${phoneNumberId}', but no active bot matches this in your database!`);
+      console.warn(`Fix: Copy '${phoneNumberId}' and paste it into your Bot's WhatsApp settings in the dashboard.\n`);
+      return res.sendStatus(200); 
+    }
 
     let incomingText = "";
     let buttonId = "";
@@ -51,6 +63,8 @@ export const receiveMessage = async (req: Request, res: Response) => {
       incomingText = interactive.button_reply?.title || interactive.list_reply?.title || buttonId;
     }
 
+    console.log(`✅ Routing message from ${waName} to Bot ID: ${botId}`);
+
     // Trigger engine (which creates/finds conversation)
     const result = await FlowEngine.processIncomingMessage(botId, from, waName, incomingText, buttonId, io, "whatsapp");
     if (result?.conversationId && result.actions?.length) {
@@ -59,8 +73,7 @@ export const receiveMessage = async (req: Request, res: Response) => {
       }
     }
 
-    // ✅ STANDARD DASHBOARD SYNC (Inbound)
-    // Note: Since processIncomingMessage creates the conversation, we fetch the ID for the emit
+    // Dashboard Sync
     const convRes = await query(
       `SELECT c.id FROM conversations c 
        JOIN contacts ct ON c.contact_id = ct.id 
@@ -81,7 +94,7 @@ export const receiveMessage = async (req: Request, res: Response) => {
     }
 
   } catch (err: any) {
-    console.error("WEBHOOK ERROR:", err.message);
+    console.error("❌ WEBHOOK ERROR:", err.message);
   }
 
   return res.sendStatus(200);

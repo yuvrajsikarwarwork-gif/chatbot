@@ -3,7 +3,7 @@
 (function () {
   // --- CONFIGURATION ---
   // In production, these would be passed dynamically via the embed script tag attributes
-  const BACKEND_URL = "https://large-cycles-relate.loca.lt"; 
+  const BACKEND_URL = "https://tigers-asset-mechanics-isp.trycloudflare.com"; 
   const BOT_ID = "f9e13c53-d450-462e-adbc-94ac06815034"; // Replace with the dynamic bot ID
   
   // --- SESSION MANAGEMENT ---

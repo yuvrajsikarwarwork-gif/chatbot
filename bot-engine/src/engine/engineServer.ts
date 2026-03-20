@@ -13,6 +13,9 @@ app.get("/health", (_, res) => {
   res.send("bot-engine running");
 });
 
-app.listen(ENV.PORT, () => {
-  console.log("Bot Engine running on port", ENV.PORT);
+// 🔴 CRITICAL FIX: Isolate the engine to port 5002 to prevent conflicts with the backend
+const PORT = ENV.PORT || 5002;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ BOT ENGINE LIVE | http://localhost:${PORT}`);
 });
