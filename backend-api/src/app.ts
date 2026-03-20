@@ -1,39 +1,52 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
-import routes from "./routes"; 
-import botRoutes from "./routes/botRoutes"; 
-import webhookRoutes from "./routes/webhookRoutes"; 
-import flowRoutes from "./routes/flowRoutes"; 
-import leadRoutes from "./routes/leadRoutes"; 
-import uploadRoutes from "./routes/uploadRoutes"; 
-import templateRoutes from "./routes/templateRoutes";
+
+import routes from "./routes";
 import { errorMiddleware } from "./middleware/errorMiddleware";
 
 dotenv.config();
+
 export const app = express();
 
-app.set("trust proxy", 1);
+// ================= CORS =================
 
-app.use(cors({
-  origin: ["http://localhost:3000", "*.trycloudflare.com"],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  // ✅ Added 'x-bot-id' to allowed headers for multi-tenancy support
-  allowedHeaders: ["Content-Type", "Authorization", "x-bot-id"]
-}));
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-bot-id",
+      "Bypass-Tunnel-Reminder",
+      "x-localtunnel-skip-warning",
+      "ngrok-skip-browser-warning",
+    ],
+  })
+);
+
+// Preflight fix
+
+app.options("*", cors());
+
+// ================= MIDDLEWARE =================
 
 app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// ✅ Routes are mounted at /api
-app.use("/api/templates", templateRoutes);
-app.use("/api/bots", botRoutes); 
-app.use("/api/flows", flowRoutes);
-app.use("/api/webhook", webhookRoutes); 
-app.use("/api/leads", leadRoutes); 
-app.use("/api/upload", uploadRoutes); 
-app.use("/api", routes); // Logic for /auth/login resides here
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "../uploads"))
+);
+
+// ================= ROUTES =================
+
+// ✅ ONLY HERE
+
+app.use("/api", routes);
+
+// ================= ERROR =================
 
 app.use(errorMiddleware);

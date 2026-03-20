@@ -1,6 +1,19 @@
 {
-  "dependencies": {
-    "axios": "^1.13.6",
-    "socket.io-client": "^4.8.3"
+  "name": "chatbot-system-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node start_tunnel.js",
+    "dev:services": "concurrently -c \"cyan,magenta,yellow,green\" --kill-others \"npm run dev:frontend\" \"npm run dev:backend\" \"npm run dev:engine\" \"npm run dev:worker\"",
+    "dev:frontend": "cd frontend-dashboard && npm run dev",
+    "dev:backend": "cd backend-api && npm run dev",
+    "dev:engine": "cd bot-engine && npm run dev",
+    "dev:worker": "cd worker && npm run dev",
+    "install:all": "npm install && cd frontend-dashboard && npm install && cd ../backend-api && npm install && cd ../bot-engine && npm install && cd ../worker && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "dotenv-cli": "^11.0.0",
+    "localtunnel": "^2.0.2"
   }
 }

@@ -1,48 +1,57 @@
-import axios from "axios";
+  import axios from "axios";
 
-// Standardize the URL. Ensure this matches your backend server.ts port.
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  // Helper to ensure the URL is clean and formatted correctly
+  const getBaseUrl = () => {
+    let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+    // Remove trailing slash if present to avoid double-slash errors
+    return url.endsWith("/") ? url.slice(0, -1) : url;
+  };
 
-export const apiClient = axios.create({
-  baseURL: BASE_URL,
-});
+  const apiClient = axios.create({
+    baseURL: getBaseUrl(),
+    headers: {
+      "Content-Type": "application/json",
+      "Bypass-Tunnel-Reminder": "true",
+      "x-localtunnel-skip-warning": "true" // Extra safety for LocalTunnel
+    },
+  });
 
-// INTERCEPTOR: Attach JWT to requests
-apiClient.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    // Add the bot context if available in local storage or a store
-    const activeBotId = localStorage.getItem("activeBotId");
-    if (activeBotId) {
-      config.headers['x-bot-id'] = activeBotId;
-    }
-  }
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+  apiClient.interceptors.request.use((config) => {
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("token");
 
-// RESPONSE INTERCEPTOR: Handle 401 Unauthorized and Network Errors
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Check if it's a network-level error (no response)
-    if (!error.response) {
-      console.error(`❌ API UNREACHABLE: Is the backend running at ${BASE_URL}?`);
-    }
+      if (!config.headers) {
+        config.headers = {};
+      }
 
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem("token");
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
+      if (token) {
+        config.headers["Authorization"] = "Bearer " + token;
+      }
+
+      const activeBotId = localStorage.getItem("activeBotId");
+      if (activeBotId) {
+        config.headers["x-bot-id"] = activeBotId;
       }
     }
-    return Promise.reject(error);
-  }
-);
 
-export default apiClient;
+    return config;
+  });
+
+  apiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (!error.response) {
+        console.error(`❌ API UNREACHABLE: Is the tunnel active? Base: ${getBaseUrl()}`);
+      }
+
+      if (error.response?.status === 401 && typeof window !== 'undefined') {
+        localStorage.removeItem("token");
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login";
+        }
+      }
+      return Promise.reject(error);
+    }
+  );
+
+  export default apiClient;

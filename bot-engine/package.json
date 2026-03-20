@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "dist/engineServer.js",
   "scripts": {
-    "dev": "ts-node src/engine/engineServer.ts",
+    "dev": "ts-node-dev --respawn --transpile-only --watch ../shared-types,../connectors src/engine/engineServer.ts",
     "build": "tsc",
     "start": "node dist/engine/engineServer.js"
   },
@@ -17,6 +17,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.30",
     "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5"
   }
 }

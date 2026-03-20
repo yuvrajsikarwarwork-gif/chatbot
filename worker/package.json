@@ -1,0 +1,21 @@
+{
+  "name": "chatbot-worker",
+  "version": "1.0.0",
+  "main": "SRC/workerServer.ts",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only --watch ../shared-types,../connectors SRC/workerServer.ts",
+    "build": "tsc",
+    "start": "node dist/workerServer.js"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "pg": "^8.20.0",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/pg": "^8.18.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.4.5"
+  }
+}
