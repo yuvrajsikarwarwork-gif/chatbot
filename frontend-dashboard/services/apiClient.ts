@@ -1,7 +1,10 @@
 import axios, { AxiosHeaders } from "axios";
+import { API_URL } from "../config/apiConfig";
+import { useAuthStore } from "../store/authStore";
+import { sessionService } from "./sessionService";
 
 const apiClient = axios.create({
-  baseURL: "http://localhost:4000/api",
+  baseURL: API_URL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -9,7 +12,7 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const token = localStorage.getItem("token");
+    const token = sessionService.getToken();
 
     if (!config.headers) {
       config.headers = new AxiosHeaders();
@@ -25,6 +28,16 @@ apiClient.interceptors.request.use((config) => {
     if (activeBotId) {
       config.headers.set("x-bot-id", activeBotId);
     }
+
+    const activeWorkspaceId = useAuthStore.getState().activeWorkspace?.workspace_id;
+    if (activeWorkspaceId) {
+      config.headers.set("x-workspace-id", activeWorkspaceId);
+    }
+
+    const activeProjectId = useAuthStore.getState().activeProject?.id;
+    if (activeProjectId) {
+      config.headers.set("x-project-id", activeProjectId);
+    }
   }
 
   return config;
@@ -34,11 +47,11 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (!error.response) {
-      console.error("API UNREACHABLE at http://localhost:4000/api");
+      console.error(`API unreachable at ${API_URL}`);
     }
 
     if (error.response?.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("token");
+      sessionService.clear();
       if (window.location.pathname !== "/login") {
         window.location.href = "/login";
       }

@@ -3,7 +3,8 @@ import { query } from "../adapters/dbAdapter";
 import { ConversationState } from "./stateTypes";
 
 export const loadState = async (
-  conversationId: string
+  conversationId: string,
+  botId: string
 ): Promise<ConversationState> => {
 
   let state = await getStateByConversationId(
@@ -12,27 +13,31 @@ export const loadState = async (
 
   if (!state) {
     const newState: ConversationState = {
+      bot_id: botId,
       conversation_id: conversationId,
       current_node_id: null,
       variables: {},
       waiting_input: false,
       waiting_agent: false,
-      input_variable: null
+      input_variable: null,
+      status: null
     };
 
     await query(
       `
       INSERT INTO conversation_state
-      (conversation_id, current_node_id, variables, waiting_input, waiting_agent, input_variable)
-      VALUES ($1,$2,$3,$4,$5,$6)
+      (bot_id, conversation_id, current_node_id, variables, waiting_input, waiting_agent, input_variable, status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       `,
       [
+        newState.bot_id,
         newState.conversation_id,
         newState.current_node_id,
         JSON.stringify(newState.variables),
         newState.waiting_input,
         newState.waiting_agent,
-        newState.input_variable
+        newState.input_variable,
+        newState.status
       ]
     );
 
@@ -40,8 +45,14 @@ export const loadState = async (
   }
 
   return {
-    ...state,
-    variables: state.variables || {}
+    bot_id: state.bot_id || botId,
+    conversation_id: state.conversation_id,
+    current_node_id: state.current_node_id ?? state.current_node ?? null,
+    variables: state.variables || state.context_variables || {},
+    waiting_input: Boolean(state.waiting_input),
+    waiting_agent: Boolean(state.waiting_agent),
+    input_variable: state.input_variable || null,
+    status: state.status || null
   };
 };
 
@@ -57,8 +68,9 @@ export const saveState = async (
       variables = $2,
       waiting_input = $3,
       waiting_agent = $4,
-      input_variable = $5
-    WHERE conversation_id = $6
+      input_variable = $5,
+      status = $6
+    WHERE conversation_id = $7
     `,
     [
       state.current_node_id,
@@ -66,6 +78,7 @@ export const saveState = async (
       state.waiting_input,
       state.waiting_agent,
       state.input_variable,
+      state.status || null,
       state.conversation_id
     ]
   );

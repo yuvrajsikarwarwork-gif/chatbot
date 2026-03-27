@@ -1,0 +1,449 @@
+Permission, Visibility, and Alignment Review
+Date: 2026-03-23
+Workspace: D:\projects\chatbot
+
+Purpose
+
+This document answers the questions:
+
+1. Is the permission system implemented?
+2. Is the permission board implemented?
+3. Is backend aligned with frontend?
+4. Is database aligned with backend and frontend?
+5. What gaps still exist?
+
+This is a codebase review, not a live staging verification.
+
+==================================================
+FINAL ANSWER
+==================================================
+
+Permission system status: IMPLEMENTED
+Permission board status: PARTIALLY IMPLEMENTED, NOT FULLY IMPLEMENTED
+Database foundation: IMPLEMENTED
+Backend enforcement: IMPLEMENTED WITH GAPS
+Frontend visibility and access UI: IMPLEMENTED WITH GAPS
+Backend/frontend/database alignment: MOSTLY ALIGNED IN CORE FLOWS, NOT FULLY ALIGNED IN PERMISSION SOURCE AND SOME ACCESS RULES
+
+Short conclusion
+
+The platform already has a real permission system, real scoped visibility, real project access, agent scope, support access, and audit tables.
+
+The missing piece is a complete product-grade permission board that uses the same normalized permission source everywhere.
+
+==================================================
+STATUS BOARD
+==================================================
+
+[YES] Workspace membership model exists
+[YES] Project access model exists
+[YES] Support access model exists
+[YES] Support request workflow exists
+[YES] Agent scope model exists
+[YES] Audit log model exists
+[YES] Backend workspace permission checks exist
+[YES] Backend project access checks exist
+[YES] Backend conversation visibility checks exist
+[YES] Frontend role-based page visibility exists
+[YES] Frontend workspace member management UI exists
+[YES] Frontend project access management UI exists
+[YES] Frontend support access UI exists
+[PARTIAL] Frontend permission tick editor exists
+[PARTIAL] Permission board exists
+[NO] Dedicated roles and permissions admin module
+[NO] UI for normalized role_permissions table management
+[NO] UI for normalized user_permissions table management
+[NO] Frontend consumption of normalized permission tables as source of truth
+
+==================================================
+DATABASE REVIEW
+==================================================
+
+Database is the strongest and most complete layer of the permission system.
+
+Implemented tables
+
+From database\migrations\041_normalize_permissions_and_audit.sql:
+- permissions
+- role_permissions
+- user_permissions
+- agent_scope
+- audit_logs
+
+From database\migrations\040_add_support_access_and_agent_presence.sql:
+- support_access
+- agent_sessions
+- agent_activity
+
+From database\migrations\042_project_users_and_support_requests.sql:
+- project_users
+- support_requests
+
+What database already supports
+
+- normalized permission catalog
+- role-level permission defaults
+- user-level permission overrides
+- workspace-scoped membership
+- project-scoped membership
+- agent visibility scope by project, campaign, platform, and channel
+- temporary support access for platform operators
+- support request approval flow
+- audit history
+- agent presence and activity tracking
+
+Database conclusion
+
+Database design is implemented and structurally ready for a full permission system.
+
+==================================================
+BACKEND REVIEW
+==================================================
+
+Main backend permission enforcement
+
+File: backend-api\src\services\workspaceAccessService.ts
+
+Important implemented behavior:
+- assertWorkspaceMembership() blocks platform operators unless support_access is active
+- assertWorkspacePermission() resolves access from:
+  - normalized workspace role
+  - role_permissions
+  - user_permissions
+  - legacy workspace_memberships.permissions_json overrides
+  - support-mode bypass for platform operators with active support access
+
+Main backend project access enforcement
+
+File: backend-api\src\services\projectAccessService.ts
+
+Important implemented behavior:
+- assertProjectMembership()
+- assertProjectContextAccess()
+- resolveProjectAccess() reads normalized project_users and keeps compatibility behavior
+
+Main backend conversation visibility enforcement
+
+Files:
+- backend-api\src\services\conversationService.ts
+- backend-api\src\services\conversationAssignmentService.ts
+- backend-api\src\models\conversationModel.ts
+
+Important implemented behavior:
+- workspace membership is required
+- project access is required for project-scoped conversations
+- agent visibility is restricted to:
+  - self-assigned conversations
+  - unassigned conversations only when takeover is enabled
+  - allowed project scope
+  - allowed campaign scope
+  - allowed platform scope
+  - allowed channel scope
+
+Backend conclusion
+
+Backend permission enforcement is real and already covers the main business flows.
+
+==================================================
+FRONTEND REVIEW
+==================================================
+
+Main frontend visibility logic
+
+Files:
+- frontend-dashboard\hooks\useVisibility.ts
+- frontend-dashboard\store\authStore.ts
+- frontend-dashboard\components\layout\Sidebar.tsx
+
+Important implemented behavior:
+- sidebar items are role-gated
+- pages are role-gated
+- workspace permission checks are used to hide or show actions
+- platform operators are isolated from normal workspace screens
+
+Main frontend access-management surfaces
+
+Workspace page
+File: frontend-dashboard\pages\workspaces.tsx
+
+Implemented UI includes:
+- workspace member listing
+- invite / add member flow
+- role assignment
+- permission tick editor
+- agent scope editor
+- agent skill editor
+- support access grant and revoke
+- support request create / approve / deny
+- workspace billing and lock controls
+
+Project page
+File: frontend-dashboard\pages\projects.tsx
+
+Implemented UI includes:
+- project access summary
+- assign project role
+- revoke project role
+- project settings and visibility controls
+
+Audit page
+File: frontend-dashboard\pages\audit.tsx
+
+Implemented UI includes:
+- audit history page
+- permission and assignment filters
+
+Conversation page
+File: frontend-dashboard\pages\conversations.tsx
+
+Implemented UI includes:
+- assignment visibility
+- candidate list
+- scope-aware member filtering
+- assignment capacity view
+
+Frontend conclusion
+
+Frontend visibility and management UI are implemented, but the permission model shown in frontend is not fully sourced from the same normalized tables used by backend.
+
+==================================================
+IS THE PERMISSION BOARD IMPLEMENTED?
+==================================================
+
+Direct answer: PARTIALLY IMPLEMENTED
+
+What exists today
+
+- workspace member access editor
+- per-member permission tick editor
+- project access board
+- support access board
+- support request workflow
+- audit history page
+
+What is missing for a full permission board
+
+- dedicated Permissions or Roles page
+- backend API for role_permissions administration
+- backend API for user_permissions administration
+- frontend UI that reads and edits normalized role_permissions
+- frontend UI that reads and edits normalized user_permissions
+- permission catalog management surface
+- per-role allow/deny matrix backed directly by database tables
+
+Decision
+
+You can say:
+"The permission system exists."
+
+You should not say:
+"The full permission board is finished."
+
+==================================================
+ALIGNMENT REVIEW
+==================================================
+
+1. Database -> Backend
+
+Status: mostly aligned
+
+Aligned:
+- backend reads role_permissions
+- backend reads user_permissions
+- backend reads agent_scope
+- backend uses project_users
+- backend uses support_access
+- backend uses support_requests
+- backend writes audit logs
+
+Still transitional:
+- backend still supports workspace_memberships.permissions_json
+- backend still syncs legacy user_project_access
+
+2. Backend -> Frontend
+
+Status: partially aligned
+
+Aligned:
+- frontend page visibility generally follows backend role expectations
+- frontend project access UI matches normalized project membership model
+- support access and support request UX exist in both layers
+- inbox and assignment UI generally follow backend scope rules
+
+Not aligned:
+- backend source of truth is role_permissions plus user_permissions plus agent_scope
+- frontend source of truth is mostly hardcoded default role maps plus permissions_json
+- frontend does not load role_permissions directly
+- frontend does not load user_permissions directly
+
+Practical effect:
+
+If someone changes normalized permission rows in database, backend behavior changes immediately.
+Frontend visibility may not reflect that change correctly.
+
+3. Frontend -> Backend access rule mismatches found during review
+
+Mismatch A
+Issue: Workspace member listing is more open in backend than in frontend
+
+Evidence:
+- Route: backend-api\src\routes\workspaceRoutes.ts
+- Service: backend-api\src\services\workspaceAccessService.ts
+- Model: backend-api\src\models\workspaceMembershipModel.ts
+
+Current behavior:
+- GET /workspaces/:id/members uses requireWorkspaceAccess
+- listWorkspaceMembersService() only requires workspace membership
+- returned payload includes members, role, permissions_json, agent scope, and global role
+
+Impact:
+- any active workspace member can enumerate workspace users and permission data through API
+- frontend hides workspace management from many roles, but API is still readable
+
+Status:
+- backend/frontend privacy mismatch
+
+Mismatch B
+Issue: Audit page gating in frontend is broader than backend authorization
+
+Evidence:
+- Frontend: frontend-dashboard\pages\audit.tsx
+- Backend: backend-api\src\services\auditService.ts
+
+Current behavior:
+- frontend allows audit access when user has manage_workspace OR manage_users OR manage_permissions
+- backend actually requires manage_workspace
+
+Impact:
+- some users can see the audit page in frontend but get blocked by API
+
+Status:
+- frontend/backend rule mismatch
+
+Mismatch C
+Issue: Assignment capacity candidates may mark editor/user roles as eligible
+
+Evidence:
+- backend-api\src\services\conversationAssignmentService.ts
+
+Current behavior:
+- candidate query includes roles: workspace_admin, workspace_owner, admin, editor, user, agent
+- eligible_for_assignment is computed without checking ASSIGNABLE_ROLES
+- final assignment path later rejects non-assignable roles through getAssignableMembership()
+
+Impact:
+- UI can receive candidates marked as eligible even though actual assignment will fail later
+
+Status:
+- backend internal consistency gap that can leak into frontend behavior
+
+==================================================
+MAIN IMPLEMENTATION GAPS
+==================================================
+
+Gap 1
+Frontend permission source is not the same as backend permission source.
+
+Frontend currently relies on:
+- hardcoded default role permissions in frontend-dashboard\store\authStore.ts
+- workspace membership permissions_json overrides
+
+Backend currently relies on:
+- role_permissions
+- user_permissions
+- membership permissions_json compatibility overrides
+
+This is the biggest structural alignment issue.
+
+Gap 2
+No full roles and permissions administration module.
+
+The tables exist, but the product surface for administering them does not.
+
+Gap 3
+Workspace members API is under-protected for privacy expectations.
+
+Gap 4
+Some page-level rules and API-level rules are not identical.
+
+==================================================
+SOURCE FILES REVIEWED
+==================================================
+
+Database
+- database\migrations\040_add_support_access_and_agent_presence.sql
+- database\migrations\041_normalize_permissions_and_audit.sql
+- database\migrations\042_project_users_and_support_requests.sql
+- database\schema\001_base.sql
+
+Backend
+- backend-api\src\services\workspaceAccessService.ts
+- backend-api\src\services\workspaceService.ts
+- backend-api\src\services\projectAccessService.ts
+- backend-api\src\services\projectService.ts
+- backend-api\src\services\conversationService.ts
+- backend-api\src\services\conversationAssignmentService.ts
+- backend-api\src\services\auditService.ts
+- backend-api\src\routes\workspaceRoutes.ts
+- backend-api\src\routes\projectRoutes.ts
+- backend-api\src\models\permissionModel.ts
+- backend-api\src\models\workspaceMembershipModel.ts
+- backend-api\src\models\projectAccessModel.ts
+- backend-api\src\models\conversationModel.ts
+
+Frontend
+- frontend-dashboard\hooks\useVisibility.ts
+- frontend-dashboard\store\authStore.ts
+- frontend-dashboard\components\layout\Sidebar.tsx
+- frontend-dashboard\pages\workspaces.tsx
+- frontend-dashboard\pages\projects.tsx
+- frontend-dashboard\pages\conversations.tsx
+- frontend-dashboard\pages\audit.tsx
+- frontend-dashboard\services\workspaceMembershipService.ts
+- frontend-dashboard\services\workspaceService.ts
+- frontend-dashboard\services\auditService.ts
+
+==================================================
+RECOMMENDED NEXT ACTIONS
+==================================================
+
+Priority 1
+Restrict GET /workspaces/:id/members to manage_users or manage_permissions.
+
+Priority 2
+Make frontend permission checks consume backend-resolved permission maps instead of only hardcoded defaults plus permissions_json.
+
+Priority 3
+Add dedicated API and UI for:
+- role_permissions
+- user_permissions
+- permission catalog display
+- role matrix editing
+
+Priority 4
+Align audit page visibility with backend rule, or widen backend rule intentionally if that is the real requirement.
+
+Priority 5
+Fix assignment candidate eligibility so editor/user roles are not marked eligible unless assignment is truly allowed.
+
+==================================================
+BOTTOM LINE
+==================================================
+
+If your question is:
+"Is permission and visibility implemented?"
+
+Answer:
+Yes, the core system is implemented.
+
+If your question is:
+"Is the permission board fully implemented?"
+
+Answer:
+No. It is only partially implemented.
+
+If your question is:
+"Are backend, frontend, and database fully aligned?"
+
+Answer:
+Not fully. They are mostly aligned on core flows, but not fully aligned on permission source of truth and some access rules.

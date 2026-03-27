@@ -1,22 +1,29 @@
-import { useEffect } from 'react';
-import { useRouter } from 'next/router';
-import { useAuthStore } from '../store/authStore';
+import { useEffect } from "react";
+import { useRouter } from "next/router";
 
-export const useAuthGuard = (requiredRole?: 'user' | 'admin' | 'super_admin') => {
+import { useAuthStore } from "../store/authStore";
+
+export const useAuthGuard = (
+  requiredRole?: "user" | "admin" | "developer" | "super_admin"
+) => {
   const { user, isAuthenticated } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
-    // ✅ RBAC Enforcement
     if (requiredRole && user) {
-      const roleWeights = { user: 1, admin: 2, super_admin: 3 };
+      const roleWeights = {
+        user: 1,
+        admin: 2,
+        developer: 3,
+        super_admin: 4,
+      };
       if (roleWeights[user.role] < roleWeights[requiredRole]) {
-        router.push('/dashboard'); // Redirect if insufficient permissions
+        router.push("/dashboard");
       }
     }
   }, [isAuthenticated, user, router, requiredRole]);

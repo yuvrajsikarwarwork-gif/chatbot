@@ -1,9 +1,87 @@
 import axios from "axios";
 import { query } from "../../config/db";
-import { GenericMessage } from "../../services/messageRouter";
+import { GenericMessage, OutboundDeliveryResult } from "../../services/messageRouter";
 import { sendWhatsAppMessage } from "../../services/whatsappService";
+import { decryptSecret } from "../../utils/encryption";
+import { findCampaignChannelRuntimeById } from "../../models/campaignModel";
+import { findLegacyPlatformAccountByBotAndPlatform } from "../../services/integrationService";
+
+const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v22.0";
+
+function getChannelCredentials(channel: any) {
+  if (!channel?.config || typeof channel.config !== "object") {
+    return null;
+  }
+
+  return {
+    phoneNumberId:
+      typeof channel.config.phoneNumberId === "string"
+        ? channel.config.phoneNumberId
+        : null,
+    accessToken: decryptSecret(channel.config.accessToken),
+  };
+}
+
+function summarizeMetaAxiosError(error: any) {
+  const payload = error?.response?.data?.error || error?.response?.data || {};
+  const parts = [
+    payload?.message || error?.message || "WhatsApp API request failed",
+    payload?.type ? `type=${payload.type}` : null,
+    payload?.code ? `code=${payload.code}` : null,
+    payload?.error_subcode ? `subcode=${payload.error_subcode}` : null,
+    payload?.error_data?.details ? `details=${payload.error_data.details}` : null,
+  ].filter(Boolean);
+  return parts.join(" | ");
+}
+
+function buildTemplateHeaderMediaParameter(
+  mediaType: "image" | "video" | "document",
+  source: string
+) {
+  const trimmedSource = String(source || "").trim();
+  if (!trimmedSource) {
+    return null;
+  }
+
+  const looksLikeHttp = /^https?:\/\//i.test(trimmedSource);
+  return {
+    type: mediaType,
+    [mediaType]: looksLikeHttp
+      ? { link: trimmedSource }
+      : { id: trimmedSource },
+  };
+}
 
 const buildWhatsAppPayload = (toPhone: string, msg: GenericMessage) => {
+  if (msg.type === "interactive" && Array.isArray(msg.sections) && msg.sections.length > 0) {
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toPhone,
+      type: "interactive",
+      interactive: {
+        type: "list",
+        body: {
+          text: msg.text || "Choose an option:"
+        },
+        action: {
+          button: msg.buttonText || "View Options",
+          sections: msg.sections
+            .map((section) => ({
+              title: section.title || "Options",
+              rows: (section.rows || []).slice(0, 10).map((row) => ({
+                id: row.id,
+                title: row.title,
+                ...(row.description ? { description: row.description } : {}),
+              })),
+            }))
+            .filter((section) => section.rows.length > 0)
+            .slice(0, 1),
+        }
+      }
+    };
+  }
+
   if (msg.type === "interactive" && msg.buttons?.length) {
     return {
       messaging_product: "whatsapp",
@@ -29,6 +107,40 @@ const buildWhatsAppPayload = (toPhone: string, msg: GenericMessage) => {
   }
 
   if (msg.type === "template" && msg.templateName) {
+    const rawTemplateContent =
+      msg.templateContent && typeof msg.templateContent === "string"
+        ? (() => {
+            try {
+              return JSON.parse(msg.templateContent);
+            } catch {
+              return null;
+            }
+          })()
+        : msg.templateContent && typeof msg.templateContent === "object"
+          ? msg.templateContent
+          : null;
+    const headerType = String(rawTemplateContent?.header?.type || "").trim().toLowerCase();
+    const headerValue = String(rawTemplateContent?.header?.text || "").trim();
+    const components: any[] = [];
+
+    if (["image", "video", "document"].includes(headerType) && headerValue) {
+      const headerParameter = buildTemplateHeaderMediaParameter(
+        headerType as "image" | "video" | "document",
+        headerValue
+      );
+      components.push({
+        type: "header",
+        parameters: headerParameter ? [headerParameter] : [],
+      });
+    }
+
+    if (Array.isArray(msg.templateParameters) && msg.templateParameters.length > 0) {
+      components.push({
+        type: "body",
+        parameters: msg.templateParameters,
+      });
+    }
+
     return {
       messaging_product: "whatsapp",
       recipient_type: "individual",
@@ -38,19 +150,59 @@ const buildWhatsAppPayload = (toPhone: string, msg: GenericMessage) => {
         name: msg.templateName,
         language: {
           code: msg.languageCode || "en_US"
-        }
+        },
+        ...(components.length > 0 ? { components } : {}),
       }
     };
   }
 
-  if (msg.type === "media" && msg.mediaUrl) {
+  if ((msg.type === "media" || msg.type === "image") && msg.mediaUrl) {
     return {
       messaging_product: "whatsapp",
       recipient_type: "individual",
       to: toPhone,
       type: "image",
       image: {
-        link: msg.mediaUrl
+        link: msg.mediaUrl,
+        ...(msg.text ? { caption: msg.text } : {}),
+      }
+    };
+  }
+
+  if (msg.type === "video" && msg.mediaUrl) {
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toPhone,
+      type: "video",
+      video: {
+        link: msg.mediaUrl,
+        ...(msg.text ? { caption: msg.text } : {}),
+      }
+    };
+  }
+
+  if (msg.type === "audio" && msg.mediaUrl) {
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toPhone,
+      type: "audio",
+      audio: {
+        link: msg.mediaUrl,
+      }
+    };
+  }
+
+  if (msg.type === "document" && msg.mediaUrl) {
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toPhone,
+      type: "document",
+      document: {
+        link: msg.mediaUrl,
+        ...(msg.text ? { caption: msg.text } : {}),
       }
     };
   }
@@ -61,44 +213,84 @@ const buildWhatsAppPayload = (toPhone: string, msg: GenericMessage) => {
 export const sendWhatsAppAdapter = async (
   botId: string,
   toPhone: string,
-  msg: GenericMessage
-) => {
-  try {
-    const integrationRes = await query(
-      `SELECT credentials
-       FROM integrations
-       WHERE bot_id = $1 AND channel = 'whatsapp' AND is_active = true
+  msg: GenericMessage,
+  channelId?: string | null,
+  platformAccountId?: string | null
+): Promise<OutboundDeliveryResult> => {
+  const channel = channelId
+    ? await findCampaignChannelRuntimeById(channelId)
+    : null;
+  const channelCredentials = getChannelCredentials(channel);
+
+  let phoneNumberId = channelCredentials?.phoneNumberId || null;
+  let accessToken = channelCredentials?.accessToken || null;
+
+  if ((!phoneNumberId || !accessToken) && platformAccountId) {
+    const accountRes = await query(
+      `SELECT phone_number, account_id, token
+       FROM platform_accounts
+       WHERE id = $1
        LIMIT 1`,
-      [botId]
+      [platformAccountId]
     );
 
-    const credentials = integrationRes.rows[0]?.credentials;
-    const phoneNumberId = credentials?.phone_number_id;
-    const accessToken = credentials?.access_token;
+    const account = accountRes.rows[0];
+    phoneNumberId = phoneNumberId || account?.account_id || account?.phone_number || null;
+    accessToken = accessToken || decryptSecret(account?.token ?? null);
+  }
 
-    if (!phoneNumberId || !accessToken) {
-      console.error(`[WhatsApp Adapter] Missing credentials for bot ${botId}`);
-      return;
-    }
+  if (!phoneNumberId || !accessToken) {
+    const legacyAccount = await findLegacyPlatformAccountByBotAndPlatform(
+      botId,
+      "whatsapp"
+    );
+    const metadata =
+      legacyAccount?.metadata && typeof legacyAccount.metadata === "object"
+        ? legacyAccount.metadata
+        : {};
+    phoneNumberId =
+      phoneNumberId ||
+      (typeof metadata.phoneNumberId === "string" ? metadata.phoneNumberId : null) ||
+      legacyAccount?.account_id ||
+      legacyAccount?.phone_number ||
+      null;
+    accessToken = accessToken || decryptSecret(legacyAccount?.token ?? null);
+  }
 
-    if (msg.type === "text" || msg.type === "system") {
-      await sendWhatsAppMessage(phoneNumberId, accessToken, toPhone, msg.text || "");
-      return;
-    }
+  if (!phoneNumberId || !accessToken) {
+    throw {
+      status: 400,
+      message: platformAccountId
+        ? "Invalid WhatsApp platform account or missing credentials"
+        : "Missing WhatsApp platform account credentials",
+    };
+  }
 
-    const payload = buildWhatsAppPayload(toPhone, msg);
-    if (!payload) {
-      await sendWhatsAppMessage(
-        phoneNumberId,
-        accessToken,
-        toPhone,
-        msg.text || `[${msg.type}]`
-      );
-      return;
-    }
+  if (msg.type === "text" || msg.type === "system") {
+    const response = await sendWhatsAppMessage(phoneNumberId, accessToken, toPhone, msg.text || "");
+    return {
+      providerMessageId: response?.messages?.[0]?.id || null,
+      status: "sent",
+    };
+  }
 
-    await axios.post(
-      `https://graph.facebook.com/v17.0/${phoneNumberId}/messages`,
+  const payload = buildWhatsAppPayload(toPhone, msg);
+  if (!payload) {
+    const response = await sendWhatsAppMessage(
+      phoneNumberId,
+      accessToken,
+      toPhone,
+      msg.text || `[${msg.type}]`
+    );
+    return {
+      providerMessageId: response?.messages?.[0]?.id || null,
+      status: "sent",
+    };
+  }
+
+  try {
+    const response = await axios.post(
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneNumberId}/messages`,
       payload,
       {
         headers: {
@@ -107,7 +299,21 @@ export const sendWhatsAppAdapter = async (
         }
       }
     );
+
+    return {
+      providerMessageId: response.data?.messages?.[0]?.id || null,
+      status: "sent",
+    };
   } catch (error: any) {
-    console.error("[WhatsApp Adapter Error]:", error.response?.data || error.message);
+    console.error("[WhatsApp Adapter Error]", {
+      phoneNumberId,
+      operation: msg.type === "template" ? "template-send" : "message-send",
+      payload,
+      error: error?.response?.data || error?.message,
+    });
+    throw {
+      status: error?.response?.status || 502,
+      message: summarizeMetaAxiosError(error),
+    };
   }
 };

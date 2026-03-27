@@ -12,6 +12,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: JwtPayload & { user_id?: string; role?: string };
+      rawBody?: Buffer;
     }
   }
 }
@@ -21,28 +22,38 @@ export const app = express();
 
 // ================= CORS =================
 
+const corsOptions = {
+  origin: true,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-bot-id",
+    "x-workspace-id",
+    "x-project-id",
+    "Bypass-Tunnel-Reminder",
+    "x-localtunnel-skip-warning",
+    "ngrok-skip-browser-warning",
+  ],
+};
+
 app.use(
-  cors({
-    origin: true,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-bot-id",
-      "Bypass-Tunnel-Reminder",
-      "x-localtunnel-skip-warning",
-      "ngrok-skip-browser-warning",
-    ],
-  })
+  cors(corsOptions)
 );
 
 // Preflight fix
-app.options("*", cors());
+app.options("*", cors(corsOptions));
 
 // ================= MIDDLEWARE =================
 
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as Request).rawBody = Buffer.from(buf);
+    },
+  })
+);
 
 app.use(
   "/uploads",

@@ -7,9 +7,11 @@ import { getStateByConversationId } from "../repositories/stateRepo";
 export const loadContext = async (
   botId: string,
   conversationId: string,
-  messageId: string
+  messageId?: string
 ) => {
-  const message = await getMessageById(messageId);
+  const message = messageId
+    ? await getMessageById(messageId)
+    : null;
 
   const conversation =
     await getConversationById(conversationId);

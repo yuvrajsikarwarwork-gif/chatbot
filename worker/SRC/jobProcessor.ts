@@ -23,8 +23,8 @@ import {
 export const processJob = async (
   job: any
 ) => {
-  const type = job.job_type;
-  const payload = job.payload_json;
+  const type = job.job_type || job.type;
+  const payload = job.payload || job.payload_json;
 
   if (!payload) {
     const err: any = new Error(
@@ -88,40 +88,46 @@ const handleProcessMessage =
 
     if (!state) {
       await createState(
+        botId,
         conversationId,
         {}
       );
 
       state = {
-        state_json: {},
+        variables: {},
+        waiting_input: false,
+        waiting_agent: false,
+        input_variable: null,
+        current_node_id: null,
       };
     }
 
 
     const engineRes =
       await processMessage({
-        botId,
-        conversationId,
+        bot_id: botId,
+        conversation_id: conversationId,
+        message_id: payload.messageId || payload.message_id,
         message,
-        state:
-          state.state_json,
       });
 
 
     if (
-      engineRes.messages &&
-      engineRes.messages.length
+      engineRes.replies &&
+      engineRes.replies.length
     ) {
       await saveManyMessages(
-        engineRes.messages
+        botId,
+        conversationId,
+        engineRes.replies
       );
     }
 
 
-    if (engineRes.newState) {
+    if (engineRes.state) {
       await updateState(
         conversationId,
-        engineRes.newState
+        engineRes.state
       );
     }
 
@@ -153,30 +159,33 @@ const handleAIResponse =
 
     const engineRes =
       await processAI({
-        botId,
-        conversationId,
+        bot_id: botId,
+        conversation_id: conversationId,
+        message: {
+          text: prompt,
+        },
+        message_id: payload.messageId || payload.message_id,
         prompt,
-        state:
-          state?.state_json ||
-          {},
       });
 
 
     if (
-      engineRes.messages
+      engineRes.replies
     ) {
       await saveManyMessages(
-        engineRes.messages
+        botId,
+        conversationId,
+        engineRes.replies
       );
     }
 
 
     if (
-      engineRes.newState
+      engineRes.state
     ) {
       await updateState(
         conversationId,
-        engineRes.newState
+        engineRes.state
       );
     }
 
@@ -195,6 +204,8 @@ const handleSendResponse =
       payload.messages
     ) {
       await saveManyMessages(
+        payload.botId,
+        payload.conversationId,
         payload.messages
       );
     }

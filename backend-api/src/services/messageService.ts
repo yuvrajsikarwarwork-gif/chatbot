@@ -7,6 +7,7 @@ import {
 import { 
   createMessage 
 } from "../models/messageModel";
+import { applyConversationWorkspacePolicies } from "./conversationAssignmentService";
 
 /**
  * Handles incoming messages from external channel webhooks (WhatsApp, FB, etc.)
@@ -25,6 +26,7 @@ export async function incomingMessageService(
   // 2. If no conversation exists, initialize a new one
   if (!conversation) {
     conversation = await createConversation(botId, channel, externalUserId, contactName);
+    await applyConversationWorkspacePolicies(conversation.id);
   }
 
   // 3. Save the message tied strictly to the conversation ID

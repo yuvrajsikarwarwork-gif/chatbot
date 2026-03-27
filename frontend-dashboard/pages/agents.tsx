@@ -1,48 +1,27 @@
-import React, { useState } from 'react';
-import DashboardLayout from '../components/layout/DashboardLayout';
-import { UserPlus, MessageCircle, CheckCircle } from 'lucide-react';
+import DashboardLayout from "../components/layout/DashboardLayout";
 
 export default function AgentSystem() {
-  const [tickets, setTickets] = useState([]);
-
   return (
     <DashboardLayout title="Agent Workspace">
-      <div className="grid grid-cols-12 gap-6 p-6">
-        {/* Sidebar: Open Tickets */}
-        <div className="col-span-3 bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold flex justify-between">
-            <span>Open Tickets</span>
-            <span className="bg-blue-100 text-blue-700 px-2 rounded-full text-xs flex items-center">12</span>
+      <div className="mx-auto max-w-6xl space-y-6">
+        <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+            Agent Workspace
           </div>
-          <div className="p-2 space-y-2">
-            {/* Map tickets here */}
-            <div className="p-3 hover:bg-slate-50 rounded-lg cursor-pointer border border-transparent hover:border-slate-200">
-              <p className="font-semibold text-sm">+91 98765 43210</p>
-              <p className="text-xs text-slate-500 truncate">I need help with my billing...</p>
-            </div>
-          </div>
-        </div>
+          <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+            Human handoff queue
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+            No fake tickets are shown here anymore. Connect the real ticket feed before using this page for live agent work.
+          </p>
+        </section>
 
-        {/* Center: Live Chat & Assignment */}
-        <div className="col-span-9 bg-white rounded-xl border border-slate-200 flex flex-col h-[700px]">
-          <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-            <h3 className="font-bold">Chat with Customer</h3>
-            <div className="flex gap-2">
-              <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
-                <UserPlus size={16} /> Assign Agent
-              </button>
-              <button className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
-                <CheckCircle size={16} /> Resolve
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 bg-slate-50 p-4 overflow-y-auto">
-            {/* Chat Messages */}
-          </div>
-          <div className="p-4 border-t border-slate-200">
-            <input type="text" placeholder="Type a reply as an agent..." className="w-full p-3 bg-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
-          </div>
-        </div>
+        <section className="rounded-[1.5rem] border border-dashed border-[var(--line)] bg-[var(--surface-muted)] p-10 text-center shadow-sm">
+          <div className="text-sm font-medium text-[var(--text)]">No live agent tickets loaded</div>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+            This page is now intentionally empty until the real agent queue API is wired in.
+          </p>
+        </section>
       </div>
     </DashboardLayout>
   );

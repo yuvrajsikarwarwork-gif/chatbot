@@ -3,7 +3,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { authMiddleware } from "../middleware/authMiddleware";
-import { uploadLeadsCSV } from "../controllers/uploadController";
+import { uploadLeadsCSV, uploadMetaTemplateSample } from "../controllers/uploadController";
 
 const router = Router();
 
@@ -31,13 +31,14 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
     "image/jpeg",
     "image/png",
     "image/webp",
-    "application/pdf"
+    "application/pdf",
+    "video/mp4"
   ];
   
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error("Invalid file type. Only CSV, JPEG, PNG, WEBP, and PDF are allowed."));
+    cb(new Error("Invalid file type. Only CSV, JPEG, PNG, WEBP, MP4, and PDF are allowed."));
   }
 };
 
@@ -65,6 +66,8 @@ router.post("/", upload.single("file"), (req, res) => {
     filename: req.file.filename 
   });
 });
+
+router.post("/meta-template-sample", upload.single("file"), uploadMetaTemplateSample);
 
 // CSV Leads Upload
 router.post("/csv", upload.single("file"), uploadLeadsCSV);

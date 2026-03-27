@@ -8,6 +8,7 @@ import {
   activateBotCtrl 
 } from "../controllers/botController";
 import { authMiddleware } from "../middleware/authMiddleware";
+import { requireAuthenticatedUser } from "../middleware/policyMiddleware";
 
 const router = Router();
 
@@ -16,6 +17,7 @@ const router = Router();
  * This ensures req.user is populated for the controllers.
  */
 router.use(authMiddleware);
+router.use(requireAuthenticatedUser);
 
 router.get("/", getBots);
 router.get("/:id", getBot);

@@ -7,7 +7,11 @@ import {
 import jwt from "jsonwebtoken";
 
 import { env } from "../config/env";
-import { query } from "../config/db";
+import {
+  assertBotWorkspacePermission,
+  WORKSPACE_PERMISSIONS,
+} from "../services/workspaceAccessService";
+import { touchAgentPresence } from "../services/agentPresenceService";
 
 export interface JwtPayload {
   id?: string;
@@ -36,9 +40,34 @@ export const authMiddleware: RequestHandler = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET) as unknown as JwtPayload;
     (req as AuthRequest).user = decoded;
+    const userId = decoded.id || decoded.user_id;
+    if (userId) {
+      const workspaceId =
+        (req.headers["x-workspace-id"] as string) ||
+        (typeof req.query.workspaceId === "string" ? req.query.workspaceId : undefined) ||
+        undefined;
+      const projectId =
+        (req.headers["x-project-id"] as string) ||
+        (typeof req.query.projectId === "string" ? req.query.projectId : undefined) ||
+        undefined;
+      void touchAgentPresence(userId, {
+        workspaceId: workspaceId || null,
+        projectId: projectId || null,
+        lastAction: `${req.method} ${req.path}`,
+      }).catch((presenceErr) => {
+        console.warn("Agent presence touch skipped", presenceErr);
+      });
+    }
     next();
   } catch (err) {
-    console.error("JWT Verification Error:", err);
+    if (err instanceof jwt.TokenExpiredError) {
+      console.warn("JWT expired", {
+        path: req.originalUrl,
+        expiredAt: err.expiredAt,
+      });
+    } else {
+      console.error("JWT Verification Error:", err);
+    }
     res.status(401).json({ error: "Invalid or expired token" });
   }
 };
@@ -77,29 +106,16 @@ export const botAccessGuard: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const ownerRes = await query(
-      "SELECT id FROM bots WHERE id = $1 AND user_id = $2",
-      [botId, userId]
+    await assertBotWorkspacePermission(
+      userId,
+      botId,
+      WORKSPACE_PERMISSIONS.managePlatformAccounts
     );
-
-    if (ownerRes.rows.length > 0) {
-      next();
-      return;
-    }
-
-    const assignmentRes = await query(
-      "SELECT role FROM bot_assignments WHERE bot_id = $1 AND user_id = $2",
-      [botId, userId]
-    );
-
-    if (assignmentRes.rows[0]?.role === "admin") {
-      next();
-      return;
-    }
-
-    res.status(403).json({ error: "Forbidden" });
+    next();
   } catch (err) {
     console.error("botAccessGuard Error:", err);
-    res.status(500).json({ error: "Authorization check failed" });
+    res.status((err as any)?.status || 500).json({
+      error: (err as any)?.message || "Authorization check failed",
+    });
   }
 };

@@ -23,10 +23,24 @@ export const processMessage = async (req: Request, res: Response) => {
       { message_id: body.message_id }
     );
 
-    const state = await loadState(body.conversation_id);
+    const state = await loadState(
+      body.conversation_id,
+      body.bot_id
+    );
 
     // Provide the raw message to the executor (for inputs/conditions)
-    state.last_user_message = ctx.message.message || ctx.message.text || "";
+    const inlineMessage =
+      typeof body.message === "string"
+        ? body.message
+        : body.message?.message || body.message?.text || "";
+
+    state.last_user_message =
+      inlineMessage ||
+      ctx.message?.message ||
+      ctx.message?.text ||
+      ctx.message?.message_text ||
+      ctx.message?.content?.text ||
+      "";
 
     // 1. Check for global escape hatches or agent mode before processing flow
     if (state.status === 'agent_pending' || state.waiting_agent) {
@@ -49,7 +63,8 @@ export const processMessage = async (req: Request, res: Response) => {
       status: "ok",
       replies,
       waitingInput: !!state.waiting_input,
-      waitingAgent: !!state.waiting_agent
+      waitingAgent: !!state.waiting_agent,
+      state
     };
 
     res.json(response);

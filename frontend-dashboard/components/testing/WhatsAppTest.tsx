@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import io from 'socket.io-client';
+import { API_URL } from "../../config/apiConfig";
 
-const socket = io("http://localhost:4000");
+const SOCKET_URL = API_URL.replace(/\/api\/?$/, "");
+const socket = io(SOCKET_URL);
 
 const WhatsAppTest = () => {
   const [messages, setMessages] = useState<any[]>([]);

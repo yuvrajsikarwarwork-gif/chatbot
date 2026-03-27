@@ -1,6 +1,10 @@
-import { useState } from "react";
-import { botService } from "../../services/botService";
+import { useEffect, useState } from "react";
 import { X, Clock, Rocket } from "lucide-react";
+
+import { botService } from "../../services/botService";
+import { projectService, type ProjectSummary } from "../../services/projectService";
+import { notify } from "../../store/uiStore";
+import { useAuthStore } from "../../store/authStore";
 
 interface BotCreationModalProps {
   isOpen: boolean;
@@ -8,99 +12,179 @@ interface BotCreationModalProps {
   onSuccess: () => void;
 }
 
-export default function BotCreationModal({ isOpen, onClose, onSuccess }: BotCreationModalProps) {
+export default function BotCreationModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: BotCreationModalProps) {
+  const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
+  const activeProject = useAuthStore((state) => state.activeProject);
   const [formData, setFormData] = useState({
     bot_name: "",
-    wa_phone_number_id: "",
-    wa_access_token: "",
-    trigger_keywords: "", // NEW FIELD
+    trigger_keywords: "",
+    project_id: "",
   });
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    setFormData((current) => ({
+      ...current,
+      project_id: activeProject?.id || "",
+    }));
+
+    if (!activeWorkspace?.workspace_id) {
+      setProjects([]);
+      return;
+    }
+
+    setLoadingProjects(true);
+    projectService
+      .list(activeWorkspace.workspace_id)
+      .then((rows) => setProjects(rows))
+      .catch((err) => {
+        console.error("Failed to load bot projects", err);
+        setProjects([]);
+      })
+      .finally(() => setLoadingProjects(false));
+  }, [isOpen, activeWorkspace?.workspace_id, activeProject?.id]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!activeWorkspace?.workspace_id || !(formData.project_id || activeProject?.id)) {
+      notify("Select a workspace project before provisioning a bot.", "error");
+      return;
+    }
     setLoading(true);
     try {
-      await botService.createBot(
-        formData.bot_name, 
-        formData.wa_phone_number_id, 
-        formData.wa_access_token,
-        formData.trigger_keywords // Passing to service
-      ); 
+      await botService.createBot({
+        name: formData.bot_name,
+        trigger_keywords: formData.trigger_keywords,
+        workspaceId: activeWorkspace?.workspace_id || null,
+        projectId: formData.project_id || activeProject?.id || null,
+      });
       onSuccess();
       onClose();
     } catch (err) {
       console.error("Creation failed", err);
-      alert("Failed to provision bot. Check console.");
+      notify("Failed to provision bot.", "error");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(6,8,20,0.55)] backdrop-blur-md">
+      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] shadow-[var(--shadow-glass)] backdrop-blur-2xl">
+        <div className="flex items-center justify-between border-b border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-6">
           <div>
-            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Provision Agent</h2>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Platform Setup</p>
+            <h2 className="text-lg font-black uppercase tracking-tight text-[var(--text)]">
+              Provision Agent
+            </h2>
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted)]">
+              Reusable Bot Logic
+            </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-900"><X size={20} /></button>
+          <button onClick={onClose} className="text-[var(--muted)] transition hover:text-[var(--text)]">
+            <X size={20} />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5 p-8">
           <div className="space-y-4">
-             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Agent Name</label>
-              <input 
+            <div>
+              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                Agent Name
+              </label>
+              <input
                 required
-                className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-500 bg-slate-50/50"
+                className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-3 text-sm font-bold text-[var(--text)] outline-none focus:border-[var(--line-strong)]"
                 value={formData.bot_name}
-                onChange={(e) => setFormData({...formData, bot_name: e.target.value})}
+                onChange={(e) =>
+                  setFormData({ ...formData, bot_name: e.target.value })
+                }
               />
             </div>
 
-            {/* NEW: Keyword Segregation */}
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Trigger Keywords (Comma Separated)</label>
-              <input 
+              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                Trigger Keywords (Comma Separated)
+              </label>
+              <input
                 required
                 placeholder="e.g., support, help, sales"
-                className="w-full border-2 border-slate-100 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-500 bg-slate-50/50"
+                className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-3 text-sm font-bold text-[var(--text)] outline-none focus:border-[var(--line-strong)]"
                 value={formData.trigger_keywords}
-                onChange={(e) => setFormData({...formData, trigger_keywords: e.target.value})}
+                onChange={(e) =>
+                  setFormData({ ...formData, trigger_keywords: e.target.value })
+                }
               />
             </div>
 
-            <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-4">
-              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Meta Connectivity</span>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Phone Number ID</label>
-                <input 
-                  required
-                  className="w-full border-2 border-white rounded-lg p-2.5 text-xs font-mono outline-none focus:border-blue-400 shadow-sm"
-                  value={formData.wa_phone_number_id}
-                  onChange={(e) => setFormData({...formData, wa_phone_number_id: e.target.value})}
-                />
+            <div className="rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
+              <div className="text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                Workspace Context
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Access Token</label>
-                <input 
-                  required type="password"
-                  className="w-full border-2 border-white rounded-lg p-2.5 text-xs font-mono outline-none focus:border-blue-400 shadow-sm"
-                  value={formData.wa_access_token}
-                  onChange={(e) => setFormData({...formData, wa_access_token: e.target.value})}
-                />
+              <div className="mt-2 text-sm font-semibold text-[var(--text)]">
+                {activeWorkspace?.workspace_name || activeWorkspace?.workspace_id || "Personal"}
               </div>
+              <div className="mt-3">
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                  Project
+                </label>
+                <select
+                  value={formData.project_id}
+                  onChange={(e) =>
+                    setFormData({ ...formData, project_id: e.target.value })
+                  }
+                  disabled={!activeWorkspace?.workspace_id || loadingProjects}
+                  className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface)] p-3 text-sm font-bold text-[var(--text)] outline-none focus:border-[var(--line-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {loadingProjects
+                      ? "Loading projects..."
+                      : activeWorkspace?.workspace_id
+                        ? "Select project"
+                        : "No workspace selected"}
+                  </option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-cyan-300/25 bg-cyan-500/10 p-4 text-[10px] font-medium text-[var(--text)]">
+              Platform credentials are no longer stored on the bot. Create a campaign
+              channel to connect this bot to WhatsApp, website, Instagram, Facebook,
+              API, or Telegram.
             </div>
           </div>
 
-          <div className="pt-4 flex gap-4">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-3 border-2 border-slate-100 rounded-xl text-xs font-black text-slate-400">CANCEL</button>
-            <button type="submit" disabled={loading} className="flex-1 px-4 py-3 bg-slate-900 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2">
-              {loading ? <Clock size={14} className="animate-spin" /> : <Rocket size={14} />} LAUNCH
+          <div className="flex gap-4 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-xs font-black text-[var(--muted)]"
+            >
+              CANCEL
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !activeWorkspace?.workspace_id || !(formData.project_id || activeProject?.id)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[rgba(129,140,248,0.35)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-4 py-3 text-xs font-black text-white shadow-[0_18px_30px_var(--accent-glow)]"
+            >
+              {loading ? <Clock size={14} className="animate-spin" /> : <Rocket size={14} />}{" "}
+              LAUNCH
             </button>
           </div>
         </form>

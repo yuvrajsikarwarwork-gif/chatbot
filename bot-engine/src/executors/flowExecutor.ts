@@ -22,7 +22,7 @@ export const executeFlow = async (flow: any, state: any) => {
   const replies: any[] = [];
   const vars = state.variables || {};
 
-  if (state.status === 'agent_pending' || state.waiting_agent) return replies;
+  if (state.status === "agent_pending" || state.waiting_agent) return replies;
 
   let steps = 0;
   const MAX_STEPS = 25; // Prevent infinite loops
@@ -135,7 +135,7 @@ export const executeFlow = async (flow: any, state: any) => {
     // ---------- STATE & SYSTEM NODES ----------
     if (node.type === "handoff" || node.type === "assign_agent") {
       state.waiting_agent = true;
-      state.status = 'agent_pending'; // Sync with Phase D Dashboard statuses
+      state.status = "agent_pending";
 
       await query(
         `INSERT INTO agent_tickets (conversation_id, bot_id, status) VALUES ($1,$2,$3)`,

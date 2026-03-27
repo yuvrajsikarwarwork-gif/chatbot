@@ -11,11 +11,21 @@ import {
   sendAgentReply         // NEW
 } from "../controllers/agentController";
 import { authMiddleware } from "../middleware/authMiddleware";
+import {
+  requireAuthenticatedUser,
+  requireWorkspaceAccess,
+  resolveProjectContext,
+  resolveWorkspaceContext,
+} from "../middleware/policyMiddleware";
 
 const router = Router();
 
 // ✅ Use authMiddleware to protect all agent routes
 router.use(authMiddleware);
+router.use(requireAuthenticatedUser);
+router.use(resolveWorkspaceContext);
+router.use(requireWorkspaceAccess);
+router.use(resolveProjectContext);
 
 // ✅ Existing Ticket Routes
 router.get("/conversations", getInboxConversations);

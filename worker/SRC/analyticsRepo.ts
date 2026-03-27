@@ -1,23 +1,18 @@
-// worker/src/analyticsRepo.ts
-
 import { query } from "../adapters/dbAdapter";
 
-
-export const logEvent = async (
-  event: {
-    botId?: string;
-    conversationId?: string;
-    type: string;
-    data?: any;
-  }
-) => {
+export const logEvent = async (event: {
+  botId?: string;
+  conversationId?: string;
+  type: string;
+  data?: any;
+}) => {
   await query(
     `
     INSERT INTO analytics_events (
       bot_id,
       conversation_id,
       event_type,
-      data_json,
+      event_payload,
       created_at
     )
     VALUES ($1, $2, $3, $4, NOW())
@@ -26,25 +21,22 @@ export const logEvent = async (
       event.botId || null,
       event.conversationId || null,
       event.type,
-      event.data
-        ? JSON.stringify(event.data)
-        : null,
+      event.data ? JSON.stringify(event.data) : null,
     ]
   );
 };
 
-
 export const logError = async (
   jobId: string,
-  botId: string | null, // ✅ Added botId context
-  error: any
+  error: any,
+  botId: string | null = null
 ) => {
   await query(
     `
     INSERT INTO analytics_events (
-      bot_id, // ✅ Scoped log entry
+      bot_id,
       event_type,
-      data_json,
+      event_payload,
       created_at
     )
     VALUES ($1, $2, $3, NOW())
@@ -54,9 +46,7 @@ export const logError = async (
       "worker_error",
       JSON.stringify({
         jobId,
-        message:
-          error?.message ||
-          "unknown error",
+        message: error?.message || "unknown error",
       }),
     ]
   );

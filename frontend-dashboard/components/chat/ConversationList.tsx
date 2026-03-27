@@ -3,52 +3,114 @@ import { User, Bot } from 'lucide-react';
 
 interface Props {
   list: any[];
-  activeId?: number;
+  activeId?: string;
   onSelect: (convo: any) => void;
+  loading?: boolean;
 }
 
-export default function ConversationList({ list, activeId, onSelect }: Props) {
-  // Extra safety net so .filter doesn't crash if list is undefined
+export default function ConversationList({ list, activeId, onSelect, loading = false }: Props) {
   const safeList = Array.isArray(list) ? list : [];
+  const queuedCount = safeList.filter((convo) => convo.agent_pending || convo.inbox_status === "pending").length;
+
+  const formatStatusLabel = (value: string) =>
+    value
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
-        <h2 className="font-black uppercase tracking-widest text-sm">Live Conversations</h2>
-        <div className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">
-          {safeList.filter(c => c.agent_pending).length} Agent Queue
+    <div className="flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] shadow-sm">
+      <div className="flex items-center justify-between px-4 pb-3 pt-4">
+        <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+          Live Threads
+        </h2>
+        <div className="rounded-lg bg-[var(--accent-strong)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+          {queuedCount} Agent Queue
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto">
-        {safeList.map(convo => (
-          <button
-            key={convo.id}
-            onClick={() => onSelect(convo)}
-            className={`w-full text-left p-4 border-b border-slate-100 hover:bg-slate-100 transition-colors flex items-center gap-3 ${activeId === convo.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'bg-white'}`}
-          >
-            <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center text-slate-500 shrink-0">
-              <User size={18} />
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <div className="font-bold text-slate-800 text-sm truncate">
-                {convo.display_name || convo.external_id}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <div className="space-y-2">
+        {safeList.map((convo) => {
+          const lastInboundAt = convo.last_inbound_at ? new Date(convo.last_inbound_at).getTime() : 0;
+          const lastOutboundAt = convo.last_outbound_at ? new Date(convo.last_outbound_at).getTime() : 0;
+          const isWaitingForReply = lastInboundAt > 0 && lastInboundAt >= lastOutboundAt;
+          const hasUnreadSignal = isWaitingForReply && activeId !== convo.id;
+
+          return (
+            <button
+              key={convo.id}
+              onClick={() => onSelect(convo)}
+              className={`flex w-full items-start gap-3 rounded-[1rem] px-4 py-4 text-left transition-all ${
+                activeId === convo.id
+                  ? "border border-[var(--accent)] bg-[var(--accent-soft)]"
+                  : "border border-transparent bg-[var(--surface-strong)] hover:border-[var(--line)] hover:bg-[var(--surface-muted)]"
+              }`}
+            >
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--surface-muted)] text-[var(--muted)]">
+                <User size={18} />
+                {hasUnreadSignal ? (
+                  <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-[var(--surface-strong)] bg-emerald-500" />
+                ) : null}
               </div>
-              <div className="text-xs mt-1 flex items-center gap-1">
-                {convo.agent_pending ? (
-                  <span className="text-red-500 font-bold flex items-center gap-1"><User size={10}/> Human Mode</span>
-                ) : (
-                  <span className="text-blue-500 font-bold flex items-center gap-1"><Bot size={10}/> Bot Active</span>
-                )}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-[var(--text)]">
+                      {convo.display_name || convo.external_id}
+                    </div>
+                    <div className="mt-1 truncate text-[11px] text-[var(--muted)]">
+                      {convo.contact_phone_resolved || convo.external_id || convo.platform_user_id || "Unknown contact"}
+                    </div>
+                  </div>
+                  {convo.assigned_to_name ? (
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-700">
+                      <User size={10} />
+                      {convo.assigned_to_name}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em]">
+                  {(convo.agent_pending || convo.inbox_status === "pending") ? (
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1 text-rose-700">
+                      <User size={10} />
+                      Pending
+                    </span>
+                  ) : convo.inbox_status && String(convo.inbox_status).toLowerCase() !== "bot" ? (
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2.5 py-1 text-sky-700">
+                      <Bot size={10} />
+                      {formatStatusLabel(String(convo.inbox_status))}
+                    </span>
+                  ) : null}
+                  {isWaitingForReply ? (
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-amber-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                      Waiting
+                    </span>
+                  ) : null}
+                  {hasUnreadSignal ? (
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                      New
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-2 truncate text-xs text-[var(--muted)]">
+                  {convo.last_message_text || "No messages yet"}
+                </div>
               </div>
-            </div>
-          </button>
-        ))}
-        {safeList.length === 0 && (
-          <div className="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
+            </button>
+          );
+        })}
+        </div>
+        {loading ? (
+          <div className="p-8 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            Loading inbox
+          </div>
+        ) : safeList.length === 0 ? (
+          <div className="p-8 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
             No active chats
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

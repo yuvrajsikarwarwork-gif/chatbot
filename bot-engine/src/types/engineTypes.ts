@@ -1,8 +1,9 @@
 export interface ProcessRequest {
-  job_id: string;
+  job_id?: string;
   conversation_id: string;
-  message_id: string;
+  message_id?: string;
   bot_id: string;
+  message?: string | { text?: string; message?: string };
 }
 
 export interface EngineReply {
@@ -15,4 +16,5 @@ export interface ProcessResponse {
   replies: EngineReply[];
   waitingInput: boolean;
   waitingAgent: boolean;
+  state?: any;
 }

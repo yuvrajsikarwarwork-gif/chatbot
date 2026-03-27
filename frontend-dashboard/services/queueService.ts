@@ -11,11 +11,10 @@ export interface QueueJob {
 
 export const queueService = {
   getJobs: async (): Promise<QueueJob[]> => {
-    const res = await apiClient.get("/queue/jobs");
-    return res.data;
+    throw new Error("Queue API is not exposed in the current backend build.");
   },
 
   retryJob: async (jobId: string) => {
-    return await apiClient.post(`/queue/jobs/${jobId}/retry`);
-  }
+    throw new Error(`Queue retry is not exposed in the current backend build for job ${jobId}.`);
+  },
 };

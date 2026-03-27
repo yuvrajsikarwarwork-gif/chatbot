@@ -1,17 +1,64 @@
 import { Response, NextFunction } from "express";
+
 import { AuthRequest } from "../middleware/authMiddleware";
 import {
+  createNewFlowService,
   getFlowsByBotService,
+  getFlowSummariesByBotService,
   getFlowService,
   saveFlowService,
   updateFlowService,
   deleteFlowService,
 } from "../services/flowService";
 
+function getUserId(req: AuthRequest) {
+  return req.user?.id || req.user?.user_id || null;
+}
+
+function normalizeFlowPayload(data: any) {
+  const normalizeNodeType = (type: any) => {
+    const normalized = String(type || "").trim().toLowerCase();
+    if (normalized === "message") return "msg_text";
+    return type;
+  };
+
+  const normalizeFlowJson = (flowJson: any) => {
+    const nodes = Array.isArray(flowJson?.nodes)
+      ? flowJson.nodes.map((node: any) => ({
+          ...node,
+          type: normalizeNodeType(node?.type),
+        }))
+      : [];
+
+    return {
+      ...(flowJson && typeof flowJson === "object" ? flowJson : {}),
+      nodes,
+      edges: Array.isArray(flowJson?.edges) ? flowJson.edges : [],
+    };
+  };
+
+  if (!data) {
+    return { nodes: [], edges: [] };
+  }
+
+  if (data.flow_json && typeof data.flow_json === "object") {
+    return {
+      ...normalizeFlowJson(data.flow_json),
+      id: data.id,
+      bot_id: data.bot_id,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+    };
+  }
+
+  return normalizeFlowJson(data);
+}
+
 export async function getFlowsByBot(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { botId } = req.params;
-    const userId = req.user?.id;
+    const requestedFlowId = typeof req.query.flowId === "string" ? req.query.flowId : undefined;
+    const userId = getUserId(req);
     if (!botId || botId === "undefined") return res.status(200).json({ nodes: [], edges: [] });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -19,20 +66,38 @@ export async function getFlowsByBot(req: AuthRequest, res: Response, next: NextF
     if (!data || (Array.isArray(data) && data.length === 0)) {
       return res.status(200).json({ nodes: [], edges: [] });
     }
-    res.json(Array.isArray(data) ? data[0] : data);
-  } catch (err: any) {
-    res.status(200).json({ nodes: [], edges: [] });
+
+    const selected = Array.isArray(data)
+      ? data.find((flow: any) => flow.id === requestedFlowId) || data[0]
+      : data;
+    res.json(normalizeFlowPayload(selected));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getFlowSummariesByBot(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { botId } = req.params;
+    const userId = getUserId(req);
+    if (!botId || botId === "undefined") return res.status(200).json([]);
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const data = await getFlowSummariesByBotService(botId, userId);
+    res.json(data);
+  } catch (err) {
+    next(err);
   }
 }
 
 export async function getFlow(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!id) return res.status(400).json({ error: "id is required" });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     const data = await getFlowService(id, userId);
-    res.json(data);
+    res.json(normalizeFlowPayload(data));
   } catch (err) {
     next(err);
   }
@@ -46,27 +111,35 @@ export async function saveFlowCtrl(req: AuthRequest, res: Response, next: NextFu
   try {
     const botId = req.body.botId || req.body.bot_id;
     const flowJson = req.body.flow_json;
-    const userId = req.user?.id;
+    const flowId = req.body.flowId || req.body.flow_id;
+    const flowName = req.body.flow_name;
+    const userId = getUserId(req);
 
     // Safety guards to prevent 500 crash
     if (!botId) return res.status(400).json({ error: "botId is missing in request." });
     if (!flowJson) return res.status(400).json({ error: "flow_json payload is missing." });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const data = await saveFlowService(botId, userId, flowJson);
+    const data = await saveFlowService(botId, userId, flowJson, flowId, flowName);
     res.status(200).json(data);
   } catch (err) {
-    console.error("❌ saveFlowCtrl Critical Error:", err);
+    console.error("saveFlowCtrl critical error:", err);
     next(err);
   }
 }
 
 export async function createFlowCtrl(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!req.body.bot_id) return res.status(400).json({ error: "bot_id is required" });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    const data = await saveFlowService(req.body.bot_id, userId, req.body.flow_json);
+    const data = await createNewFlowService(
+      req.body.bot_id,
+      userId,
+      req.body.flow_json || { nodes: [], edges: [] },
+      req.body.flow_name,
+      Boolean(req.body.is_default)
+    );
     res.json(data);
   } catch (err) {
     next(err);
@@ -76,10 +149,16 @@ export async function createFlowCtrl(req: AuthRequest, res: Response, next: Next
 export async function updateFlowCtrl(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!id) return res.status(400).json({ error: "id is required" });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    const data = await updateFlowService(id, userId, req.body.flow_json);
+    const data = await updateFlowService(
+      id,
+      userId,
+      req.body.flow_json,
+      req.body.flow_name,
+      typeof req.body.is_default === "boolean" ? req.body.is_default : undefined
+    );
     res.json(data);
   } catch (err) {
     next(err);
@@ -89,7 +168,7 @@ export async function updateFlowCtrl(req: AuthRequest, res: Response, next: Next
 export async function deleteFlowCtrl(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const userId = req.user?.id;
+    const userId = getUserId(req);
     if (!id) return res.status(400).json({ error: "id is required" });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     await deleteFlowService(id, userId);

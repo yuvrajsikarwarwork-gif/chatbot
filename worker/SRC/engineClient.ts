@@ -57,7 +57,7 @@ export const processMessage =
 export const processAI =
   async (payload: any) => {
     return callEngine(
-      "/ai",
+      "/process",
       payload
     );
   };

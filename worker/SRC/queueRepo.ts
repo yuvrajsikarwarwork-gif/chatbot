@@ -48,7 +48,10 @@ export const markCompleted = async (
     UPDATE queue_jobs
     SET
       status = 'completed',
-      updated_at = NOW()
+      completed_at = NOW(),
+      updated_at = NOW(),
+      locked_at = NULL,
+      locked_by = NULL
     WHERE id = $1
     `,
     [jobId]

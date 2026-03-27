@@ -1,38 +1,66 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { io } from "socket.io-client";
 import apiClient from "../services/apiClient";
+import PageAccessNotice from "../components/access/PageAccessNotice";
 import DashboardLayout from "../components/layout/DashboardLayout";
-import { 
-  Search, Filter, Plus, Trash2, Edit, MessageSquare, 
-  Smartphone, Mail, Send, X, Globe, AlignLeft, LayoutTemplate,
-  Users, CheckCircle, AlertCircle, Clock, BarChart3, Activity, Eye, ShieldCheck, ShieldAlert, Timer
+import { useVisibility } from "../hooks/useVisibility";
+import { campaignService } from "../services/campaignService";
+import { API_URL } from "../config/apiConfig";
+import {
+  Plus, Trash2, Edit, MessageSquare,
+  Smartphone, Mail, Send, Globe, LayoutTemplate,
+  CheckCircle, Clock, BarChart3, ShieldCheck, ShieldAlert, Timer, Eye, Upload, RefreshCcw, CloudUpload
 } from "lucide-react";
 import CampaignSenderModal from "../components/campaign/CampaignSenderModal";
+import BulkUploadModal from "./templates/BulkUploadModal";
+import ImportFromMetaModal from "../components/templates/ImportFromMetaModal";
+import SingleSendTemplateModal from "../components/templates/SingleSendTemplateModal";
+import { confirmAction, notify } from "../store/uiStore";
+import { useAuthStore } from "../store/authStore";
+
+function getSocketServerUrl() {
+  return API_URL.replace(/\/api\/?$/, "");
+}
 
 export default function TemplatesPage() {
+  const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
+  const activeProject = useAuthStore((state) => state.activeProject);
+  const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
+  const getProjectRole = useAuthStore((state) => state.getProjectRole);
+  const { canViewPage } = useVisibility();
   const [activeView, setActiveView] = useState<"templates" | "campaigns">("templates");
   const [templates, setTemplates] = useState<any[]>([]);
   const [campaignLogs, setCampaignLogs] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState("whatsapp");
+  const [selectedStatus, setSelectedStatus] = useState("all");
   
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  
-  const defaultForm = {
-    name: "", platform_type: "whatsapp", category: "marketing",
-    language: "en_US", header_type: "none", header: "",
-    body: "", footer: "", buttons: [], variables: {}, status: "pending"
-  };
-  const [formData, setFormData] = useState<any>(defaultForm);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkTemplateId, setBulkTemplateId] = useState<string>("");
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [singleSendTemplate, setSingleSendTemplate] = useState<any | null>(null);
+  const canCreateTemplates = hasWorkspacePermission(activeWorkspace?.workspace_id, "can_create_campaign");
+  const canEditTemplates = hasWorkspacePermission(activeWorkspace?.workspace_id, "edit_campaign");
+  const canDeleteTemplates = hasWorkspacePermission(activeWorkspace?.workspace_id, "delete_campaign");
+  const canViewTemplatesPage = canViewPage("templates");
+  const projectRole = getProjectRole(activeProject?.id);
+  const canCreateProjectTemplates =
+    canCreateTemplates || projectRole === "project_admin" || projectRole === "editor";
+  const canEditProjectTemplates =
+    canEditTemplates || projectRole === "project_admin" || projectRole === "editor";
+  const canDeleteProjectTemplates =
+    canDeleteTemplates || projectRole === "project_admin";
 
-  const buildTemplateContent = (data: any) => ({
-    header: data.header_type !== "none" ? { type: data.header_type || "text", text: data.header } : null,
-    body: data.body || "",
-    footer: data.footer || "",
-    buttons: Array.isArray(data.buttons) ? data.buttons : []
+  const buildTemplateContent = (template: any) => ({
+    header: template?.header_type && template?.header_type !== "none"
+      ? { type: template.header_type || "text", text: template.header || "" }
+      : null,
+    body: template?.body || "",
+    footer: template?.footer || "",
+    buttons: Array.isArray(template?.buttons) ? template.buttons : [],
   });
 
   const parseTemplateContent = (template: any) => {
@@ -45,77 +73,119 @@ export default function TemplatesPage() {
     return content?.body || template.body || "No preview available";
   };
 
-  const openCreatePanel = () => {
-    setEditingTemplateId(null);
-    setFormData({ ...defaultForm, platform_type: selectedPlatform });
-    setIsPanelOpen(true);
+  const isMetaSubmitted = (template: any) =>
+    Boolean(template?.meta_template_id || template?.meta_template_name);
+
+  const getMetaActionClass = (template: any, disabled = false) => {
+    if (disabled) {
+      return "rounded-lg p-2 text-[var(--muted)] transition-all disabled:cursor-not-allowed disabled:opacity-40";
+    }
+
+    return isMetaSubmitted(template)
+      ? "rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-700 transition-all hover:-translate-y-[1px] hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800"
+      : "rounded-lg border border-transparent p-2 text-[var(--muted)] transition-all hover:-translate-y-[1px] hover:border-[var(--line)] hover:bg-[var(--surface-muted)] hover:text-[var(--accent)]";
   };
 
-  const openEditPanel = (template: any) => {
-    const content = parseTemplateContent(template);
-    setEditingTemplateId(template.id);
-    setFormData({
-      name: template.name || "",
-      platform_type: template.platform_type || selectedPlatform,
-      category: template.category || "marketing",
-      language: template.language || "en_US",
-      header_type: content?.header?.type || "none",
-      header: content?.header?.text || "",
-      body: content?.body || "",
-      footer: content?.footer || "",
-      buttons: Array.isArray(content?.buttons) ? content.buttons : [],
-      variables: template.variables || {},
-      status: template.status || "pending"
-    });
-    setIsPanelOpen(true);
+  const getMetaStateLabel = (template: any) =>
+    isMetaSubmitted(template) ? "Linked to Meta" : "Local only";
+
+  const getOriginLabel = (template: any) => {
+    switch (String(template?.template_origin || "").toLowerCase()) {
+      case "meta_linked":
+        return "Meta linked";
+      case "meta_imported":
+        return "Meta imported";
+      case "repaired":
+        return "Recovered";
+      default:
+        return "Local";
+    }
+  };
+
+  const getReadinessBadge = (template: any) => {
+    switch (String(template?.runtime_readiness || "").toLowerCase()) {
+      case "missing_runtime_asset":
+        return <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-amber-700">Missing media asset</span>;
+      case "broken_meta_link":
+        return <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-rose-700">Broken meta link</span>;
+      case "in_review":
+        return <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-sky-700">In review</span>;
+      default:
+        return <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-700">Ready</span>;
+    }
   };
 
   // Helper for Status Badges
   const getStatusBadge = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'approved': 
-        return <span className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-black uppercase rounded-md border bg-emerald-50 text-emerald-600 border-emerald-200"><ShieldCheck size={12}/> Approved</span>;
+        return <span className="flex items-center gap-1 rounded-md border border-emerald-300/40 bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-800"><ShieldCheck size={12}/> Approved</span>;
       case 'rejected': 
-        return <span className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-black uppercase rounded-md border bg-red-50 text-red-600 border-red-200"><ShieldAlert size={12}/> Rejected</span>;
+        return <span className="flex items-center gap-1 rounded-md border border-rose-300/40 bg-rose-100 px-2.5 py-1 text-[10px] font-black uppercase text-rose-800"><ShieldAlert size={12}/> Rejected</span>;
+      case 'paused':
+        return <span className="flex items-center gap-1 rounded-md border border-amber-300/40 bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase text-amber-800"><Timer size={12}/> Paused</span>;
+      case 'draft':
+        return <span className="flex items-center gap-1 rounded-md border border-slate-300/40 bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-800"><Clock size={12}/> Draft</span>;
       default: 
-        return <span className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-black uppercase rounded-md border bg-amber-50 text-amber-600 border-amber-200"><Timer size={12}/> Under Review</span>;
+        return <span className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700"><Timer size={12}/> Pending</span>;
     }
   };
 
-  useEffect(() => {
-    if (isPanelOpen) {
-      const isWA = formData.platform_type === 'whatsapp';
-      const isTelegram = formData.platform_type === 'telegram';
-      setFormData((prev: any) => ({
-        ...prev,
-        header_type: isWA ? prev.header_type : 'none',
-        header: isWA ? prev.header : '',
-        footer: (isWA || isTelegram) ? prev.footer : ''
-      }));
+  const fetchCampaigns = async () => {
+    if (!activeWorkspace?.workspace_id || !activeProject?.id) {
+      setCampaigns([]);
+      return;
     }
-  }, [formData.platform_type, isPanelOpen]);
 
-  const dynamicVars = useMemo<string[]>(() => {
-    const matches = String(formData.body || "").match(/{{(\d+)}}/g);
-    return matches ? Array.from(new Set<string>(matches)) : [];
-  }, [formData.body]);
-
-  const previewData: Record<string, string> = {
-    name: "Yuvraj Sikarwar",
-    wa_number: "+91 6268434155",
-    email: "yuvraj@example.com",
-    source: "Facebook Ads"
+    try {
+      const campaignRows = await campaignService.list({
+        workspaceId: activeWorkspace.workspace_id,
+        projectId: activeProject.id,
+      }).catch(() => []);
+      setCampaigns(campaignRows);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const fetchTemplates = async () => {
+    if (!activeWorkspace?.workspace_id || !activeProject?.id) {
+      setTemplates([]);
+      setCampaignLogs([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const res = await apiClient.get(`/templates?platform=${selectedPlatform}`);
-      setTemplates(res.data);
+      const res = await apiClient.get(`/templates`, {
+        params: {
+          platform: selectedPlatform,
+          workspaceId: activeWorkspace.workspace_id,
+          projectId: activeProject.id,
+        },
+      });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setTemplates(
+        selectedStatus === "all"
+          ? rows
+          : rows.filter((row: any) => {
+              const status = String(row.status || "").toLowerCase();
+              if (selectedStatus === "pending") {
+                return status === "pending" || status === "in_review";
+              }
+              return status === selectedStatus;
+            })
+      );
       
-      // Safely fetch logs (won't crash if the table is empty or missing yet)
       try {
-        const logs = await apiClient.get(`/template-logs?platform=${selectedPlatform}`);
+        const logs = await apiClient.get(`/templates/logs`, {
+          params: {
+            platform: selectedPlatform,
+            workspaceId: activeWorkspace.workspace_id,
+            projectId: activeProject.id,
+          },
+        });
         setCampaignLogs(logs.data || []);
       } catch (logErr) {
         setCampaignLogs([]);
@@ -123,31 +193,101 @@ export default function TemplatesPage() {
     } catch (err) { console.error(err); } finally { setIsLoading(false); }
   };
 
-  useEffect(() => { fetchTemplates(); }, [selectedPlatform, activeView]);
+  useEffect(() => {
+    if (!canViewTemplatesPage) {
+      return;
+    }
+    fetchCampaigns();
+  }, [activeWorkspace?.workspace_id, activeProject?.id, canViewTemplatesPage]);
+  useEffect(() => {
+    if (!canViewTemplatesPage) {
+      setTemplates([]);
+      setCampaignLogs([]);
+      return;
+    }
+    fetchTemplates();
+  }, [selectedPlatform, selectedStatus, activeView, activeWorkspace?.workspace_id, activeProject?.id, canViewTemplatesPage]);
 
-  const handleSave = async () => {
-    if (!formData.name || !formData.body) return alert("Name and Body are required.");
-    setIsSaving(true);
-    try {
-      const payload = {
-        ...formData,
-        content: buildTemplateContent(formData)
-      };
-      if (editingTemplateId) await apiClient.put(`/templates/${editingTemplateId}`, payload);
-      else await apiClient.post("/templates", payload);
-      setIsPanelOpen(false);
-      setFormData(defaultForm);
-      setEditingTemplateId(null);
-      fetchTemplates();
-    } catch (err) { alert("Failed to save template."); } finally { setIsSaving(false); }
-  };
+  useEffect(() => {
+    if (!canViewTemplatesPage) {
+      return;
+    }
+    const socket = io(getSocketServerUrl());
+    const handleTemplateStatusUpdate = (payload: any) => {
+      if (!payload?.templateId) {
+        return;
+      }
+      setTemplates((current) =>
+        current.map((template) =>
+          template.id === payload.templateId
+            ? {
+                ...template,
+                status: payload.status || template.status,
+                rejected_reason: payload.rejectedReason ?? template.rejected_reason,
+                meta_template_id: payload.metaTemplateId ?? template.meta_template_id,
+                meta_template_name: payload.metaTemplateName ?? template.meta_template_name,
+                updated_at: payload.updatedAt || template.updated_at,
+              }
+            : template
+        )
+      );
+    };
+
+    socket.on("template_status_update", handleTemplateStatusUpdate);
+    return () => {
+      socket.off("template_status_update", handleTemplateStatusUpdate);
+      socket.disconnect();
+    };
+  }, [canViewTemplatesPage]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this template?")) return;
+    if (!canDeleteProjectTemplates) {
+      notify("You can view templates here, but you cannot delete them.", "error");
+      return;
+    }
+    if (!(await confirmAction("Delete template", "This template will be removed permanently.", "Delete"))) return;
     try {
       await apiClient.delete(`/templates/${id}`);
       fetchTemplates();
-    } catch (err) { alert("Error deleting template."); }
+    } catch (err: any) { notify(err?.response?.data?.error || "Error deleting template.", "error"); }
+  };
+
+  const handleSubmitToMeta = async (templateId: string) => {
+    try {
+      const response = await apiClient.post(`/templates/${templateId}/submit-meta`);
+      if (response?.data?.template) {
+        setTemplates((current) =>
+          current.map((template) =>
+            template.id === templateId ? { ...template, ...response.data.template } : template
+          )
+        );
+      }
+      notify("Template submitted to Meta.", "success");
+      setTimeout(() => {
+        fetchTemplates().catch(console.error);
+      }, 1200);
+    } catch (err: any) {
+      notify(err?.response?.data?.error || "Failed to submit template to Meta.", "error");
+    }
+  };
+
+  const handleSyncMetaStatus = async (templateId: string) => {
+    try {
+      const response = await apiClient.post(`/templates/${templateId}/sync-meta`);
+      if (response?.data?.template) {
+        setTemplates((current) =>
+          current.map((template) =>
+            template.id === templateId ? { ...template, ...response.data.template } : template
+          )
+        );
+      }
+      notify("Template status synced from Meta.", "success");
+      setTimeout(() => {
+        fetchTemplates().catch(console.error);
+      }, 1200);
+    } catch (err: any) {
+      notify(err?.response?.data?.error || "Failed to sync template status.", "error");
+    }
   };
 
   const platforms = [
@@ -160,54 +300,105 @@ export default function TemplatesPage() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-screen bg-[#F8FAFC] p-8 flex flex-col relative overflow-hidden">
+      {!canViewTemplatesPage ? (
+        <PageAccessNotice
+          title="Templates are restricted for this role"
+          description="Templates are available to workspace admins and project operators with campaign access."
+          href="/"
+          ctaLabel="Open dashboard"
+        />
+      ) : (
+      <div className="relative flex min-h-screen flex-col overflow-hidden px-4 pb-4 pt-1 md:px-5 md:pb-5 md:pt-1">
+        {!activeWorkspace?.workspace_id || !activeProject?.id ? (
+          <div className="mx-auto mb-4 w-full max-w-7xl rounded-2xl border border-dashed border-[var(--line)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
+            Select a workspace and project before managing templates.
+          </div>
+        ) : null}
         
-        <div className="flex gap-4 mb-8 bg-white p-1.5 rounded-2xl border border-slate-200 w-fit self-center shadow-sm">
-          <button onClick={() => setActiveView("templates")} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeView === 'templates' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Templates</button>
-          <button onClick={() => setActiveView("campaigns")} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeView === 'campaigns' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}>Bulk Dashboard</button>
-        </div>
+        <div className="mx-auto mb-4 w-full max-w-7xl">
+          <div className="flex items-center justify-center">
+            <div className="flex w-fit items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-1.5 shadow-[var(--shadow-soft)]">
+            <button onClick={() => setActiveView("templates")} className={`rounded-xl px-6 py-2.5 text-xs font-black uppercase tracking-widest transition-all ${activeView === 'templates' ? 'border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-[0_18px_30px_var(--accent-glow)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>Templates</button>
+            <button onClick={() => setActiveView("campaigns")} className={`rounded-xl px-6 py-2.5 text-xs font-black uppercase tracking-widest transition-all ${activeView === 'campaigns' ? 'border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-[0_18px_30px_var(--accent-glow)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>Delivery Activity</button>
+          </div>
+          </div>
 
-        <div className={`transition-all duration-300 ${isPanelOpen ? 'w-[calc(100%-450px)] pr-8' : 'w-full max-w-7xl mx-auto'}`}>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-                {activeView === 'templates' ? 'Template Manager' : 'Campaign Analytics'}
-              </h1>
-              <p className="text-slate-500 text-sm">
-                {activeView === 'templates' ? 'Design and manage omnichannel templates.' : 'Real-time tracking of bulk delivery performance.'}
-              </p>
-            </div>
-            
-            {activeView === 'templates' && (
-              <div className="flex items-center gap-3">
-                <button 
+          {activeView === 'templates' && (
+              <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row xl:flex-1">
+                  <div className="min-w-0 sm:w-[220px]">
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Channel
+                    </label>
+                    <select
+                      value={selectedPlatform}
+                      onChange={(event) => setSelectedPlatform(event.target.value)}
+                      className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm font-semibold text-[var(--text)] shadow-[var(--shadow-soft)] outline-none"
+                    >
+                      {platforms.map((platform) => (
+                        <option key={platform.id} value={platform.id}>
+                          {platform.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0 sm:w-[220px]">
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-[0.18em] text-[var(--muted)]">
+                      Status
+                    </label>
+                    <select
+                      value={selectedStatus}
+                      onChange={(event) => setSelectedStatus(event.target.value)}
+                      className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm font-semibold text-[var(--text)] shadow-[var(--shadow-soft)] outline-none"
+                    >
+                      {[
+                        { id: "all", label: "All" },
+                        { id: "draft", label: "Drafts" },
+                        { id: "pending", label: "Pending" },
+                        { id: "approved", label: "Approved" },
+                        { id: "rejected", label: "Rejected" },
+                        { id: "paused", label: "Paused" },
+                      ].map((status) => (
+                        <option key={status.id} value={status.id}>
+                          {status.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+                <button
                   onClick={() => setIsCampaignModalOpen(true)} 
-                  className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-black transition-all shadow-lg"
+                  disabled={!canCreateProjectTemplates}
+                  className="inline-flex min-h-[52px] items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-5 py-2.5 text-sm font-bold text-[var(--text)] transition-all hover:border-[var(--line-strong)] hover:bg-[var(--surface-muted)]"
                 >
                   <Send size={18} /> Launch Campaign
                 </button>
-                <button 
-                  onClick={openCreatePanel}
-                  className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                {selectedPlatform === "whatsapp" ? (
+                  <button
+                    onClick={() => setIsImportModalOpen(true)}
+                    disabled={!canCreateProjectTemplates}
+                    className="inline-flex min-h-[52px] items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-5 py-2.5 text-sm font-bold text-[var(--text)] transition-all hover:border-[var(--line-strong)] hover:bg-[var(--surface-muted)] disabled:opacity-50"
+                  >
+                    <Upload size={18} /> Sync All From Meta
+                  </button>
+                ) : null}
+                <Link
+                  href="/templates/new"
+                  className={`inline-flex min-h-[52px] items-center gap-2 rounded-xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-5 py-2.5 text-sm font-bold !text-white shadow-[0_18px_30px_var(--accent-glow)] transition-all [&>*]:!text-white ${!canCreateProjectTemplates ? "pointer-events-none opacity-50" : ""}`}
                 >
                   <Plus size={18} /> Create Template
-                </button>
+                </Link>
+              </div>
               </div>
             )}
-          </div>
+        </div>
 
-          <div className="flex gap-2 mb-6 overflow-x-auto pb-2 custom-scrollbar">
-            {platforms.map(p => (
-              <button key={p.id} onClick={() => setSelectedPlatform(p.id)} className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${selectedPlatform === p.id ? "bg-slate-900 text-white shadow-md" : "bg-white border border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
-                <p.icon size={16} /> {p.name}
-              </button>
-            ))}
-          </div>
-
+        <div className="mx-auto w-full max-w-7xl">
           {activeView === 'templates' ? (
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-[var(--shadow-soft)]">
               <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase text-slate-400 tracking-widest">
+                <thead className="border-b border-[var(--line)] bg-[var(--surface-strong)] text-[11px] font-black uppercase tracking-widest text-[var(--muted)]">
                   <tr>
                     <th className="px-6 py-4">Template Name</th>
                     <th className="px-6 py-4">Category</th>
@@ -215,37 +406,99 @@ export default function TemplatesPage() {
                     <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[var(--line)]">
                   {templates.map((t: any) => (
-                    <tr key={t.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="px-6 py-4 font-bold text-slate-900 text-sm flex flex-col">
-                        <div className="flex items-center gap-2"><LayoutTemplate size={14} className="text-slate-400"/> {t.name}</div>
-                        <span className="text-[11px] text-slate-500 font-medium mt-1 line-clamp-1">{getTemplatePreview(t)}</span>
-                        <span className="text-[9px] text-slate-400 mt-1 flex items-center gap-1"><Clock size={10}/> Updated {new Date(t.updated_at).toLocaleDateString()}</span>
+                    <tr key={t.id} className="group transition-colors hover:bg-[var(--surface-muted)]">
+                      <td className="flex flex-col px-6 py-4 text-sm font-bold text-[var(--text)]">
+                        <div className="flex items-center gap-2"><LayoutTemplate size={14} className="text-[var(--muted)]"/> {t.name}</div>
+                        <span className="mt-1 line-clamp-1 text-[11px] font-medium text-[var(--muted)]">{getTemplatePreview(t)}</span>
+                        {t.meta_template_name ? (
+                          <span className="mt-1 text-[10px] font-medium text-[var(--muted)]">
+                            Meta: {t.meta_template_name}
+                          </span>
+                        ) : null}
+                        {t.platform_type === "whatsapp" ? (
+                          <span className={`mt-1 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] ${
+                            isMetaSubmitted(t)
+                              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border border-slate-200 bg-slate-100 text-slate-600"
+                          }`}>
+                            {getMetaStateLabel(t)}
+                          </span>
+                        ) : null}
+                        <span className="mt-1 inline-flex w-fit items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-600">
+                          {getOriginLabel(t)}
+                        </span>
+                        <div className="mt-1">{getReadinessBadge(t)}</div>
+                        <span className="mt-1 flex items-center gap-1 text-[9px] text-[var(--muted)]"><Clock size={10}/> Updated {new Date(t.updated_at).toLocaleDateString()}</span>
                       </td>
-                      <td className="px-6 py-4 text-xs font-bold text-slate-600 uppercase">{t.category}</td>
+                      <td className="px-6 py-4 text-xs font-bold uppercase text-[var(--muted)]">{t.category}</td>
                       <td className="px-6 py-4">
                         {getStatusBadge(t.status)}
-                        {t.status === 'rejected' && <p className="text-[9px] text-red-400 mt-1 italic max-w-[150px] truncate">{t.rejected_reason}</p>}
+                        {t.status === 'rejected' && <p className="mt-1 max-w-[220px] text-[10px] italic text-rose-700">{t.rejected_reason}</p>}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
-                          <button 
-                            disabled={t.status === 'approved'} 
-                            onClick={() => openEditPanel(t)}
-                            className={`p-2 rounded-lg transition-all ${t.status === 'approved' ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}`}
-                            title={t.status === 'approved' ? "Approved templates cannot be edited" : "Edit Template"}
+                          <Link
+                            href={`/templates/${t.id}`}
+                            className="rounded-lg p-2 text-[var(--muted)] transition-all hover:bg-[var(--surface-muted)] hover:text-[var(--accent)]"
+                            title="Open Template Detail"
+                          >
+                            <Eye size={16} />
+                          </Link>
+                          <button
+                            onClick={() => setSingleSendTemplate(t)}
+                            disabled={t.status !== "approved" || t.runtime_readiness === "missing_runtime_asset" || t.runtime_readiness === "broken_meta_link"}
+                            className="rounded-lg p-2 text-[var(--muted)] transition-all hover:bg-[var(--surface-muted)] hover:text-[var(--accent)] disabled:opacity-40"
+                            title="Send Once"
+                          >
+                            <Send size={16} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setBulkTemplateId(t.id);
+                              setIsBulkModalOpen(true);
+                            }}
+                            disabled={t.status !== "approved" || t.runtime_readiness === "missing_runtime_asset" || t.runtime_readiness === "broken_meta_link"}
+                            className="rounded-lg p-2 text-[var(--muted)] transition-all hover:bg-[var(--surface-muted)] hover:text-[var(--accent)] disabled:opacity-40"
+                            title="Bulk Send"
+                          >
+                            <Upload size={16} />
+                          </button>
+                          {t.platform_type === "whatsapp" && String(t.status || "").toLowerCase() !== "approved" ? (
+                            <>
+                              <button
+                                onClick={() => handleSubmitToMeta(t.id)}
+                                disabled={!canEditProjectTemplates || isMetaSubmitted(t)}
+                                className={getMetaActionClass(t, !canEditProjectTemplates || isMetaSubmitted(t))}
+                                title={isMetaSubmitted(t) ? "Already linked to Meta" : "Submit to Meta for approval"}
+                              >
+                                <CloudUpload size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleSyncMetaStatus(t.id)}
+                                className={getMetaActionClass(t)}
+                                title="Sync status from Meta"
+                              >
+                                <RefreshCcw size={16} />
+                              </button>
+                            </>
+                          ) : null}
+                          <Link
+                            href={`/templates/${t.id}/edit`}
+                            className={`rounded-lg p-2 transition-all ${t.status === 'approved' || !canEditProjectTemplates ? 'pointer-events-none text-[var(--muted)]/40' : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--accent)]'}`}
+                            title={t.status === 'approved' ? "Approved templates cannot be edited" : !canEditProjectTemplates ? "Edit permission required" : "Edit Template"}
                           >
                             <Edit size={16} />
-                          </button>
-                          <button onClick={() => handleDelete(t.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={16} /></button>
+                          </Link>
+                          <button disabled={!canDeleteProjectTemplates} onClick={() => handleDelete(t.id)} className="rounded-lg p-2 text-[var(--muted)] transition-all hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-40"><Trash2 size={16} /></button>
                         </div>
                       </td>
                     </tr>
                   ))}
                   {templates.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-6 py-8 text-center text-slate-500 text-sm">No templates found for this platform.</td>
+                      <td colSpan={4} className="px-6 py-8 text-center text-sm text-[var(--muted)]">No templates match the current platform/status filter.</td>
                     </tr>
                   )}
                 </tbody>
@@ -254,25 +507,25 @@ export default function TemplatesPage() {
           ) : (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Total Broadcasts</span>
+                 <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+                    <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">Total Broadcasts</span>
                     <div className="flex items-center justify-between">
-                      <div className="text-2xl font-black text-slate-900">{campaignLogs.length}</div>
-                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><BarChart3 size={20} /></div>
+                      <div className="text-2xl font-black text-[var(--text)]">{campaignLogs.length}</div>
+                      <div className="rounded-lg bg-[var(--accent-soft)] p-2 text-[var(--accent)]"><BarChart3 size={20} /></div>
                     </div>
                  </div>
-                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Delivered</span>
+                 <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+                    <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">Delivered</span>
                     <div className="flex items-center justify-between">
-                      <div className="text-2xl font-black text-emerald-600">{campaignLogs.reduce((acc, curr) => acc + (curr.success_count || 0), 0)}</div>
-                      <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CheckCircle size={20} /></div>
+                      <div className="text-2xl font-black text-emerald-200">{campaignLogs.reduce((acc, curr) => acc + (curr.success_count || 0), 0)}</div>
+                      <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-200"><CheckCircle size={20} /></div>
                     </div>
                  </div>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-[var(--shadow-soft)]">
                 <table className="w-full text-left border-collapse">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase text-slate-400 tracking-widest">
+                  <thead className="border-b border-[var(--line)] bg-[var(--surface-strong)] text-[11px] font-black uppercase tracking-widest text-[var(--muted)]">
                     <tr>
                       <th className="px-6 py-4">Campaign / Template</th>
                       <th className="px-6 py-4">Target Leads</th>
@@ -280,35 +533,35 @@ export default function TemplatesPage() {
                       <th className="px-6 py-4">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-[var(--line)]">
                     {campaignLogs.map((log: any) => (
-                      <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={log.id} className="transition-colors hover:bg-[var(--surface-muted)]">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-slate-900 text-sm">{log.campaign_name || 'Quick Blast'}</div>
-                          <div className="text-[10px] text-slate-400 font-mono italic">{log.template_name}</div>
+                          <div className="text-sm font-bold text-[var(--text)]">{log.campaign_name || 'Campaign launch'}</div>
+                          <div className="font-mono text-[10px] italic text-[var(--muted)]">{log.template_name}</div>
                         </td>
-                        <td className="px-6 py-4 text-xs font-bold text-slate-600">
-                          {log.total_leads || 0} Leads
+                        <td className="px-6 py-4 text-xs font-bold text-[var(--muted)]">
+                          {log.total_leads || 0} recipients
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--surface-strong)]">
                               <div 
-                                className="h-full bg-blue-500" 
+                                className="h-full bg-[linear-gradient(90deg,var(--accent),var(--accent-strong))]"
                                 style={{ width: `${((log.success_count || 0) / (log.total_leads || 1)) * 100}%` }}
                               />
                             </div>
-                            <span className="text-[10px] font-black text-slate-500">{log.success_count || 0} / {log.total_leads || 0}</span>
+                            <span className="text-[10px] font-black text-[var(--muted)]">{log.success_count || 0} / {log.total_leads || 0}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                           <span className="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded text-[9px] font-black uppercase">Completed</span>
+                           <span className="rounded border border-emerald-300/35 bg-emerald-500/10 px-2 py-1 text-[9px] font-black uppercase text-emerald-200">Completed</span>
                         </td>
                       </tr>
                     ))}
                     {campaignLogs.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-6 py-8 text-center text-slate-500 text-sm">No campaigns launched yet.</td>
+                        <td colSpan={4} className="px-6 py-8 text-center text-sm text-[var(--muted)]">No campaigns launched yet.</td>
                       </tr>
                     )}
                   </tbody>
@@ -318,119 +571,34 @@ export default function TemplatesPage() {
           )}
         </div>
 
-        {/* Create/Edit Template Panel */}
-        <div className={`fixed top-0 right-0 h-full w-[450px] bg-white border-l border-slate-200 shadow-2xl transition-transform duration-300 z-50 flex flex-col ${isPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-          <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">{editingTemplateId ? "Edit Template" : "Configure Template"}</h2>
-            <button onClick={() => { setIsPanelOpen(false); setEditingTemplateId(null); }} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-200 rounded-full transition-all"><X size={18} /></button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Target Platform</label>
-                <div className="grid grid-cols-5 gap-2">
-                  {platforms.map(p => (
-                    <button 
-                      key={p.id}
-                      onClick={() => setFormData({...formData, platform_type: p.id})}
-                      className={`p-3 rounded-xl border flex items-center justify-center transition-all ${formData.platform_type === p.id ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-400 hover:border-blue-300'}`}
-                    >
-                      <p.icon size={16} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Internal Name</label>
-                <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono" placeholder="welcome_user_v1" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-              </div>
-            </div>
-
-            <div className="h-px bg-slate-100 w-full" />
-
-            <div className="space-y-4">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-900 flex items-center gap-2"><AlignLeft size={14}/> Message Design</h3>
-              
-              {formData.platform_type === 'whatsapp' && (
-                <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Header Content</label>
-                  <div className="flex gap-2">
-                    <select className="w-1/3 bg-white border rounded-lg p-2 text-xs outline-none" value={formData.header_type} onChange={e => setFormData({...formData, header_type: e.target.value})}>
-                      <option value="none">None</option>
-                      <option value="text">Text</option>
-                      <option value="image">Image</option>
-                    </select>
-                    {formData.header_type !== 'none' && <input className="flex-1 bg-white border rounded-lg p-2 text-xs" placeholder={formData.header_type === 'text' ? "Header Text" : "https://image-url..."} value={formData.header} onChange={e => setFormData({...formData, header: e.target.value})} />}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Body Text <span className="text-red-500">*</span></label>
-                <textarea className="w-full h-32 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Hello {{1}}, how can we help today?" value={formData.body} onChange={e => setFormData({...formData, body: e.target.value})} />
-              </div>
-
-              {dynamicVars.length > 0 && (
-                <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-3">
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2"><Users size={12}/> Variable Mapper</h4>
-                    <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-black">PREVIEW ACTIVE</span>
-                  </div>
-                  {dynamicVars.map((v) => (
-                    <div key={v} className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-black text-blue-500 w-8">{v}</span>
-                        <select 
-                          className="flex-1 bg-white border border-blue-200 rounded-lg p-2 text-[10px] font-bold outline-none"
-                          value={formData.variables[v] || ""}
-                          onChange={(e) => setFormData({
-                            ...formData, 
-                            variables: { ...formData.variables, [v]: e.target.value }
-                          })}
-                        >
-                          <option value="">Map to Lead Field...</option>
-                          <option value="name">Lead Name</option>
-                          <option value="wa_number">Phone Number</option>
-                          <option value="email">Email</option>
-                          <option value="source">Lead Source</option>
-                        </select>
-                      </div>
-                      {formData.variables[v] && (
-                        <div className="ml-10 text-[9px] font-bold text-slate-400 italic flex items-center gap-1">
-                          <Eye size={10} /> Currently holds: "{previewData[formData.variables[v]] || 'No data'}"
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {(formData.platform_type === 'whatsapp' || formData.platform_type === 'telegram') && (
-                <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Footer Text</label>
-                  <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm outline-none" placeholder="Small grey text at bottom..." value={formData.footer} onChange={e => setFormData({...formData, footer: e.target.value})} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="p-6 bg-white border-t border-slate-200 shrink-0">
-            <button onClick={handleSave} disabled={isSaving} className="w-full flex justify-center items-center gap-2 bg-slate-900 text-white py-3.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all shadow-lg active:scale-95 disabled:opacity-50">
-              {isSaving ? "Saving..." : <><Plus size={16} /> {editingTemplateId ? "Update Template" : "Save Template"}</>}
-            </button>
-          </div>
-        </div>
-
         {/* Modal */}
         <CampaignSenderModal 
           isOpen={isCampaignModalOpen} 
           onClose={() => setIsCampaignModalOpen(false)} 
           templates={templates} 
+          canLaunchCampaign={canCreateProjectTemplates}
+        />
+        <BulkUploadModal
+          isOpen={isBulkModalOpen}
+          onClose={() => setIsBulkModalOpen(false)}
+          templates={templates}
+          campaigns={campaigns}
+          initialTemplateId={bulkTemplateId}
+        />
+        <SingleSendTemplateModal
+          isOpen={Boolean(singleSendTemplate)}
+          onClose={() => setSingleSendTemplate(null)}
+          template={singleSendTemplate}
+        />
+        <ImportFromMetaModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          campaigns={campaigns}
+          onImported={fetchTemplates}
         />
         
       </div>
+      )}
     </DashboardLayout>
   );
 }

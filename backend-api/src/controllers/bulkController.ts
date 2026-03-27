@@ -1,14 +1,23 @@
 import { Request, Response } from "express";
 import { query } from "../config/db";
-import { launchCampaign as launchTemplateCampaign } from "./templateController";
+import {
+  findAccessibleTemplate,
+  launchCampaign as launchTemplateCampaign,
+} from "./templateController";
 
 export const triggerBulkCampaign = async (req: Request, res: Response) => {
   const { campaignName, templateId, leadFilter = {} } = req.body;
 
   try {
-    const tempRes = await query(`SELECT * FROM templates WHERE id = $1`, [templateId]);
-    if (tempRes.rows.length === 0) return res.status(404).json({ error: "Template not found" });
-    const template = tempRes.rows[0];
+    const userId =
+      (req as any).user?.id ||
+      (req as any).user?.user_id ||
+      null;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const template = await findAccessibleTemplate(String(templateId || ""), userId);
 
     let leadQuery = `SELECT id FROM leads WHERE bot_id = $1`;
     const params: any[] = [template.bot_id];

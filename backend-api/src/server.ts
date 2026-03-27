@@ -8,19 +8,19 @@ import { Server } from "socket.io";
 import cron from "node-cron";
 import "dotenv/config";
 
-import { routeMessage, GenericMessage } from "./services/messageRouter";
+import { startFlowWaitQueueProcessor } from "./services/flowWaitQueueService";
 import { initializeWebConnector } from "./connectors/website/websiteAdapter";
 
 async function start() {
   try {
     await db.connect();
-    console.log("✅ DB connected");
+    console.log("DB connected");
 
     try {
       await redis.ping();
-      console.log("✅ Redis connected");
+      console.log("Redis connected");
     } catch {
-      console.warn("⚠️ Redis not reachable");
+      console.warn("Redis not reachable");
     }
 
     const server = http.createServer(app);
@@ -35,8 +35,8 @@ async function start() {
 
     app.set("io", io);
     initializeWebConnector(io);
+    startFlowWaitQueueProcessor(io);
 
-    // CRON
     cron.schedule("* * * * *", async () => {
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
@@ -62,11 +62,10 @@ async function start() {
       console.log("Socket connected", socket.id);
     });
 
-    // 🔴 CRITICAL FIX: Lock to 4000 to match the tunnel and frontend expectations
     const PORT = Number(env.PORT) || 4000;
 
     server.listen(PORT, "0.0.0.0", () => {
-      console.log(`✅ BACKEND API LIVE | http://localhost:${PORT}`);
+      console.log(`BACKEND API LIVE | http://localhost:${PORT}`);
     });
   } catch (err) {
     console.error(err);

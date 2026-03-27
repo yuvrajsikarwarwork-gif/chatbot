@@ -1,11 +1,11 @@
 {
   "name": "chatbot-worker",
   "version": "1.0.0",
-  "main": "SRC/workerServer.ts",
+  "main": "src/workerServer.ts",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only --watch ../shared-types,../connectors SRC/workerServer.ts",
+    "dev": "ts-node-dev --respawn --transpile-only --watch ../shared-types,../connectors src/workerServer.ts",
     "build": "tsc",
-    "start": "node dist/workerServer.js"
+    "start": "node dist/src/workerServer.js"
   },
   "dependencies": {
     "axios": "^1.13.6",

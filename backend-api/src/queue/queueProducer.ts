@@ -9,6 +9,9 @@ export async function pushToQueue(
 ) {
   await redis.lpush(
     QUEUE_NAME,
-    JSON.stringify(job)
+    JSON.stringify({
+      ...job,
+      job_type: job.job_type || job.type,
+    })
   );
 }

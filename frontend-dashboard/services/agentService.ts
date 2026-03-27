@@ -12,15 +12,15 @@ export interface Ticket {
 
 export const agentService = {
   getTickets: async (botId: string): Promise<Ticket[]> => {
-    const res = await apiClient.get(`/agents/bot/${botId}`);
+    const res = await apiClient.get(`/chat/tickets/${botId}`);
     return res.data;
   },
   
   replyToTicket: async (ticketId: string, message: string) => {
-    return await apiClient.post(`/agents/reply/${ticketId}`, { message });
+    return await apiClient.post(`/chat/tickets/${ticketId}/reply`, { message });
   },
 
   closeTicket: async (ticketId: string) => {
-    return await apiClient.post(`/agents/close/${ticketId}`);
+    return await apiClient.post(`/chat/tickets/${ticketId}/close`);
   }
 };

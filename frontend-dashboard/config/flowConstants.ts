@@ -35,6 +35,7 @@ export const NODE_CATEGORIES = [
     items: [
       { type: "condition", label: "Condition", icon: Split, info: "Decision branching logic." },
       { type: "api", label: "API Request", icon: Webhook, info: "External system integrations." },
+      { type: "lead_form", label: "Lead Form", icon: Database, info: "Persist a lead using campaign, platform, entry point, flow, and list context." },
       { type: "save", label: "Save Data", icon: Database, info: "Persist data to lead profile." },
       { type: "reminder", label: "Reminder", icon: Clock, info: "Nudge user if inactive." },
       { type: "delay", label: "Delay", icon: Timer, info: "Pause execution momentarily." },

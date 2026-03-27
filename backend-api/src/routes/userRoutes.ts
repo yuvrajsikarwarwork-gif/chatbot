@@ -1,14 +1,22 @@
 import { Router } from "express";
-import { inviteTeammate, updateProfile } from "../controllers/userController";
+
+import {
+  createPlatformUserCtrl,
+  inviteTeammate,
+  listPlatformUsersCtrl,
+  updatePlatformUserCtrl,
+  updateProfile,
+} from "../controllers/userController";
 import { authMiddleware } from "../middleware/authMiddleware";
 
 const router = Router();
 
-// Ensure all routes use authentication
 router.use(authMiddleware);
 
 router.put("/profile", updateProfile);
 router.post("/invite", inviteTeammate);
+router.get("/", listPlatformUsersCtrl);
+router.post("/", createPlatformUserCtrl);
+router.put("/:id", updatePlatformUserCtrl);
 
-// ✅ CRITICAL: This must be present for index.ts to work
 export default router;

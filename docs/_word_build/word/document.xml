@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+ xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+ xmlns:v="urn:schemas-microsoft-com:vml"
+ xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"
+ xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+ xmlns:w10="urn:schemas-microsoft-com:office:word"
+ xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+ xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+ xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk"
+ xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml"
+ xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+ mc:Ignorable="w14 wp14">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t xml:space="preserve">Permission, Visibility, and Alignment Report</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Date: 2026-03-23</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">Executive Summary</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The platform&apos;s core permission and visibility system is implemented across database, backend, and frontend.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">What is **not** fully implemented yet is a complete, normalized, product-grade **permission board** that uses the same database-backed permission source across all layers.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Final Status</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? Permission system: **Implemented**</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Permission board: **Partially implemented**</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Database foundation: **Implemented**</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Backend enforcement: **Implemented with gaps**</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Frontend visibility and access UI: **Implemented with gaps**</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Backend/frontend/database alignment: **Mostly aligned in core flows, not fully aligned**</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">Direct Answer</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Is permission and visibility implemented?</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Yes. The core system exists and is active.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Is the permission board fully implemented?</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">No. It is only partially implemented.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Are backend, frontend, and database fully aligned?</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">No. They are mostly aligned in core flows, but not fully aligned in:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? permission source of truth</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? some API access rules</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? some UI visibility rules</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">What Is Implemented</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Database</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The database already contains the main permission and visibility structures:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `role_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `user_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `agent_scope`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `project_users`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `support_access`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `support_requests`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `audit_logs`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? agent presence and activity tables</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">This means the database is already ready for:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? role-based permission defaults</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? user-level permission overrides</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? project-scoped access</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? agent scope restriction by project, campaign, platform, and channel</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? temporary platform support access</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? support approval workflow</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? audit history</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Backend</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The backend enforces the main access rules.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Implemented behavior includes:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? workspace membership checks</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? workspace permission checks</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? project membership and access checks</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? support-access enforcement for platform operators</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? conversation visibility checks</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? agent scope filtering</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? assignment capacity and eligibility logic</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? audit logging on many admin and assignment actions</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Frontend</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The frontend already has real visibility and access-management UI.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Implemented UI includes:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? role-based sidebar visibility</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? role-based page visibility</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? workspace member management</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? per-member permission tick editing</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? agent scope editing</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? agent skill editing</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? project access assignment UI</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? support access grant/revoke UI</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? support request workflow UI</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? audit history page</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">What Is Not Fully Implemented</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The missing piece is the **full permission board**.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The codebase does **not** yet provide:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? a dedicated `Permissions` or `Roles` page</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? direct administration UI for `role_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? direct administration UI for `user_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? a database-backed role/permission matrix editor</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? frontend permission resolution based directly on normalized permission tables</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">So the current system is best described as:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">**real permission system present, full permission board not finished**</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">Alignment Review</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Database -&gt; Backend</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">This is mostly aligned.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The backend already reads and uses:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `role_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `user_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `agent_scope`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `project_users`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `support_access`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `support_requests`</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">However, the backend still keeps transitional compatibility with:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `workspace_memberships.permissions_json`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `user_project_access`</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">That is acceptable for migration compatibility, but it means the model is not yet fully clean.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Backend -&gt; Frontend</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">This is only partially aligned.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The backend treats the normalized database permission tables as source of truth.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The frontend still mostly calculates permissions from:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? hardcoded default role maps</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `permissions_json` overrides</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The frontend does **not** appear to directly load and use:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `role_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `user_permissions`</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">This creates a mismatch risk:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">If normalized permission rows change in the database, backend enforcement changes immediately, but frontend visibility may not reflect that change correctly.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">Confirmed Gaps Found in Code Review</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">1. Workspace member listing is too open in backend</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Current behavior:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `GET /workspaces/:id/members` only requires workspace access</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? it does not require `manage_users` or `manage_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? it returns member data, roles, `permissions_json`, agent scope, and global role</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Impact:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Any active workspace member may be able to enumerate workspace user and permission data through the API, even if the frontend hides the management page.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">2. Audit page access is mismatched</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Current behavior:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? frontend audit page allows access for users with:</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `manage_workspace`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `manage_users`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `manage_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? backend audit API currently requires:</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `manage_workspace`</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Impact:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Some users may see the audit page in frontend but get blocked by backend.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">3. Assignment eligibility logic is not fully clean</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Current behavior:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? assignment candidate listing includes roles such as `editor` and `user`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? eligibility can be marked true before final assignment validation</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? final assignment path later rejects some of those roles</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Impact:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The UI can show assignment candidates as eligible even when final assignment would fail.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">Practical Verdict</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">What you can safely say</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? The permission system exists</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Workspace, project, support, and agent visibility controls exist</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Backend enforcement exists</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Frontend access UI exists</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Database foundation exists</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">What you should not say</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? The permission board is fully implemented</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? Frontend and backend use exactly the same permission source</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? All access rules are fully aligned everywhere</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">Recommended Next Actions</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Priority 1</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Restrict `GET /workspaces/:id/members` to users with:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `manage_users`, or</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `manage_permissions`</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Priority 2</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Make frontend permission checks consume backend-resolved permission maps instead of relying mainly on:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? hardcoded role defaults</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `permissions_json`</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Priority 3</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Add dedicated API and UI for:</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `role_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `user_permissions`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? permission catalog display</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? per-role permission matrix editing</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Priority 4</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Align audit visibility rules between frontend and backend.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Priority 5</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">Fix assignment candidate eligibility so the UI only marks truly assignable users as eligible.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">Bottom Line</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The platform already has a **real permission and visibility system**.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">The unfinished part is the **full permission board** and the **complete alignment of permission source-of-truth across database, backend, and frontend**.</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t xml:space="preserve">Reviewed Areas</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Database</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `database/migrations/040_add_support_access_and_agent_presence.sql`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `database/migrations/041_normalize_permissions_and_audit.sql`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `database/migrations/042_project_users_and_support_requests.sql`</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Backend</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/services/workspaceAccessService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/services/workspaceService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/services/projectAccessService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/services/projectService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/services/conversationService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/services/conversationAssignmentService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/services/auditService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/routes/workspaceRoutes.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/routes/projectRoutes.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/models/permissionModel.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/models/workspaceMembershipModel.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/models/projectAccessModel.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `backend-api/src/models/conversationModel.ts`</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr><w:r><w:t xml:space="preserve">Frontend</w:t></w:r></w:p>
+    <w:p/>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/hooks/useVisibility.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/store/authStore.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/components/layout/Sidebar.tsx`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/pages/workspaces.tsx`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/pages/projects.tsx`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/pages/conversations.tsx`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/pages/audit.tsx`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/services/workspaceMembershipService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/services/workspaceService.ts`</w:t></w:r></w:p>
+    <w:p><w:r><w:t xml:space="preserve">? `frontend-dashboard/services/auditService.ts`</w:t></w:r></w:p>
+    <w:p/>
+    <w:sectPr>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>
+      <w:cols w:space="708"/>
+      <w:docGrid w:linePitch="360"/>
+    </w:sectPr>
+  </w:body>
+</w:document>

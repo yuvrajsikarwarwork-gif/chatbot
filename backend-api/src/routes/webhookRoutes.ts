@@ -1,14 +1,19 @@
 import { Router } from "express";
-import { verifyWebhook, receiveMessage } from "../controllers/webhookController";
+
+import {
+  receiveMessage,
+  receiveTelegramMessage,
+  verifyWebhook,
+} from "../controllers/webhookController";
+import { verifyMetaWebhookSignature } from "../middleware/metaWebhookSignatureMiddleware";
 
 const router = Router();
 
-// 1. Meta Webhook Verification (Universal for WA/FB/IG)
-// Resolves to GET /api/webhook
 router.get("/", verifyWebhook);
+router.post("/", verifyMetaWebhookSignature, receiveMessage);
 
-// 2. Meta Message Receiver (Universal)
-// Resolves to POST /api/webhook
-router.post("/", receiveMessage);
+router.post("/telegram/:botId", receiveTelegramMessage);
+router.get("/:platform/:botId", verifyWebhook);
+router.post("/:platform/:botId", verifyMetaWebhookSignature, receiveMessage);
 
 export default router;

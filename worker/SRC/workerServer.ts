@@ -64,7 +64,8 @@ const runWorker = async () => {
       } catch (err: any) {
         await logError(
           locked.id,
-          err
+          err,
+          locked.payload?.botId || null
         );
 
         await handleRetry(

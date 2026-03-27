@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --watch ../shared-types,../connectors src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:campaign-happy-path": "npm run build && node scripts/campaign-happy-path.js",
+    "promote:account": "node scripts/promote-account.js"
   },
   "dependencies": {
     "axios": "^1.13.6",

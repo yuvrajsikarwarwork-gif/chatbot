@@ -1,75 +1,286 @@
-// frontend-dashboard/components/chat/TemplateSelectModal.tsx
+import React, { useEffect, useMemo, useState } from "react";
+import { Loader2, Send, X } from "lucide-react";
 
-import React, { useEffect, useState } from 'react';
-import apiClient from '../../services/apiClient';
-import { X, Send } from 'lucide-react';
+import apiClient from "../../services/apiClient";
+import { notify } from "../../store/uiStore";
 
-export default function TemplateSelectModal({ isOpen, onClose, conversationId, onSent }: any) {
+function parseTemplateContent(template: any) {
+  if (!template?.content) {
+    return {
+      header:
+        template?.header_type && template?.header_type !== "none"
+          ? { type: template.header_type, text: template.header || "" }
+          : null,
+      body: template?.body || "",
+      footer: template?.footer || "",
+      buttons: Array.isArray(template?.buttons) ? template.buttons : [],
+    };
+  }
+
+  return typeof template.content === "string"
+    ? JSON.parse(template.content)
+    : template.content;
+}
+
+function extractTemplateTokens(template: any) {
+  const content = parseTemplateContent(template) || {};
+  const fields = [
+    content?.header?.text,
+    content?.body,
+    content?.footer,
+    ...(Array.isArray(content?.buttons)
+      ? content.buttons.flatMap((button: any) => [button?.title, button?.value])
+      : []),
+  ];
+  const tokens = new Set<string>();
+
+  for (const field of fields) {
+    const source = String(field || "");
+    const matches = source.matchAll(/{{\s*(\d+)\s*}}/g);
+    for (const match of matches) {
+      const token = String(match?.[1] || "").trim();
+      if (token) {
+        tokens.add(token);
+      }
+    }
+  }
+
+  return Array.from(tokens).sort((left, right) => Number(left) - Number(right));
+}
+
+function getTemplatePreview(template: any) {
+  const content = parseTemplateContent(template);
+  return content?.body || template?.body || "No preview available";
+}
+
+function getVariableLabel(template: any, token: string) {
+  const mappedField = String(template?.variables?.[token] || "").trim();
+  if (!mappedField) {
+    return `Variable {{${token}}}`;
+  }
+
+  const friendly = mappedField
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return `Variable {{${token}}} · ${friendly}`;
+}
+
+export default function TemplateSelectModal({
+  isOpen,
+  onClose,
+  activeConversation,
+  onSent,
+  onSend,
+}: any) {
   const [templates, setTemplates] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      // Fetches templates from your existing templateRoutes
-      apiClient.get('/templates').then(res => setTemplates(res.data)).catch(console.error);
+    if (!isOpen) {
+      setTemplates([]);
+      setSelectedTemplateId("");
+      setVariableValues({});
+      return;
     }
-  }, [isOpen]);
 
-  const handleSendTemplate = async (templateName: string) => {
-    setLoading(true);
+    setIsLoading(true);
+    apiClient
+      .get("/templates", {
+        params: {
+          ...(activeConversation?.workspace_id ? { workspaceId: activeConversation.workspace_id } : {}),
+          ...(activeConversation?.project_id ? { projectId: activeConversation.project_id } : {}),
+          ...(activeConversation?.platform || activeConversation?.channel
+            ? { platform: activeConversation.platform || activeConversation.channel }
+            : {}),
+        },
+      })
+      .then((res) => {
+        const rows = Array.isArray(res.data) ? res.data : [];
+        const approved = rows.filter(
+          (template) => String(template?.status || "").trim().toLowerCase() === "approved"
+        );
+        setTemplates(approved);
+        setSelectedTemplateId(approved[0]?.id || "");
+      })
+      .catch((error) => {
+        console.error("Failed to load templates", error);
+        notify("Failed to load approved templates.", "error");
+        setTemplates([]);
+      })
+      .finally(() => setIsLoading(false));
+  }, [isOpen, activeConversation]);
+
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => String(template.id) === String(selectedTemplateId)) || null,
+    [templates, selectedTemplateId]
+  );
+  const tokens = useMemo(() => extractTemplateTokens(selectedTemplate), [selectedTemplate]);
+
+  useEffect(() => {
+    setVariableValues(Object.fromEntries(tokens.map((token) => [token, ""])));
+  }, [selectedTemplateId, tokens]);
+
+  const handleSendTemplate = async () => {
+    if (!selectedTemplate) {
+      notify("Choose an approved template first.", "error");
+      return;
+    }
+
+    for (const token of tokens) {
+      if (!String(variableValues[token] || "").trim()) {
+        notify(`Fill the value for {{${token}}} before sending.`, "error");
+        return;
+      }
+    }
+
+    setIsSending(true);
     try {
-      await apiClient.post(`/conversations/${conversationId}/reply`, {
+      await onSend({
         type: "template",
-        templateName
+        templateName: selectedTemplate.name,
+        languageCode: selectedTemplate.language,
+        templateVariableValues: variableValues,
       });
-      onSent();
+      onSent?.();
       onClose();
-    } catch (err) {
-      alert("Failed to send template.");
+    } catch (error: any) {
+      notify(error?.response?.data?.error || "Failed to send template.", "error");
     } finally {
-      setLoading(false);
+      setIsSending(false);
     }
-  };
-
-  // Helper to safely extract the preview text from the new JSONB content structure
-  const getTemplatePreview = (t: any) => {
-    if (t.content) {
-      const contentObj = typeof t.content === 'string' ? JSON.parse(t.content) : t.content;
-      return contentObj.body || t.body_text || "No preview available";
-    }
-    return t.body_text || "No preview available";
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-        <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-          <h3 className="font-bold text-slate-800">Select Re-engagement Template</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] shadow-[var(--shadow-glass)] backdrop-blur-2xl">
+        <div className="flex items-center justify-between border-b border-[var(--glass-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04))] p-4">
+          <div>
+            <h3 className="bg-[linear-gradient(180deg,var(--text),color-mix(in_srgb,var(--text)_72%,var(--accent)_28%))] bg-clip-text font-bold text-transparent">
+              Send Approved Template
+            </h3>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Choose a template, fill variables, and send it from the inbox.
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-full border border-[var(--glass-border)] p-2 text-[var(--muted)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:text-[var(--text)]">
+            <X size={20} />
+          </button>
         </div>
-        <div className="p-4 space-y-3 max-h-[400px] overflow-y-auto bg-slate-100">
-          {templates.length === 0 ? (
-             <p className="text-sm text-center text-slate-500 py-4">No approved templates found.</p>
-          ) : (
-            templates.filter(t => t.status === 'approved').map(t => (
-              <button 
-                key={t.id}
-                disabled={loading}
-                onClick={() => handleSendTemplate(t.name)}
-                className="w-full text-left p-4 border border-slate-200 bg-white rounded-xl hover:border-emerald-400 hover:shadow-md transition-all group"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <p className="font-black text-xs uppercase tracking-wider text-emerald-600">{t.name}</p>
-                  <Send size={14} className="text-slate-300 group-hover:text-emerald-500" />
+
+        <div className="grid max-h-[70vh] gap-0 overflow-hidden lg:grid-cols-[320px_1fr]">
+          <div className="max-h-[70vh] overflow-y-auto border-r border-[var(--glass-border)] bg-[rgba(15,23,42,0.04)] p-4">
+            {isLoading ? (
+              <div className="flex items-center gap-2 py-4 text-sm text-[var(--muted)]">
+                <Loader2 size={16} className="animate-spin" />
+                Loading templates...
+              </div>
+            ) : templates.length === 0 ? (
+              <p className="py-4 text-center text-sm text-[var(--muted)]">
+                No approved templates found.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {templates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => setSelectedTemplateId(template.id)}
+                    className={`group w-full rounded-2xl border p-4 text-left transition-all duration-300 ${
+                      String(selectedTemplateId) === String(template.id)
+                        ? "border-[var(--line-strong)] bg-[var(--surface)] shadow-[var(--shadow-soft)]"
+                        : "border-[var(--glass-border)] bg-[var(--surface)] hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:bg-[var(--glass-surface-strong)]"
+                    }`}
+                  >
+                    <div className="mb-2 flex items-start justify-between">
+                      <p className="text-xs font-black uppercase tracking-wider text-[var(--accent)]">
+                        {template.name}
+                      </p>
+                      <Send size={14} className="text-[var(--muted)] group-hover:text-[var(--accent)]" />
+                    </div>
+                    <p className="line-clamp-4 break-words text-sm leading-snug text-[var(--muted)]">
+                      {getTemplatePreview(template)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="max-h-[70vh] overflow-y-auto p-5">
+            {selectedTemplate ? (
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                    Preview
+                  </div>
+                  <div className="mt-3 rounded-2xl bg-[#efeae2] px-4 py-3">
+                    <div className="rounded-2xl bg-[#dcf8c6] px-4 py-3 text-sm leading-6 text-slate-900">
+                      {getTemplatePreview(selectedTemplate)}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-slate-600 leading-snug">
-                  {getTemplatePreview(t)}
-                </p>
-              </button>
-            ))
-          )}
+
+                {tokens.length > 0 ? (
+                  <div className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                      Template variables
+                    </div>
+                    {tokens.map((token) => (
+                      <div key={token}>
+                        <label className="mb-1 block text-[11px] font-bold text-[var(--text)]">
+                          {getVariableLabel(selectedTemplate, token)}
+                        </label>
+                        <input
+                          type="text"
+                          value={variableValues[token] || ""}
+                          onChange={(event) =>
+                            setVariableValues((current) => ({
+                              ...current,
+                              [token]: event.target.value,
+                            }))
+                          }
+                          placeholder={`Value for {{${token}}}`}
+                          className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--line-strong)]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-4 text-sm text-[var(--muted)]">
+                    This template has no variables, so it can be sent immediately.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-4 text-sm text-[var(--muted)]">
+                Choose an approved template to continue.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-[var(--glass-border)] p-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-[var(--glass-border)] px-4 py-2 text-xs font-black uppercase tracking-widest text-[var(--muted)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:text-[var(--text)]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!selectedTemplate || isSending}
+            onClick={handleSendTemplate}
+            className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(129,140,248,0.34)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-[0_18px_32px_var(--accent-glow)] transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50"
+          >
+            {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            Send Template
+          </button>
         </div>
       </div>
     </div>

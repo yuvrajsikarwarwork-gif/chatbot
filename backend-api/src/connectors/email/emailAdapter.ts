@@ -1,6 +1,8 @@
 import * as nodemailer from "nodemailer";
-import { query } from "../../config/db";
-import { GenericMessage } from "../../services/messageRouter";
+import { GenericMessage, OutboundDeliveryResult } from "../../services/messageRouter";
+import { decryptSecret } from "../../utils/encryption";
+import { findLegacyPlatformAccountByBotAndPlatform } from "../../services/integrationService";
+import { findPlatformAccountsByWorkspaceProject } from "../../models/platformAccountModel";
 
 /**
  * OUTBOUND: Converts a generic message or generic template into an HTML email.
@@ -8,19 +10,40 @@ import { GenericMessage } from "../../services/messageRouter";
 export const sendEmailAdapter = async (
   botId: string, 
   toEmail: string, 
-  msg: GenericMessage
-) => {
+  msg: GenericMessage,
+  platformAccountId?: string | null,
+  workspaceId?: string | null,
+  projectId?: string | null
+): Promise<OutboundDeliveryResult> => {
   try {
-    // 1. Fetch SMTP Credentials from the Integrations table
-    const integrationRes = await query(
-      `SELECT credentials FROM integrations WHERE bot_id = $1 AND channel = 'email' AND is_active = true LIMIT 1`, 
-      [botId]
-    );
+    const scopedAccounts =
+      workspaceId
+        ? await findPlatformAccountsByWorkspaceProject(workspaceId, projectId || null, "email")
+        : [];
+    const scopedAccount =
+      (platformAccountId
+        ? scopedAccounts.find((account) => account.id === platformAccountId)
+        : scopedAccounts[0]) || null;
+    const legacyAccount = scopedAccount || (await findLegacyPlatformAccountByBotAndPlatform(botId, "email"));
+    const metadata = legacyAccount?.metadata && typeof legacyAccount.metadata === "object"
+      ? legacyAccount.metadata
+      : {};
+    const credentials = {
+      host: typeof metadata.host === "string" ? metadata.host : null,
+      user: typeof metadata.user === "string" ? metadata.user : null,
+      pass: decryptSecret(legacyAccount?.token ?? null),
+      port:
+        typeof metadata.port === "number"
+          ? metadata.port
+          : typeof metadata.port === "string"
+            ? Number(metadata.port)
+            : 587,
+      senderName:
+        typeof metadata.senderName === "string" ? metadata.senderName : "Support",
+    };
 
-    const credentials = integrationRes.rows[0]?.credentials;
-    if (!credentials || !credentials.host || !credentials.user || !credentials.pass) {
-      console.error(`[Email Adapter] Missing SMTP credentials for Bot ${botId}`);
-      return;
+    if (!credentials.host || !credentials.user || !credentials.pass) {
+      throw { status: 400, message: `Missing SMTP credentials for bot ${botId}` };
     }
 
     // 2. Configure the Transporter
@@ -39,6 +62,16 @@ export const sendEmailAdapter = async (
     let bodyText = msg.text || "";
     let footerText = "";
     let interactiveButtons = msg.buttons || [];
+    if (interactiveButtons.length === 0 && Array.isArray(msg.sections)) {
+      interactiveButtons = msg.sections.flatMap((section: any) =>
+        Array.isArray(section?.rows)
+          ? section.rows.map((row: any) => ({
+              id: row?.id,
+              title: row?.title,
+            }))
+          : []
+      );
+    }
 
     if (msg.type === "template" && msg.templateContent) {
       // Safely parse in case DB returns stringified JSON instead of a JSONB object
@@ -86,7 +119,7 @@ export const sendEmailAdapter = async (
     htmlBody += `</div>`;
 
     // 5. Send the Email
-    await transporter.sendMail({
+    const result = await transporter.sendMail({
       from: `"${credentials.senderName || 'Support'}" <${credentials.user}>`,
       to: toEmail,
       subject: headerText || "New Message regarding your inquiry", 
@@ -95,8 +128,13 @@ export const sendEmailAdapter = async (
     });
 
     console.log(`[Email Outbound] Sent standardized template/message to ${toEmail}`);
+    return {
+      providerMessageId: result.messageId || null,
+      status: "sent",
+    };
 
   } catch (error: any) {
     console.error(`[Email Send Error]:`, error.message);
+    throw error;
   }
 };

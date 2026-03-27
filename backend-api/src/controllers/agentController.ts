@@ -1,7 +1,13 @@
 import { Request, Response } from "express";
 
-import { query } from "../config/db";
-import { GenericMessage, routeMessage } from "../services/messageRouter";
+import { findConversationSettingsByWorkspace } from "../models/conversationSettingsModel";
+import {
+  getConversationMessagesService,
+  getConversationService,
+  getWorkspaceConversationsService,
+  replyToConversationService,
+  updateConversationStatusService,
+} from "../services/conversationService";
 
 export const getTickets = async (_req: Request, res: Response) => {
   res.status(200).json([]);
@@ -22,35 +28,40 @@ export const replyToTicket = async (_req: Request, res: Response) => {
 export const getInboxConversations = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    const result = await query(
-      `SELECT
-         c.id,
-         c.bot_id,
-         c.channel,
-         c.status,
-         c.updated_at,
-         ct.platform_user_id,
-         ct.name AS display_name,
-         ct.platform_user_id AS external_id,
-         (c.status = 'agent_pending') AS agent_pending,
-         latest.last_inbound_at
-       FROM conversations c
-       JOIN contacts ct ON c.contact_id = ct.id
-       JOIN bots b ON c.bot_id = b.id
-       LEFT JOIN LATERAL (
-         SELECT MAX(created_at) FILTER (WHERE sender = 'user') AS last_inbound_at
-         FROM messages m
-         WHERE m.conversation_id = c.id
-       ) latest ON true
-       WHERE b.user_id = $1
-       ORDER BY COALESCE(latest.last_inbound_at, c.updated_at) DESC`,
-      [userId]
+    const workspaceId =
+      (req.query.workspaceId as string) ||
+      (req.headers["x-workspace-id"] as string) ||
+      undefined;
+    const projectId =
+      (req.query.projectId as string) ||
+      (req.headers["x-project-id"] as string) ||
+      undefined;
+
+    const data = await getWorkspaceConversationsService(
+      {
+        workspaceId,
+        projectId,
+        botId: req.query.botId as string | undefined,
+        campaignId: req.query.campaignId as string | undefined,
+        channelId: req.query.channelId as string | undefined,
+        platform: req.query.platform as string | undefined,
+        platformAccountId: req.query.platformAccountId as string | undefined,
+        flowId: req.query.flowId as string | undefined,
+        listId: req.query.listId as string | undefined,
+        status: req.query.status as string | undefined,
+        search: req.query.search as string | undefined,
+        agentId: req.query.agentId as string | undefined,
+      },
+      userId
     );
 
-    res.json(result.rows);
+    res.json(data);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message || "Failed to load conversations" });
   }
 };
 
@@ -59,63 +70,67 @@ export const getInboxLeads = getInboxConversations;
 
 export const getConversationDetail = async (req: Request, res: Response) => {
   const { conversationId } = req.params;
+  const userId = (req as any).user?.id;
 
   try {
-    const convRes = await query(
-      `SELECT
-         c.*,
-         ct.name AS display_name,
-         ct.platform_user_id AS external_id
-       FROM conversations c
-       JOIN contacts ct ON c.contact_id = ct.id
-       WHERE c.id = $1`,
-      [conversationId]
-    );
-
-    if (convRes.rows.length === 0) {
-      return res.status(404).json({ error: "Conversation not found" });
+    if (!conversationId) {
+      return res.status(400).json({ error: "conversationId is required" });
+    }
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const messagesRes = await query(
-      `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
-      [conversationId]
-    );
+    const [conversation, messages] = await Promise.all([
+      getConversationService(conversationId, userId),
+      getConversationMessagesService(conversationId, userId),
+    ]);
 
     res.json({
-      ...convRes.rows[0],
-      messages: messagesRes.rows,
+      ...conversation,
+      messages,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message || "Failed to load conversation" });
   }
 };
 
 export const resumeConversation = async (req: Request, res: Response) => {
   const { conversationId } = req.params;
+  const userId = (req as any).user?.id;
 
   try {
-    const result = await query(
-      `UPDATE conversations
-       SET status = 'active', updated_at = NOW()
-       WHERE id = $1
-       RETURNING *`,
-      [conversationId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Conversation not found" });
+    if (!conversationId) {
+      return res.status(400).json({ error: "conversationId is required" });
+    }
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
-    res.json({ success: true, conversation: result.rows[0] });
+    const conversation = await getConversationService(conversationId, userId);
+    if (conversation.workspace_id) {
+      const settings = await findConversationSettingsByWorkspace(conversation.workspace_id);
+      if (settings && !settings.allow_bot_resume) {
+        return res.status(403).json({ error: "Bot resume is disabled for this workspace" });
+      }
+    }
+
+    const updatedConversation = await updateConversationStatusService(
+      conversationId,
+      "bot",
+      userId,
+      req.app.get("io")
+    );
+
+    res.json({ success: true, conversation: updatedConversation });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message || "Failed to resume conversation" });
   }
 };
 
 export const sendAgentReply = async (req: Request, res: Response) => {
   const { conversationId } = req.params;
   const { text, type, templateName, languageCode } = req.body;
-  const io = req.app.get("io");
+  const userId = (req as any).user?.id;
 
   if (!conversationId) {
     return res.status(400).json({ error: "conversationId is required" });
@@ -130,28 +145,25 @@ export const sendAgentReply = async (req: Request, res: Response) => {
   }
 
   try {
-    await query(
-      "UPDATE conversations SET status = 'agent_pending', updated_at = NOW() WHERE id = $1",
-      [conversationId]
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const result = await replyToConversationService(
+      conversationId,
+      {
+        text,
+        type,
+        templateName,
+        languageCode,
+      },
+      userId,
+      req.app.get("io")
     );
 
-    const message: GenericMessage =
-      type === "template"
-        ? {
-            type: "template",
-            templateName,
-            languageCode,
-          }
-        : {
-            type: "text",
-            text,
-          };
-
-    await routeMessage(conversationId, message, io);
-
-    res.json({ success: true, message: "Reply sent" });
+    res.json({ success: true, ...result });
   } catch (err: any) {
     console.error("[Agent Reply Error]:", err.message);
-    res.status(500).json({ error: "Failed to send agent reply" });
+    res.status(err.status || 500).json({ error: err.message || "Failed to send agent reply" });
   }
 };
