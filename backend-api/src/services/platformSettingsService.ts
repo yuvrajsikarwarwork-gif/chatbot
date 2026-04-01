@@ -35,7 +35,7 @@ type GlobalIntegrationsStoredSettings = {
   metaAppId?: string;
   metaAppSecret?: unknown;
   embeddedSignupConfigId?: string;
-  legacyVerifyToken?: unknown;
+  metaWebhookVerifyToken?: unknown;
 };
 
 type EmailServicesStoredSettings = {
@@ -47,6 +47,8 @@ type EmailServicesStoredSettings = {
   smtpFrom?: string;
   smtpReplyTo?: string;
   testRecipient?: string;
+  smtpEncryption?: string;
+  smtpSenderName?: string;
 };
 
 type AiProvidersStoredSettings = {
@@ -121,10 +123,9 @@ function resolveEffectiveGlobalIntegrations(stored: GlobalIntegrationsStoredSett
   ).trim();
   const metaAppSecret =
     decryptSecret(stored.metaAppSecret) || String(env.META_APP_SECRET || "").trim();
-  const legacyVerifyToken =
-    decryptSecret(stored.legacyVerifyToken) ||
-    String(process.env.WA_VERIFY_TOKEN || "").trim() ||
-    String(process.env.VERIFY_TOKEN || "").trim() ||
+  const metaWebhookVerifyToken =
+    decryptSecret(stored.metaWebhookVerifyToken) ||
+    String(env.META_WEBHOOK_VERIFY_TOKEN || "").trim() ||
     "";
 
   return {
@@ -135,8 +136,8 @@ function resolveEffectiveGlobalIntegrations(stored: GlobalIntegrationsStoredSett
       embeddedSignupConfigId: embeddedSignupConfigId || null,
       embeddedSignupConfigIdPreview: previewValue(embeddedSignupConfigId, 6),
       signatureVerificationEnabled: Boolean(metaAppSecret),
-      legacyVerifyTokenConfigured: Boolean(legacyVerifyToken),
-      legacyVerifyTokenPreview: previewValue(legacyVerifyToken, 6),
+      metaWebhookVerifyTokenConfigured: Boolean(metaWebhookVerifyToken),
+      metaWebhookVerifyTokenPreview: previewValue(metaWebhookVerifyToken, 6),
     },
     urls: {
       publicApiBaseUrl,
@@ -172,7 +173,7 @@ export async function updateGlobalIntegrationsSettingsService(input: {
   metaAppId: string;
   embeddedSignupConfigId: string;
   metaAppSecret?: string | null;
-  legacyVerifyToken?: string | null;
+  metaWebhookVerifyToken?: string | null;
 }) {
   const existingRecord = await getPlatformSettingsRecord(GLOBAL_INTEGRATIONS_KEY);
   const existingSettings = sanitizeStoredSettings(existingRecord);
@@ -192,10 +193,10 @@ export async function updateGlobalIntegrationsSettingsService(input: {
       typeof input.metaAppSecret === "string" && input.metaAppSecret.trim()
         ? encryptSecret(input.metaAppSecret.trim())
         : existingSettings.metaAppSecret || null,
-    legacyVerifyToken:
-      typeof input.legacyVerifyToken === "string" && input.legacyVerifyToken.trim()
-        ? encryptSecret(input.legacyVerifyToken.trim())
-        : existingSettings.legacyVerifyToken || null,
+    metaWebhookVerifyToken:
+      typeof input.metaWebhookVerifyToken === "string" && input.metaWebhookVerifyToken.trim()
+        ? encryptSecret(input.metaWebhookVerifyToken.trim())
+        : existingSettings.metaWebhookVerifyToken || null,
   };
 
   await upsertPlatformSettingsRecord({
@@ -275,7 +276,7 @@ export async function regenerateGlobalVerifyTokenService(userId: string) {
 
   const nextSettings: GlobalIntegrationsStoredSettings = {
     ...existingSettings,
-    legacyVerifyToken: encryptSecret(nextToken),
+    metaWebhookVerifyToken: encryptSecret(nextToken),
   };
 
   await upsertPlatformSettingsRecord({
@@ -292,7 +293,7 @@ export async function regenerateGlobalVerifyTokenService(userId: string) {
     metadata: {
       settings_key: GLOBAL_INTEGRATIONS_KEY,
       platform_scope: "global",
-      rotated_field: "legacy_verify_token",
+      rotated_field: "meta_webhook_verify_token",
     },
   });
 
@@ -322,11 +323,13 @@ function resolveEmailServices(stored: EmailServicesStoredSettings) {
   const smtpFrom = String(stored.smtpFrom || env.SMTP_FROM || smtpUser || "").trim();
   const smtpReplyTo = String(stored.smtpReplyTo || "").trim();
   const testRecipient = String(stored.testRecipient || smtpFrom || "").trim();
+  const smtpEncryption = String(stored.smtpEncryption || "tls").trim().toLowerCase();
+  const smtpSenderName = String(stored.smtpSenderName || "BOT.OS").trim();
 
   return {
     status: {
       configured: Boolean(smtpHost && smtpUser && smtpPass),
-      secure: smtpPort === 465,
+      secure: smtpEncryption === "ssl" || smtpPort === 465,
       provider,
     },
     previews: {
@@ -337,6 +340,8 @@ function resolveEmailServices(stored: EmailServicesStoredSettings) {
       smtpReplyTo: smtpReplyTo || null,
       smtpPassConfigured: Boolean(smtpPass),
       testRecipient: testRecipient || null,
+      smtpEncryption,
+      smtpSenderName: smtpSenderName || null,
     },
     editable: {
       provider,
@@ -346,6 +351,8 @@ function resolveEmailServices(stored: EmailServicesStoredSettings) {
       smtpFrom,
       smtpReplyTo,
       testRecipient,
+      smtpEncryption,
+      smtpSenderName,
     },
   };
 }
@@ -366,6 +373,8 @@ export async function updateEmailServicesSettingsService(input: {
   smtpReplyTo?: string | null;
   testRecipient?: string | null;
   smtpPass?: string | null;
+  smtpEncryption?: string | null;
+  smtpSenderName?: string | null;
 }) {
   const existing = sanitizeEmailSettings(await getPlatformSettingsRecord(EMAIL_SERVICES_KEY));
   const next: EmailServicesStoredSettings = {
@@ -376,6 +385,8 @@ export async function updateEmailServicesSettingsService(input: {
     smtpFrom: String(input.smtpFrom || "").trim(),
     smtpReplyTo: String(input.smtpReplyTo || "").trim(),
     testRecipient: String(input.testRecipient || "").trim(),
+    smtpEncryption: String(input.smtpEncryption || existing.smtpEncryption || "tls").trim().toLowerCase(),
+    smtpSenderName: String(input.smtpSenderName || existing.smtpSenderName || "BOT.OS").trim(),
     smtpPass:
       typeof input.smtpPass === "string" && input.smtpPass.trim()
         ? encryptSecret(input.smtpPass.trim())
@@ -397,10 +408,46 @@ export async function updateEmailServicesSettingsService(input: {
   return getEmailServicesSettingsService();
 }
 
-export async function testEmailServicesSettingsService() {
-  const settings = resolveEmailServices(
-    sanitizeEmailSettings(await getPlatformSettingsRecord(EMAIL_SERVICES_KEY))
-  );
+function buildSmtpTransport(
+  smtpHost: string,
+  smtpUser: string,
+  smtpPass: string,
+  smtpPort: number,
+  smtpEncryption?: string | null
+) {
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    return null;
+  }
+
+  const encryption = String(smtpEncryption || "tls").trim().toLowerCase();
+  const secure = encryption === "ssl" || smtpPort === 465;
+  const requireTLS = encryption === "tls";
+
+  return nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure,
+    requireTLS,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+}
+
+export async function testEmailServicesSettingsService(input?: {
+  smtpHost?: string | null;
+  smtpPort?: number | string | null;
+  smtpUser?: string | null;
+  smtpFrom?: string | null;
+  smtpReplyTo?: string | null;
+  testRecipient?: string | null;
+  smtpPass?: string | null;
+  smtpEncryption?: string | null;
+  smtpSenderName?: string | null;
+}) {
+  const stored = sanitizeEmailSettings(await getPlatformSettingsRecord(EMAIL_SERVICES_KEY));
+  const settings = resolveEmailServices(stored);
   if (!settings.status.configured) {
     return {
       ok: false,
@@ -409,23 +456,51 @@ export async function testEmailServicesSettingsService() {
     };
   }
 
-  const stored = sanitizeEmailSettings(await getPlatformSettingsRecord(EMAIL_SERVICES_KEY));
-  const smtpPass = decryptSecret(stored.smtpPass) || String(env.SMTP_PASS || "").trim();
-  const transporter = nodemailer.createTransport({
-    host: settings.editable.smtpHost,
-    port: Number(settings.editable.smtpPort || 587),
-    secure: Number(settings.editable.smtpPort || 587) === 465,
-    auth: {
-      user: settings.editable.smtpUser,
-      pass: smtpPass,
-    },
-  });
-  await transporter.verify();
-  return {
-    ok: true,
-    detail: `SMTP connection verified successfully${settings.editable.testRecipient ? ` for ${settings.editable.testRecipient}` : ""}.`,
-    checkedAt: new Date().toISOString(),
-  };
+  const smtpHost = String(input?.smtpHost || settings.editable.smtpHost || "").trim();
+  const smtpPort = toSafeNumber(input?.smtpPort || settings.editable.smtpPort, 587);
+  const smtpUser = String(input?.smtpUser || settings.editable.smtpUser || "").trim();
+  const smtpFrom = String(input?.smtpFrom || settings.editable.smtpFrom || smtpUser || "").trim();
+  const smtpReplyTo = String(input?.smtpReplyTo || settings.editable.smtpReplyTo || "").trim();
+  const testRecipient = String(input?.testRecipient || settings.editable.testRecipient || smtpFrom || "").trim();
+  const smtpEncryption = String(input?.smtpEncryption || settings.editable.smtpEncryption || "tls").trim().toLowerCase();
+  const smtpSenderName = String(input?.smtpSenderName || settings.editable.smtpSenderName || "BOT.OS").trim();
+  const smtpPass =
+    String(input?.smtpPass || "").trim() ||
+    decryptSecret(stored.smtpPass) ||
+    String(env.SMTP_PASS || "").trim();
+
+  const transporter = buildSmtpTransport(smtpHost, smtpUser, smtpPass, smtpPort, smtpEncryption);
+  if (!transporter) {
+    return {
+      ok: false,
+      detail: "SMTP host, user, or password is missing.",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+  try {
+    await transporter.verify();
+    await transporter.sendMail({
+      from: `"${smtpSenderName}" <${smtpFrom || smtpUser}>`,
+      to: testRecipient,
+      subject: `Test message from ${smtpSenderName}`,
+      text: `Hello from ${smtpSenderName}.\n\nThis is a test email from the BOT.OS system email configuration.`,
+      html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
+        <h2 style="margin:0 0 12px">Hello from ${smtpSenderName}</h2>
+        <p>This is a test email from the BOT.OS system email configuration.</p>
+      </div>`,
+      replyTo: smtpReplyTo || undefined,
+    });
+    return {
+      ok: true,
+      detail: `SMTP connection verified successfully${testRecipient ? ` for ${testRecipient}` : ""}.`,
+      checkedAt: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    throw {
+      status: 502,
+      message: String(error?.response || error?.responseCode || error?.message || error?.code || error || "SMTP connection failed").trim(),
+    };
+  }
 }
 
 function resolveAiProviders(stored: AiProvidersStoredSettings) {
@@ -460,6 +535,18 @@ export async function getAiProvidersSettingsService() {
   return resolveAiProviders(
     sanitizeAiSettings(await getPlatformSettingsRecord(AI_PROVIDERS_KEY))
   );
+}
+
+export async function getAiProvidersRuntimeService() {
+  const stored = sanitizeAiSettings(await getPlatformSettingsRecord(AI_PROVIDERS_KEY));
+  const resolved = resolveAiProviders(stored);
+  return {
+    ...resolved,
+    secrets: {
+      openaiApiKey: decryptSecret(stored.openaiApiKey) || "",
+      geminiApiKey: decryptSecret(stored.geminiApiKey) || "",
+    },
+  };
 }
 
 export async function updateAiProvidersSettingsService(input: {
@@ -531,6 +618,27 @@ function resolveBillingWallet(stored: BillingWalletStoredSettings) {
       walletAutoTopupDefaultEnabled: Boolean(stored.walletAutoTopupDefaultEnabled),
       walletAutoTopupDefaultAmount: toSafeNumber(stored.walletAutoTopupDefaultAmount, 0),
       walletLowBalanceThresholdDefault: toSafeNumber(stored.walletLowBalanceThresholdDefault, 0),
+    },
+  };
+}
+
+export async function getBillingWalletCheckoutSecretsService() {
+  const stored = sanitizeBillingWalletSettings(
+    await getPlatformSettingsRecord(BILLING_WALLET_KEY)
+  );
+
+  return {
+    billingProvider: String(stored.billingProvider || "hybrid").trim().toLowerCase(),
+    defaultCurrency: String(stored.defaultCurrency || "INR").trim().toUpperCase(),
+    stripe: {
+      publicKey: String(stored.stripePublicKey || "").trim(),
+      secretKey: decryptSecret(stored.stripeSecretKey) || "",
+      webhookSecret: decryptSecret(stored.stripeWebhookSecret) || "",
+    },
+    razorpay: {
+      keyId: String(stored.razorpayKeyId || "").trim(),
+      keySecret: decryptSecret(stored.razorpayKeySecret) || "",
+      webhookSecret: decryptSecret(stored.razorpayWebhookSecret) || "",
     },
   };
 }

@@ -16,15 +16,14 @@ export async function createJob(
   const res = await query(
     `
     INSERT INTO queue_jobs
-    (type, status, payload, run_at, available_at, max_attempts, updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,NOW())
+    (job_type, status, payload, available_at, max_retries, updated_at)
+    VALUES ($1,$2,$3,$4,$5,NOW())
     RETURNING *
     `,
     [
       type,
       options.status || "pending",
       payload,
-      options.availableAt || new Date().toISOString(),
       options.availableAt || new Date().toISOString(),
       options.maxRetries ?? null,
     ]
@@ -60,7 +59,7 @@ export async function cancelPendingJobsByConversation(
     UPDATE queue_jobs
     SET status = 'cancelled', updated_at = NOW()
     WHERE status IN ('pending', 'retry')
-      AND type = ANY($2::text[])
+      AND COALESCE(job_type, type) = ANY($2::text[])
       AND payload->>'conversationId' = $1
     `,
     [conversationId, jobTypes]
@@ -81,7 +80,7 @@ export async function lockNextAvailableJob(
       SELECT id
       FROM queue_jobs
       WHERE status IN ('pending', 'retry')
-        AND type = ANY($1::text[])
+        AND COALESCE(job_type, type) = ANY($1::text[])
         AND available_at <= NOW()
       ORDER BY available_at ASC, created_at ASC
       FOR UPDATE SKIP LOCKED
@@ -123,8 +122,10 @@ export async function markJobRetry(id: string, errorMessage?: string | null) {
     `
     UPDATE queue_jobs
     SET
-      attempts = COALESCE(attempts, 0) + 1,
+      retry_count = COALESCE(retry_count, 0) + 1,
       status = 'retry',
+      available_at = NOW(),
+      error_message = $2,
       updated_at = NOW(),
       locked_at = NULL,
       locked_by = NULL
@@ -140,6 +141,7 @@ export async function markJobFailed(id: string, errorMessage?: string | null) {
     UPDATE queue_jobs
     SET
       status = 'failed',
+      error_message = $2,
       updated_at = NOW(),
       locked_at = NULL,
       locked_by = NULL

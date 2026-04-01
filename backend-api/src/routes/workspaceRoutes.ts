@@ -8,6 +8,7 @@ import {
   requireWorkspacePermission,
   requireWorkspacePermissionAny,
   resolveWorkspaceContext,
+  resolveWorkspaceOversightContext,
 } from "../middleware/policyMiddleware";
 import {
   approveWorkspaceSupportRequestCtrl,
@@ -21,6 +22,7 @@ import {
   denyWorkspaceSupportRequestCtrl,
   emergencyResetWorkspaceOwnerPasswordCtrl,
   getWorkspaceBillingContextCtrl,
+  getWorkspaceMailSettingsCtrl,
   getWorkspaceCtrl,
   getWorkspaceOverviewCtrl,
   getWorkspaceWalletCtrl,
@@ -30,6 +32,7 @@ import {
   lockWorkspaceCtrl,
   listWorkspaceMembersCtrl,
   listWorkspaceExportRequestsCtrl,
+  listWorkspaceHistoryCtrl,
   listWorkspaceSupportAccessCtrl,
   listWorkspaceSupportRequestsCtrl,
   listWorkspacesCtrl,
@@ -37,10 +40,15 @@ import {
   repairWorkspaceWhatsAppContactsCtrl,
   restoreWorkspaceCtrl,
   selfRestoreWorkspaceCtrl,
+  resendWorkspaceMemberInviteCtrl,
   revokeWorkspaceSupportAccessCtrl,
   searchWorkspaceKnowledgeCtrl,
   unlockWorkspaceCtrl,
   updateWorkspaceBillingCtrl,
+  resendWorkspaceOwnerInviteCtrl,
+  updateWorkspaceMailSettingsCtrl,
+  testWorkspaceMailSettingsCtrl,
+  updateWorkspaceOwnerEmailAndResendInviteCtrl,
   updateWorkspaceCtrl,
 } from "../controllers/workspaceController";
 import { WORKSPACE_PERMISSIONS } from "../services/workspaceAccessService";
@@ -51,6 +59,7 @@ router.use(authMiddleware);
 router.use(requireAuthenticatedUser);
 
 router.get("/", listWorkspacesCtrl);
+router.get("/history", requirePlatformRoles(["super_admin", "developer"]), listWorkspaceHistoryCtrl);
 router.post("/", requirePlatformRoles(["super_admin", "developer"]), createWorkspaceCtrl);
 router.get(
   "/:id/members-access",
@@ -99,6 +108,24 @@ router.put(
   requirePlatformRoles(["super_admin", "developer"]),
   updateWorkspaceBillingCtrl
 );
+router.get(
+  "/:id/mail-settings",
+  resolveWorkspaceContext,
+  requireWorkspacePermission(WORKSPACE_PERMISSIONS.manageWorkspace),
+  getWorkspaceMailSettingsCtrl
+);
+router.put(
+  "/:id/mail-settings",
+  resolveWorkspaceContext,
+  requireWorkspacePermission(WORKSPACE_PERMISSIONS.manageWorkspace),
+  updateWorkspaceMailSettingsCtrl
+);
+router.post(
+  "/:id/mail-settings/test",
+  resolveWorkspaceContext,
+  requireWorkspacePermission(WORKSPACE_PERMISSIONS.manageWorkspace),
+  testWorkspaceMailSettingsCtrl
+);
 router.post(
   "/:id/lock",
   requirePlatformRoles(["super_admin", "developer"]),
@@ -111,17 +138,30 @@ router.post(
 );
 router.get(
   "/:id/members",
-  resolveWorkspaceContext,
-  requireWorkspacePermissionAny([
-    WORKSPACE_PERMISSIONS.manageUsers,
-    WORKSPACE_PERMISSIONS.managePermissions,
-  ]),
+  resolveWorkspaceOversightContext,
+  requirePlatformRoles(["super_admin", "developer"]),
   listWorkspaceMembersCtrl
 );
 router.post(
   "/:id/members/emergency-owner-reset",
   requirePlatformRoles(["super_admin", "developer"]),
   emergencyResetWorkspaceOwnerPasswordCtrl
+);
+router.post(
+  "/:id/invites/resend",
+  resolveWorkspaceOversightContext,
+  requirePlatformRoles(["super_admin", "developer"]),
+  resendWorkspaceMemberInviteCtrl
+);
+router.post(
+  "/:id/members/resend-owner-invite",
+  requirePlatformRoles(["super_admin", "developer"]),
+  resendWorkspaceOwnerInviteCtrl
+);
+router.post(
+  "/:id/members/update-owner-email",
+  requirePlatformRoles(["super_admin", "developer"]),
+  updateWorkspaceOwnerEmailAndResendInviteCtrl
 );
 router.get("/:id/export-requests", listWorkspaceExportRequestsCtrl);
 router.post("/:id/export-requests", createWorkspaceExportRequestCtrl);
@@ -146,8 +186,7 @@ router.post(
 );
 router.get(
   "/:id/support-access",
-  resolveWorkspaceContext,
-  requireWorkspaceAccess,
+  resolveWorkspaceOversightContext,
   listWorkspaceSupportAccessCtrl
 );
 router.post(
@@ -160,9 +199,9 @@ router.delete(
   requirePlatformRoles(["super_admin", "developer"]),
   revokeWorkspaceSupportAccessCtrl
 );
-router.get("/:id/support-requests", resolveWorkspaceContext, requireWorkspaceAccess, listWorkspaceSupportRequestsCtrl);
-router.get("/:id/overview", resolveWorkspaceContext, requireWorkspaceAccess, getWorkspaceOverviewCtrl);
-router.get("/:id/wallet", resolveWorkspaceContext, requireWorkspaceAccess, getWorkspaceWalletCtrl);
+router.get("/:id/support-requests", resolveWorkspaceOversightContext, listWorkspaceSupportRequestsCtrl);
+router.get("/:id/overview", resolveWorkspaceOversightContext, getWorkspaceOverviewCtrl);
+router.get("/:id/wallet", resolveWorkspaceOversightContext, getWorkspaceWalletCtrl);
 router.get("/:id/billing-context", requirePlatformRoles(["super_admin", "developer"]), getWorkspaceBillingContextCtrl);
 router.post(
   "/:id/wallet",
@@ -198,6 +237,6 @@ router.post(
   requirePlatformRoles(["super_admin", "developer"]),
   denyWorkspaceSupportRequestCtrl
 );
-router.get("/:id", resolveWorkspaceContext, requireWorkspaceAccess, getWorkspaceCtrl);
+router.get("/:id", resolveWorkspaceOversightContext, getWorkspaceCtrl);
 
 export default router;

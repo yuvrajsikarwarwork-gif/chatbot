@@ -176,6 +176,86 @@ export async function listCampaignActivityCtrl(
   }
 }
 
+export async function getCampaignBroadcastAnalyticsCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    const id = req.params.id || req.params.campaignId;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!id) {
+      return res.status(400).json({ error: "Campaign id is required" });
+    }
+
+    const campaign = await getCampaignDetailService(id, userId);
+    const result = await query(
+      `SELECT
+         tl.template_name,
+         tl.platform,
+         COUNT(*)::int AS launch_count,
+         COALESCE(SUM(tl.total_leads), 0)::int AS total_leads,
+         COALESCE(SUM(tl.success_count), 0)::int AS success_count,
+         COALESCE(SUM(tl.fail_count), 0)::int AS fail_count,
+         MAX(tl.created_at) AS last_sent_at
+       FROM template_logs tl
+       JOIN bots b ON b.id = tl.bot_id
+       WHERE b.workspace_id = $1
+         AND COALESCE(b.project_id, '00000000-0000-0000-0000-000000000000'::uuid) =
+             COALESCE($2, '00000000-0000-0000-0000-000000000000'::uuid)
+         AND tl.campaign_name = $3
+       GROUP BY tl.template_name, tl.platform
+       ORDER BY last_sent_at DESC NULLS LAST`,
+      [campaign.workspace_id || null, campaign.project_id || null, campaign.name]
+    ).catch(() => ({ rows: [] }));
+
+    const suppressionLists = Array.isArray(campaign.lists)
+      ? campaign.lists.filter((list: any) => String(list.source_type || "").toLowerCase() === "suppression")
+      : [];
+    const suppressionListIds = suppressionLists.map((list: any) => String(list.id || "").trim()).filter(Boolean);
+    const suppressionCountsRes = suppressionListIds.length
+      ? await query(
+          `SELECT list_id, COUNT(*)::int AS lead_count
+           FROM leads
+           WHERE campaign_id = $1
+             AND list_id = ANY($2)
+             AND deleted_at IS NULL
+           GROUP BY list_id`,
+          [campaign.id, suppressionListIds]
+        ).catch(() => ({ rows: [] }))
+      : { rows: [] };
+    const suppressionCountMap = new Map(
+      (suppressionCountsRes.rows || []).map((row: any) => [String(row.list_id || "").trim(), Number(row.lead_count || 0)])
+    );
+
+    res.json({
+      campaignId: campaign.id,
+      templateSummary: result.rows || [],
+      suppressionLists,
+      suppressionSlices: suppressionLists.map((list: any) => ({
+        id: String(list.id || "").trim(),
+        name: String(list.name || list.list_name || "Suppression").trim(),
+        leadCount: suppressionCountMap.get(String(list.id || "").trim()) || 0,
+      })),
+      totals: (result.rows || []).reduce(
+        (acc: any, row: any) => {
+          acc.launchCount += Number(row.launch_count || 0);
+          acc.totalLeads += Number(row.total_leads || 0);
+          acc.successCount += Number(row.success_count || 0);
+          acc.failCount += Number(row.fail_count || 0);
+          return acc;
+        },
+        { launchCount: 0, totalLeads: 0, successCount: 0, failCount: 0 }
+      ),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function createCampaignCtrl(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const userId = getUserId(req);

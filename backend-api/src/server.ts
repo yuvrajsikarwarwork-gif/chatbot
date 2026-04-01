@@ -9,10 +9,12 @@ import cron from "node-cron";
 import "dotenv/config";
 
 import { startFlowWaitQueueProcessor } from "./services/flowWaitQueueService";
+import { startTemplateBroadcastQueueProcessor } from "./services/templateBroadcastQueueService";
 import {
   processWorkspaceExportJobsService,
   purgeSoftDeletedWorkspacesService,
 } from "./services/workspaceService";
+import { processCampaignAutomationRulesService } from "./services/campaignAutomationService";
 import { initializeWebConnector } from "./connectors/website/websiteAdapter";
 
 async function start() {
@@ -40,6 +42,7 @@ async function start() {
     app.set("io", io);
     initializeWebConnector(io);
     startFlowWaitQueueProcessor(io);
+    startTemplateBroadcastQueueProcessor(io);
 
     cron.schedule("* * * * *", async () => {
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
@@ -81,6 +84,23 @@ async function start() {
         }
       } catch (err) {
         console.error("Workspace export processing failed", err);
+      }
+    });
+
+    cron.schedule("*/10 * * * *", async () => {
+      try {
+        const result = await processCampaignAutomationRulesService(io);
+        if (result.processedRules > 0 || result.processedLeads > 0) {
+          console.log(
+            "Processed campaign automation rules",
+            result.processedRules,
+            "rules",
+            result.processedLeads,
+            "leads"
+          );
+        }
+      } catch (err) {
+        console.error("Campaign automation processing failed", err);
       }
     });
 

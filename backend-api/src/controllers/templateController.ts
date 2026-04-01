@@ -11,7 +11,7 @@ import {
   normalizeWhatsAppPlatformUserId,
   upsertContactWithIdentity,
 } from "../services/contactIdentityService";
-import { cancelPendingJobsByConversation } from "../models/queueJobModel";
+import { cancelPendingJobsByConversation, createJob } from "../models/queueJobModel";
 import {
   assertProjectScopedWriteAccess,
   type ProjectRole,
@@ -2581,6 +2581,7 @@ export const launchCampaign = async (req: PolicyRequest, res: Response) => {
   try {
     const userId = getUserId(req);
     const { templateId, campaignName } = req.body;
+    const scheduleAt = String(req.body?.scheduleAt || "").trim() || null;
     const contactIds = Array.isArray(req.body.contactIds) ? req.body.contactIds : [];
     const leadIds = Array.isArray(req.body.leadIds) ? req.body.leadIds : [];
     const io = req.app.get("io");
@@ -2610,6 +2611,36 @@ export const launchCampaign = async (req: PolicyRequest, res: Response) => {
       projectId: projectId || null,
       preferredBotId,
     });
+
+    const scheduledAtMs = scheduleAt ? new Date(scheduleAt).getTime() : null;
+    if (scheduledAtMs && Number.isFinite(scheduledAtMs) && scheduledAtMs > Date.now()) {
+      const scheduledAtDate = new Date(scheduleAt as string);
+      const job = await createJob(
+        "template_campaign_launch",
+        {
+          templateId: template.id,
+          campaignName,
+          contactIds: contactIds.length > 0 ? contactIds : null,
+          leadIds: leadIds.length > 0 ? leadIds : null,
+          workspaceId: runtime.workspaceId || null,
+          projectId: runtime.projectId || null,
+          preferredBotId,
+          scheduleAt,
+          requestedByUserId: userId,
+        },
+        {
+          availableAt: scheduledAtDate.toISOString(),
+          maxRetries: 3,
+        }
+      );
+
+      return res.status(202).json({
+        success: true,
+        scheduled: true,
+        jobId: job.id,
+        scheduleAt: scheduledAtDate.toISOString(),
+      });
+    }
 
     let resolvedContactIds = contactIds;
     if (resolvedContactIds.length === 0 && leadIds.length > 0) {

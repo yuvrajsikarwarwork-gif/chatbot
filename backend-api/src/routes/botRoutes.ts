@@ -2,7 +2,9 @@ import { Router } from "express";
 import { 
   getBots, 
   getBot, 
+  getBotSystemFlows,
   createBotCtrl, 
+  copyBotCtrl,
   updateBotCtrl, 
   deleteBotCtrl, 
   activateBotCtrl 
@@ -21,7 +23,9 @@ router.use(requireAuthenticatedUser);
 
 router.get("/", getBots);
 router.get("/:id", getBot);
+router.get("/:id/system-flows", getBotSystemFlows);
 router.post("/", createBotCtrl);
+router.post("/:id/copy", copyBotCtrl);
 router.put("/:id", updateBotCtrl); // Unified update handler
 router.delete("/:id", deleteBotCtrl);
 router.post("/:id/activate", activateBotCtrl);

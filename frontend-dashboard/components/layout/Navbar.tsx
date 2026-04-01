@@ -6,6 +6,7 @@ import { authService } from "../../services/authService";
 import { botService } from "../../services/botService";
 import { projectService, type ProjectSummary } from "../../services/projectService";
 import { userAdminService } from "../../services/userAdminService";
+import NotificationBell from "../notifications/NotificationBell";
 import { useAuthStore } from "../../store/authStore";
 import { useBotStore } from "../../store/botStore";
 import { useVisibility } from "../../hooks/useVisibility";
@@ -293,24 +294,25 @@ export default function Navbar() {
     (isPlatformOperator ? "Platform" : "Workspace");
 
   return (
-    <nav className="sticky top-0 z-40 flex min-h-[5rem] items-center justify-between rounded-[1.75rem] border border-border bg-card px-4 shadow-[0_18px_40px_rgba(0,0,0,0.06)] transition-colors duration-300 md:px-6">
+    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border-main bg-surface px-6">
       <div className="flex min-w-0 items-center gap-4">
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted">
+          <div className="text-xs font-semibold uppercase tracking-wider text-text-muted">
             {topRibbonLabel}
           </div>
-          <div className="truncate text-xl font-black tracking-[-0.03em] text-foreground md:text-2xl">
+          <div className="truncate text-xl font-bold tracking-tight text-text-main md:text-2xl">
             {routeLabel}
           </div>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
+        <NotificationBell />
         {!isPlatformRoute && activeWorkspaceMemberships.length > 1 ? (
           <select
             value={activeWorkspace?.workspace_id || activeWorkspaceMemberships[0]?.workspace_id || ""}
             onChange={(event) => handleWorkspaceChange(event.target.value)}
-            className="max-w-[14rem] rounded-full border border-border bg-background px-3 py-2 text-xs font-medium text-foreground outline-none transition-colors duration-300"
+            className="max-w-[14rem] rounded-md border border-border-main bg-surface px-3 py-2 text-xs font-medium text-text-main outline-none"
           >
             {activeWorkspaceMemberships.map((membership) => (
                 <option key={membership.workspace_id} value={membership.workspace_id}>
@@ -324,7 +326,7 @@ export default function Navbar() {
           <select
             value={activeProject?.id || projects.find((project) => project.is_default)?.id || projects[0]?.id || ""}
             onChange={(event) => handleProjectChange(event.target.value)}
-            className="max-w-[14rem] rounded-full border border-border bg-background px-3 py-2 text-xs font-medium text-foreground outline-none transition-colors duration-300"
+            className="max-w-[14rem] rounded-md border border-border-main bg-surface px-3 py-2 text-xs font-medium text-text-main outline-none"
           >
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
@@ -338,7 +340,7 @@ export default function Navbar() {
           <select
             value={selectedBotId || bots[0]?.id || ""}
             onChange={(event) => setSelectedBotId(event.target.value || null)}
-            className="max-w-[14rem] rounded-full border border-border bg-background px-3 py-2 text-xs font-medium text-foreground outline-none transition-colors duration-300"
+            className="max-w-[14rem] rounded-md border border-border-main bg-surface px-3 py-2 text-xs font-medium text-text-main outline-none"
           >
             {bots.length === 0 ? (
               <option value="">No bots</option>
@@ -356,42 +358,38 @@ export default function Navbar() {
           <button
             type="button"
             onClick={() => setProfileOpen((value) => !value)}
-            className="flex items-center gap-2 rounded-full border border-border bg-background px-2 py-2 text-xs font-semibold text-foreground transition duration-300 hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border-main bg-surface text-sm font-semibold text-text-main"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/20 bg-primary-fade text-xs font-semibold text-primary">
-              {(user?.name || "YS")
-                .split(" ")
-                .map((part) => part[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase()}
-            </div>
-            <ChevronDown size={14} className="text-muted" />
+            {(user?.name || "A")
+              .split(" ")
+              .map((part) => part[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase()}
           </button>
 
           {profileOpen ? (
-            <div className="absolute right-0 top-14 z-50 w-[340px] overflow-hidden rounded-[1.5rem] border border-border bg-card p-4 shadow-[0_24px_60px_rgba(0,0,0,0.12)] transition-colors duration-300">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_right,var(--primary-fade),transparent_58%)]" />
+            <div className="absolute right-0 top-12 z-50 w-[340px] overflow-hidden rounded-xl border border-border-main bg-surface p-4 shadow-lg">
               <div className="flex items-start justify-between gap-3">
                 <div className="relative">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                     Profile
                   </div>
-                  <div className="mt-2 text-lg font-black tracking-[-0.02em] text-foreground">
+                  <div className="mt-1 text-lg font-bold text-text-main">
                     {user?.name || "Unnamed User"}
                   </div>
-                  <div className="mt-1 text-sm text-muted">{user?.email || "No email"}</div>
+                  <div className="mt-1 text-sm text-text-muted">{user?.email || "No email"}</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setEditingProfile((value) => !value)}
-                  className="relative rounded-xl border border-border bg-background p-2 text-foreground transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                  className="relative rounded-md border border-border-main bg-surface p-2 text-text-main"
                 >
                   <PencilLine size={14} />
                 </button>
               </div>
 
-              <div className="mt-4 space-y-3 rounded-[1.15rem] border border-border bg-background p-4 text-sm text-foreground">
+              <div className="mt-4 space-y-3 rounded-lg border border-border-main bg-canvas p-4 text-sm text-text-main">
                 <div className="flex items-center gap-2"><ShieldCheck size={14} /> Role: {workspaceRoleLabel}</div>
                 <div className="flex items-center gap-2"><Mail size={14} /> Email: {user?.email || "n/a"}</div>
                 <div className="flex items-center gap-2"><User size={14} /> Workspace: {isPlatformRoute ? "Platform scope" : workspaceLabel}</div>
@@ -401,7 +399,7 @@ export default function Navbar() {
               {editingProfile ? (
                 <div className="mt-4 space-y-3">
                   <input
-                    className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition-colors duration-300"
+                    className="w-full rounded-lg border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none"
                     value={profileName}
                     onChange={(event) => setProfileName(event.target.value)}
                     placeholder="Your name"
@@ -425,7 +423,7 @@ export default function Navbar() {
                         setProfileSaving(false);
                       }
                     }}
-                    className="w-full rounded-2xl bg-primary px-4 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-white transition duration-300 hover:opacity-95 disabled:opacity-60"
+                    className="w-full rounded-lg bg-text-main px-4 py-3 text-xs font-bold uppercase text-surface transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {profileSaving ? "Saving..." : "Save profile"}
                   </button>
@@ -435,7 +433,7 @@ export default function Navbar() {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-transparent px-4 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-foreground transition duration-300 hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-border-main bg-transparent px-4 py-3 text-xs font-bold uppercase text-text-main"
               >
                 <LogOut size={14} />
                 Logout
@@ -444,6 +442,6 @@ export default function Navbar() {
           ) : null}
         </div>
       </div>
-    </nav>
+    </header>
   );
 }

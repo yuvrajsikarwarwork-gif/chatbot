@@ -131,8 +131,8 @@ export async function createPlatformAccountService(userId: string, payload: any)
     allowedProjectRoles: ["project_admin"],
   });
   const platformType = normalizePlatform(payload.platformType);
-  await assertPlatformAllowedByPlan(platformType, project.workspace_id);
-  await validateWorkspaceContext(project.workspace_id);
+  await assertPlatformAllowedByPlan(platformType, project.workspace_id, userId);
+  await validateWorkspaceContext(project.workspace_id, { userId });
   await assertPlatformAccountQuota(userId, project.workspace_id);
 
   const created = await createPlatformAccount({
@@ -204,7 +204,7 @@ export async function updatePlatformAccountService(
 
   if (payload.platformType) {
     const platformType = normalizePlatform(payload.platformType);
-    await assertPlatformAllowedByPlan(platformType, project.workspace_id);
+    await assertPlatformAllowedByPlan(platformType, project.workspace_id, userId);
     updatePayload.platformType = platformType;
   }
 

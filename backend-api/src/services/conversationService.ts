@@ -14,6 +14,8 @@ import { findBotById } from "../models/botModel";
 import { createConversationEvent } from "../models/conversationEventModel";
 import { routeMessage } from "./messageRouter";
 import { createSupportSurvey } from "../models/supportSurveyModel";
+import { getBotSystemFlowId } from "./botSettingsService";
+import { triggerFlowExternally } from "./flowEngine";
 import {
   assertWorkspaceMembership,
   getMembershipAgentScope,
@@ -47,6 +49,8 @@ let templateColumnSupport:
       status: boolean;
     }
   | null = null;
+
+let contactIdentityTableSupport: boolean | null = null;
 
 function parseJsonLike(value: any) {
   if (!value) return null;
@@ -85,6 +89,23 @@ async function getTemplateColumnSupport() {
   };
 
   return templateColumnSupport;
+}
+
+async function hasContactIdentityTable() {
+  if (contactIdentityTableSupport !== null) {
+    return contactIdentityTableSupport;
+  }
+
+  const res = await query(
+    `SELECT 1
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = 'contact_identities'
+     LIMIT 1`
+  );
+
+  contactIdentityTableSupport = Boolean((res.rowCount || 0) > 0);
+  return contactIdentityTableSupport;
 }
 
 function normalizeTemplateStatus(value: unknown) {
@@ -458,6 +479,172 @@ export async function getConversationMessagesService(id: string, userId: string)
   return findMessagesForConversation(id);
 }
 
+export async function getConversationTimelineService(id: string, userId: string) {
+  const conversation = await assertConversationAccess(id, userId);
+  const contactId = String(conversation.contact_id || "").trim();
+  if (!contactId) {
+    return {
+      conversation,
+      contact: null,
+      identities: [],
+      timeline: [],
+    };
+  }
+
+  const contactRes = await query(
+    `SELECT c.id, c.name, c.phone, c.email, c.platform_user_id, c.created_at, c.updated_at
+     FROM contacts c
+     WHERE c.id = $1
+     LIMIT 1`,
+    [contactId]
+  );
+  const contact = contactRes.rows[0] || null;
+
+  const includeIdentityEvents = await hasContactIdentityTable();
+  const identitiesRes = includeIdentityEvents
+    ? await query(
+        `SELECT ci.id, ci.platform, ci.identity_type, ci.identity_value, ci.metadata, ci.created_at, ci.updated_at
+         FROM contact_identities ci
+         WHERE ci.contact_id = $1
+         ORDER BY ci.created_at DESC NULLS LAST, ci.updated_at DESC NULLS LAST`,
+        [contactId]
+      )
+    : { rows: [] };
+
+  const timelineSql = `
+    WITH convo_events AS (
+      SELECT
+        'conversation' AS event_type,
+        c.id::text AS event_id,
+        c.id::text AS source_id,
+        COALESCE(NULLIF(c.channel, ''), NULLIF(c.platform, ''), 'conversation') AS source_type,
+        COALESCE(NULLIF(c.contact_name, ''), NULLIF(ct.name, ''), 'Conversation') AS title,
+        COALESCE(c.status, 'active') AS status,
+        c.created_at AS created_at,
+        c.updated_at AS updated_at,
+        c.last_message_at AS happened_at,
+        jsonb_build_object(
+          'botId', c.bot_id,
+          'campaignId', c.campaign_id,
+          'channelId', c.channel_id,
+          'entryPointId', c.entry_point_id,
+          'flowId', c.flow_id,
+          'listId', c.list_id,
+          'platform', c.platform,
+          'unreadCount', c.unread_count
+        ) AS payload
+      FROM conversations c
+      LEFT JOIN contacts ct ON ct.id = c.contact_id
+      WHERE c.contact_id = $1
+    ),
+    lead_events AS (
+      SELECT
+        'lead' AS event_type,
+        l.id::text AS event_id,
+        l.id::text AS source_id,
+        COALESCE(NULLIF(l.platform, ''), 'lead') AS source_type,
+        COALESCE(NULLIF(l.name, ''), NULLIF(l.company_name, ''), 'Lead') AS title,
+        COALESCE(l.status, 'new') AS status,
+        l.created_at AS created_at,
+        l.updated_at AS updated_at,
+        l.updated_at AS happened_at,
+        jsonb_build_object(
+          'campaignId', l.campaign_id,
+          'channelId', l.channel_id,
+          'entryPointId', l.entry_point_id,
+          'flowId', l.flow_id,
+          'listId', l.list_id,
+          'leadFormId', l.lead_form_id,
+          'source', l.source,
+          'companyName', l.company_name,
+          'email', l.email,
+          'phone', l.phone
+        ) AS payload
+      FROM leads l
+      WHERE l.contact_id = $1
+        AND l.deleted_at IS NULL
+    ),
+    message_events AS (
+      SELECT
+        'message' AS event_type,
+        m.id::text AS event_id,
+        m.id::text AS source_id,
+        COALESCE(NULLIF(m.channel, ''), 'message') AS source_type,
+        COALESCE(
+          NULLIF(m.content->>'text', ''),
+          NULLIF(m.text, ''),
+          NULLIF(m.message, ''),
+          COALESCE(m.content->>'type', 'message')
+        ) AS title,
+        COALESCE(m.sender_type, m.sender, 'user') AS status,
+        m.created_at AS created_at,
+        m.created_at AS updated_at,
+        m.created_at AS happened_at,
+        jsonb_build_object(
+          'conversationId', m.conversation_id,
+          'sender', COALESCE(m.sender_type, m.sender, 'user'),
+          'messageType', COALESCE(m.message_type, m.content->>'type', 'text'),
+          'deliveryStatus', COALESCE(m.status, m.content->>'deliveryStatus', NULL)
+        ) AS payload
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE c.contact_id = $1
+    ),
+    ${includeIdentityEvents ? `
+    identity_events AS (
+      SELECT
+        'identity' AS event_type,
+        ci.id::text AS event_id,
+        ci.id::text AS source_id,
+        COALESCE(NULLIF(ci.platform, ''), 'identity') AS source_type,
+        COALESCE(ci.identity_type, 'identity') AS title,
+        ci.identity_value AS status,
+        ci.created_at AS created_at,
+        ci.updated_at AS updated_at,
+        ci.created_at AS happened_at,
+        jsonb_build_object(
+          'platform', ci.platform,
+          'metadata', ci.metadata
+        ) AS payload
+      FROM contact_identities ci
+      WHERE ci.contact_id = $1
+    )
+    ` : ``}
+    SELECT *
+    FROM (
+      SELECT * FROM convo_events
+      UNION ALL
+      SELECT * FROM lead_events
+      UNION ALL
+      SELECT * FROM message_events
+      ${includeIdentityEvents ? `UNION ALL
+      SELECT * FROM identity_events` : ``}
+    ) timeline
+    ORDER BY COALESCE(happened_at, updated_at, created_at) DESC NULLS LAST, event_type ASC
+    LIMIT 200
+    `;
+
+  let timelineRows: any[] = [];
+  try {
+    const timelineRes = await query(timelineSql, [contactId]);
+    timelineRows = timelineRes.rows;
+  } catch (error) {
+    console.warn("[Conversation Timeline Warning]", {
+      conversationId: id,
+      contactId,
+      includeIdentityEvents,
+      error: (error as any)?.message || error,
+    });
+  }
+
+  return {
+    conversation,
+    contact,
+    identities: identitiesRes.rows,
+    timeline: timelineRows,
+  };
+}
+
 export async function updateConversationStatusService(
   id: string,
   status: string,
@@ -526,6 +713,38 @@ export async function updateConversationStatusService(
         actorUserId: userId,
       },
     });
+
+    const mappedFlowId = updated.bot_id
+      ? await getBotSystemFlowId(String(updated.bot_id), "conversation_close")
+      : null;
+    if (mappedFlowId) {
+      const result = await triggerFlowExternally({
+        botId: String(updated.bot_id),
+        flowId: mappedFlowId,
+        conversationId: id,
+        platform: String(updated.platform || updated.channel || "").trim() || null,
+        channel: String(updated.channel || updated.platform || "").trim() || null,
+        io,
+      });
+
+      for (const action of result.actions || []) {
+        await routeMessage(id, action, io);
+      }
+    } else {
+      await routeMessage(
+        id,
+        {
+          type: "interactive",
+          text: "Your ticket has been resolved. How would you rate your support experience today?",
+          buttons: [
+            { id: "csat_good", title: "Great" },
+            { id: "csat_okay", title: "Okay" },
+            { id: "csat_bad", title: "Bad" },
+          ],
+        },
+        io
+      );
+    }
   }
 
   await logConversationEventSafe({

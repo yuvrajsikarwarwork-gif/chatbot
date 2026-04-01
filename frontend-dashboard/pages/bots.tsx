@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import {
   Activity,
   Edit3,
+  Copy,
   Loader2,
   Lock,
   Plus,
@@ -17,12 +18,24 @@ import PageAccessNotice from "../components/access/PageAccessNotice";
 import RequirePermission from "../components/access/RequirePermission";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import BotCreationModal from "../components/forms/BotCreationModal";
+import BotCopyModal from "../components/forms/BotCopyModal";
 import EditBotModal from "../components/forms/EditBotModal";
 import { useVisibility } from "../hooks/useVisibility";
 import { botService } from "../services/botService";
+import { projectService } from "../services/projectService";
+import { workspaceService } from "../services/workspaceService";
 import { useAuthStore } from "../store/authStore";
 import { useBotStore } from "../store/botStore";
 import { confirmAction, notify } from "../store/uiStore";
+
+function normalizeBotList(payload: any) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  const candidate = payload?.data || payload?.bots || payload?.items || payload?.list;
+  return Array.isArray(candidate) ? candidate : [];
+}
 
 export default function BotsPage() {
   const router = useRouter();
@@ -30,14 +43,20 @@ export default function BotsPage() {
   const activeProject = useAuthStore((state) => state.activeProject);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const getProjectRole = useAuthStore((state) => state.getProjectRole);
-  const { canViewPage } = useVisibility();
+  const setActiveWorkspace = useAuthStore((state) => state.setActiveWorkspace);
+  const setActiveProject = useAuthStore((state) => state.setActiveProject);
+  const { canViewPage, isReadOnly } = useVisibility();
   const [bots, setBots] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isActivating, setIsActivating] = useState<string | null>(null);
   const [isToggling, setIsToggling] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingBot, setEditingBot] = useState<any>(null);
+  const [copyingBot, setCopyingBot] = useState<any>(null);
+  const [hydratedWorkspaceId, setHydratedWorkspaceId] = useState<string | null>(null);
+  const [hydratedProjectId, setHydratedProjectId] = useState<string | null>(null);
 
   const { unlockedBotIds, setBotUnlock, setBotLock, syncUnlockedBots, checkLockStatus } =
     useBotStore();
@@ -48,17 +67,18 @@ export default function BotsPage() {
   const canEditWorkflow = hasWorkspacePermission(activeWorkspace?.workspace_id, "edit_workflow");
   const projectRole = getProjectRole(activeProject?.id);
   const canCreateProjectBots =
-    canCreateBots || projectRole === "project_admin" || projectRole === "editor";
+    !isReadOnly && (canCreateBots || projectRole === "project_admin" || projectRole === "editor");
   const canEditProjectBots =
-    canEditBots || projectRole === "project_admin" || projectRole === "editor";
-  const canDeleteProjectBots = canDeleteBots || projectRole === "project_admin";
+    !isReadOnly && (canEditBots || projectRole === "project_admin" || projectRole === "editor");
+  const canDeleteProjectBots = !isReadOnly && (canDeleteBots || projectRole === "project_admin");
   const canEditProjectWorkflow =
-    canEditWorkflow || projectRole === "project_admin" || projectRole === "editor";
+    !isReadOnly && (canEditWorkflow || projectRole === "project_admin" || projectRole === "editor");
   const canViewBotsPage = canViewPage("bots");
-  const currentProjectId = activeProject?.id || null;
+  const resolvedWorkspaceId = activeWorkspace?.workspace_id || hydratedWorkspaceId;
+  const currentProjectId = activeProject?.id || hydratedProjectId || null;
 
   const load = async () => {
-    if (!activeWorkspace?.workspace_id) {
+    if (!resolvedWorkspaceId) {
       setBots([]);
       return;
     }
@@ -66,12 +86,43 @@ export default function BotsPage() {
     setLoading(true);
     checkLockStatus();
     try {
-      const data = await botService.getBots({
-        workspaceId: activeWorkspace?.workspace_id || undefined,
-        projectId: "",
-      });
+      const requestProjectId = currentProjectId || undefined;
+      let data = normalizeBotList(
+        await botService.getBots({
+        workspaceId: resolvedWorkspaceId || undefined,
+        projectId: requestProjectId,
+        })
+      );
+
+      if (!requestProjectId && Array.isArray(data) && data.length === 0) {
+        const fallbackData = normalizeBotList(await botService.list());
+        if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+          data = fallbackData;
+        }
+      }
+
       setBots(data);
       syncUnlockedBots(data.map((bot: any) => String(bot.id)));
+
+      if (!currentProjectId) {
+        const firstProjectId = Array.isArray(data)
+          ? String(data.find((bot: any) => String(bot.project_id || "").trim())?.project_id || "").trim()
+          : "";
+        if (firstProjectId) {
+          try {
+            const project = await projectService.get(firstProjectId);
+            setActiveProject({
+              id: project.id,
+              workspace_id: project.workspace_id,
+              name: project.name,
+              status: project.status,
+              is_default: project.is_default,
+            });
+          } catch (err) {
+            console.error("Failed to hydrate active project from loaded bots", err);
+          }
+        }
+      }
     } catch (err) {
       console.error("Fetch failed", err);
     } finally {
@@ -119,36 +170,143 @@ export default function BotsPage() {
     load();
     const interval = setInterval(checkLockStatus, 10000);
     return () => clearInterval(interval);
-  }, [activeWorkspace?.workspace_id, activeProject?.id, canViewBotsPage]);
+  }, [resolvedWorkspaceId, currentProjectId, canViewBotsPage]);
 
-  const connectedBots = bots.filter((bot) => String(bot.project_id || "").trim() === currentProjectId);
-  const unassignedBots = bots.filter((bot) => !String(bot.project_id || "").trim());
+  useEffect(() => {
+    if (!canViewBotsPage) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateContext = async () => {
+      const workspaceId = resolvedWorkspaceId || null;
+
+      if (workspaceId && activeProject?.id) {
+        return;
+      }
+
+      if (workspaceId && !activeProject?.id) {
+        const projectRows = await projectService.list(workspaceId);
+        const projectList = Array.isArray(projectRows) ? projectRows : [];
+        const firstProject = projectList[0] || null;
+
+        if (!cancelled && firstProject) {
+          setHydratedProjectId(firstProject.id);
+          setActiveProject({
+            id: firstProject.id,
+            workspace_id: firstProject.workspace_id,
+            name: firstProject.name,
+            status: firstProject.status,
+            is_default: firstProject.is_default,
+          });
+        }
+        return;
+      }
+
+      const workspaceRows = await workspaceService.list();
+      const workspaceList = Array.isArray(workspaceRows) ? workspaceRows : [];
+      const firstWorkspace = workspaceList[0] || null;
+
+      if (!firstWorkspace || cancelled) {
+        return;
+      }
+
+      setHydratedWorkspaceId(firstWorkspace.id);
+      setActiveWorkspace(firstWorkspace.id);
+
+      const projectRows = await projectService.list(firstWorkspace.id);
+      const projectList = Array.isArray(projectRows) ? projectRows : [];
+      const firstProject = projectList[0] || null;
+
+      if (!cancelled && firstProject) {
+        setHydratedProjectId(firstProject.id);
+        setActiveProject({
+          id: firstProject.id,
+          workspace_id: firstProject.workspace_id,
+          name: firstProject.name,
+          status: firstProject.status,
+          is_default: firstProject.is_default,
+        });
+      }
+    };
+
+    hydrateContext().catch((err) => {
+      console.error("Failed to hydrate bots context", err);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    resolvedWorkspaceId,
+    activeProject?.id,
+    canViewBotsPage,
+    setActiveProject,
+    setActiveWorkspace,
+  ]);
+
+  useEffect(() => {
+    if (!router.isReady || !Array.isArray(bots) || bots.length === 0) {
+      return;
+    }
+
+    const editBotId = typeof router.query.editBot === "string" ? router.query.editBot : "";
+    if (!editBotId) {
+      return;
+    }
+
+    const matchedBot = bots.find((bot) => String(bot.id) === String(editBotId));
+    if (!matchedBot) {
+      return;
+    }
+
+    setEditingBot(matchedBot);
+    setIsEditModalOpen(true);
+  }, [bots, router.isReady, router.query.editBot]);
+
+  const hasActiveProject = Boolean(currentProjectId);
+  const getBotProjectId = (bot: any) => String(bot.project_id || bot.projectId || "").trim();
+  const targetProjectId = String(currentProjectId || "").trim();
+  let connectedBots = hasActiveProject
+    ? bots.filter((bot) => getBotProjectId(bot) === targetProjectId)
+    : bots.filter((bot) => getBotProjectId(bot));
+
+  if (hasActiveProject && connectedBots.length === 0) {
+    const anyProjectBots = bots.filter((bot) => getBotProjectId(bot));
+    if (anyProjectBots.length > 0) {
+      connectedBots = anyProjectBots;
+    }
+  }
+
+  const unassignedBots = bots.filter((bot) => !getBotProjectId(bot));
   const activeBots = connectedBots.filter((bot) => bot.status === "active");
   const inactiveBots = connectedBots.filter((bot) => bot.status !== "active");
 
   const BotCard = ({ bot }: { bot: any }) => {
-    const isUnlocked = unlockedBotIds.includes(bot.id);
-    const isLive = bot.status === "active";
-    const activating = isActivating === bot.id;
-    const toggling = isToggling === bot.id;
-    const isUnassigned = !String(bot.project_id || "").trim();
+    const getCardProjectId = (b: any) => String(b?.project_id || b?.projectId || "").trim();
+    const isUnlocked = (unlockedBotIds || []).includes(bot?.id);
+    const isLive = bot?.status === "active";
+    const activating = isActivating === bot?.id;
+    const toggling = isToggling === bot?.id;
+    const isUnassigned = !getCardProjectId(bot);
     const canToggleLive = canEditProjectBots && !isUnassigned;
     const canUseBuilderSlot = canEditProjectBots && !isUnassigned;
 
     return (
       <div
-        className={`group relative overflow-hidden rounded-[2rem] border p-8 shadow-[var(--shadow-soft)] backdrop-blur-xl transition-all duration-500 ${
+        className={`group relative overflow-hidden rounded-[2rem] border p-8 shadow-sm transition-all duration-500 ${
           isUnlocked
-            ? "scale-[1.02] border-[rgba(129,140,248,0.4)] bg-[var(--glass-surface-strong)] shadow-[0_26px_60px_var(--accent-glow)]"
-            : "border-[var(--glass-border)] bg-[var(--glass-surface)] hover:-translate-y-1 hover:border-[var(--line-strong)]"
+            ? "scale-[1.02] border-primary bg-surface"
+            : "border-border-main bg-surface hover:-translate-y-1 hover:border-primary/30"
         } ${!isLive ? "grayscale-[0.6] opacity-75" : ""}`}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.16),transparent_60%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.08),transparent_60%)]" />
         <div
           className={`absolute right-0 top-0 flex items-center gap-1.5 rounded-bl-2xl px-4 py-1.5 text-[9px] font-black uppercase tracking-widest shadow-sm ${
             isUnlocked
-              ? "bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white"
-              : "bg-[var(--glass-surface-strong)] text-[var(--muted)]"
+              ? "bg-primary text-white"
+              : "bg-canvas text-text-muted"
           }`}
         >
           {isUnlocked ? (
@@ -169,22 +327,20 @@ export default function BotsPage() {
               <button
                 onClick={async () => {
                   if (await confirmAction("Delete bot", "This bot instance will be removed.", "Delete")) {
+                    console.log("Attempting to delete bot:", bot?.id);
                     try {
-                      setBotLock(bot.id);
-                      await botService.deleteBot(bot.id);
+                      setBotLock(bot?.id);
+                      const response = await botService.deleteBot(bot?.id);
+                      console.log("Delete API Success:", response);
+                      notify("Bot deleted successfully", "success");
+                      await load();
                     } catch (err: any) {
-                      const message = err?.response?.data?.message || "";
-                      if (String(message).toLowerCase().includes("not found")) {
-                        // Treat missing rows as already deleted and refresh the list.
-                      } else {
-                        throw err;
-                      }
-                    } finally {
-                      load();
+                      console.error("Delete API Failed:", err?.response?.data || err?.message || err);
+                      notify(`Delete Failed: ${err?.response?.data?.message || "Server Error"}`, "error");
                     }
                   }
                 }}
-                className="rounded-xl border border-transparent bg-transparent p-2 text-[var(--muted)] transition-colors hover:border-rose-300/40 hover:bg-rose-500/10 hover:text-rose-300"
+                className="rounded-xl border border-border-main bg-canvas p-2 text-text-main transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
               >
                 <Trash2 size={16} />
               </button>
@@ -197,9 +353,23 @@ export default function BotsPage() {
                   setEditingBot(bot);
                   setIsEditModalOpen(true);
                 }}
-                className="rounded-xl border border-transparent bg-transparent p-2 text-[var(--muted)] transition-colors hover:border-[var(--glass-border)] hover:bg-[var(--glass-surface-strong)] hover:text-[var(--text)]"
+                className="rounded-xl border border-border-main bg-canvas p-2 text-text-main transition-colors hover:border-primary/30 hover:bg-surface hover:text-text-main"
               >
                 <Edit3 size={16} />
+              </button>
+            ) : null}
+            </RequirePermission>
+            <RequirePermission permissionKey="create_bots">
+            {canEditProjectBots ? (
+              <button
+                onClick={() => {
+                  setCopyingBot(bot);
+                  setIsCopyModalOpen(true);
+                }}
+                className="rounded-xl border border-border-main bg-canvas p-2 text-text-main transition-colors hover:border-primary/30 hover:bg-surface hover:text-primary"
+                title="Copy bot flow JSON"
+              >
+                <Copy size={16} />
               </button>
             ) : null}
             </RequirePermission>
@@ -207,7 +377,7 @@ export default function BotsPage() {
               onClick={() => {
                 notify("Manual bot testing is not wired to a backend route in this build.", "info");
               }}
-              className="rounded-xl border border-transparent bg-transparent p-2 text-[var(--muted)] transition-colors hover:border-[var(--glass-border)] hover:bg-[var(--glass-surface-strong)] hover:text-[var(--accent)]"
+              className="rounded-xl border border-border-main bg-canvas p-2 text-text-main transition-colors hover:border-primary/30 hover:bg-surface hover:text-primary"
               title="Manual bot testing is currently unavailable"
             >
               <Send size={16} />
@@ -215,14 +385,14 @@ export default function BotsPage() {
           </div>
 
           <button
-            onClick={() => handleToggleStatus(bot.id, bot.status)}
+            onClick={() => handleToggleStatus(bot?.id, bot?.status)}
             disabled={toggling || !canToggleLive}
             className={`flex items-center gap-2 rounded-full px-3 py-1.5 transition-all active:scale-90 ${
               isUnassigned
-                ? "border border-amber-300/60 bg-amber-100 text-amber-950"
+                ? "border border-amber-200 bg-amber-50 text-amber-700"
                 : isLive
-                ? "border border-emerald-300/30 bg-emerald-500/12 text-emerald-300"
-                : "border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] text-[var(--muted)]"
+                ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border border-border-main bg-canvas text-text-muted"
             }`}
             title={isUnassigned ? "Reconnect this bot to a project before making it live." : undefined}
           >
@@ -234,8 +404,8 @@ export default function BotsPage() {
         </div>
 
         <div className="mb-2 flex items-center gap-3">
-          <h3 className="truncate text-xl font-black uppercase tracking-tight text-[var(--text)]">
-            {bot.name}
+          <h3 className="truncate text-xl font-black uppercase tracking-tight text-text-main">
+            {bot?.name || "Unnamed"}
           </h3>
           {isLive ? <Activity size={16} className="animate-pulse text-emerald-500" /> : null}
         </div>
@@ -243,18 +413,18 @@ export default function BotsPage() {
           <span
             className={`rounded-full border px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] ${
               isUnassigned
-                ? "border-amber-300/60 bg-amber-100 text-amber-950"
-                : "border-[var(--glass-border)] bg-[var(--glass-surface-strong)] text-[var(--muted)]"
+                ? "border border-amber-200 bg-amber-50 text-amber-700"
+                : "border border-border-main bg-canvas text-text-muted"
             }`}
           >
             {isUnassigned ? "Disconnected" : "Connected"}
           </span>
-          <span className="rounded-full border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            <span className="rounded-full border border-border-main bg-canvas px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-text-muted">
             {isUnassigned ? "No project" : activeProject?.name || "Project linked"}
           </span>
         </div>
-          <p className="mb-6 truncate text-[10px] font-bold uppercase tracking-widest text-[var(--muted)]">
-            Trigger: {bot.trigger_keywords || "None"}
+          <p className="mb-6 truncate text-[10px] font-bold uppercase tracking-widest text-text-muted">
+            Trigger: {bot?.trigger_keywords || "None"}
           </p>
 
         <div className="space-y-3">
@@ -263,10 +433,10 @@ export default function BotsPage() {
             disabled={activating || !canUseBuilderSlot}
             className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-[10px] font-black uppercase tracking-[0.15em] shadow-md transition-all active:scale-95 ${
               isUnassigned
-                ? "border border-amber-300/60 bg-amber-100 text-amber-950"
+                ? "border border-amber-200 bg-amber-50 text-amber-700"
                 : isUnlocked
-                ? "border border-rose-300/60 bg-rose-100 text-rose-950 hover:bg-rose-200"
-                : "border border-[rgba(129,140,248,0.35)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-[0_18px_30px_var(--accent-glow)] hover:-translate-y-0.5"
+                ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                : "border border-primary bg-primary text-white shadow-sm hover:-translate-y-0.5"
             }`}
             title={isUnassigned ? "Reconnect this bot to a project before using a builder slot." : undefined}
           >
@@ -277,14 +447,14 @@ export default function BotsPage() {
             ) : isUnlocked ? (
               "Release Builder Slot"
             ) : (
-              `Unlock Builder (${unlockedBotIds.length}/5)`
+              `Unlock Builder (${unlockedBotIds?.length || 0}/5)`
             )}
           </button>
 
           {isUnlocked && canEditProjectWorkflow ? (
             <button
-              onClick={() => router.push(`/flows?botId=${bot.id}`)}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/30 bg-[linear-gradient(135deg,rgba(56,189,248,0.9),rgba(99,102,241,0.9))] py-4 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-lg animate-in fade-in duration-500 hover:-translate-y-0.5"
+              onClick={() => router.push(`/flows?botId=${bot?.id}`)}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-primary bg-primary py-4 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-sm animate-in fade-in duration-500 hover:-translate-y-0.5"
             >
               <Rocket size={14} /> Open Flow Designer
             </button>
@@ -294,35 +464,34 @@ export default function BotsPage() {
     );
   };
 
-  return (
-    <DashboardLayout>
-      {!canViewBotsPage ? (
-        <PageAccessNotice
-          title="Bots are restricted for this role"
-          description="Bot management is available to workspace admins and project operators who can edit automation."
-          href="/"
-          ctaLabel="Open dashboard"
-        />
-      ) : (
-      <div className="mx-auto max-w-6xl px-4 pb-20">
-        <section className="mb-8 rounded-[1.9rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-6 shadow-[var(--shadow-glass)] backdrop-blur-2xl">
+  return !canViewBotsPage ? (
+    <PageAccessNotice
+      title="Bots are restricted for this role"
+      description="Bot management is available to workspace admins and project operators who can edit automation."
+      href="/"
+      ctaLabel="Open dashboard"
+    />
+  ) : (
+    <div className="flex-1 flex flex-col h-full w-full overflow-y-auto">
+      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 pb-20">
+        <section className="mb-8 rounded-[1.9rem] border border-border-main bg-surface p-6 shadow-sm">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="bg-[linear-gradient(180deg,var(--text),color-mix(in_srgb,var(--text)_72%,var(--accent)_28%))] bg-clip-text text-[1.75rem] font-black tracking-[-0.03em] text-transparent">
+            <h1 className="text-[1.75rem] font-black tracking-[-0.03em] text-text-main">
               Bot Instances
             </h1>
             <div className="mt-2 flex gap-4">
-            <p className="rounded-full border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-3 py-1 text-[9px] font-semibold uppercase text-[var(--muted)]">
+            <p className="rounded-full border border-border-main bg-canvas px-3 py-1 text-[9px] font-semibold uppercase text-text-muted">
                 {activeBots.length} active in project
               </p>
-              <p className="rounded-full border border-[rgba(129,140,248,0.35)] bg-[var(--accent-soft)] px-3 py-1 text-[9px] font-semibold uppercase text-[var(--accent)]">
-                {unlockedBotIds.length}/5 slots used
+              <p className="rounded-full border border-primary/20 bg-primary-fade px-3 py-1 text-[9px] font-semibold uppercase text-primary">
+                {connectedBots.length}/5 slots used
               </p>
-              <p className="rounded-full border border-amber-300/60 bg-amber-100 px-3 py-1 text-[9px] font-semibold uppercase text-amber-950">
+              <p className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[9px] font-semibold uppercase text-amber-700">
                 {unassignedBots.length} disconnected
               </p>
             </div>
-            <p className="mt-3 text-sm text-[var(--muted)]">
+            <p className="mt-3 text-sm text-text-muted">
               Bots stay visible at the workspace level. Unassigned bots are shown as disconnected
               until they are linked back to a project.
             </p>
@@ -332,7 +501,7 @@ export default function BotsPage() {
             <button
               onClick={() => setIsModalOpen(true)}
               disabled={!activeWorkspace?.workspace_id || !activeProject?.id}
-              className="flex items-center justify-center gap-2 rounded-xl border border-[rgba(129,140,248,0.35)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_18px_30px_var(--accent-glow)] transition-all active:scale-95 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-xl border border-primary bg-primary px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-sm transition-all active:scale-95 disabled:opacity-50"
             >
               <Plus size={14} /> Provision Bot
             </button>
@@ -342,15 +511,21 @@ export default function BotsPage() {
         </section>
 
         {!activeWorkspace?.workspace_id ? (
-          <div className="mb-8 rounded-[1.5rem] border border-dashed border-[var(--glass-border)] bg-[var(--glass-surface)] p-8 text-sm text-[var(--muted)] backdrop-blur-xl">
+          <div className="mb-8 rounded-[1.5rem] border border-dashed border-border-main bg-canvas p-8 text-sm text-text-muted">
             Select a workspace first. To create a new bot, also select a project. The current flow is{" "}
             <span className="font-medium">workspace -&gt; project -&gt; integration -&gt; campaign -&gt; bot</span>.
           </div>
         ) : null}
 
+        {activeWorkspace?.workspace_id && !hasActiveProject ? (
+          <div className="mb-8 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            No project is selected right now. Showing all project-linked bots in this workspace so you can still find them.
+          </div>
+        ) : null}
+
         <div className="mb-16">
-          <h2 className="mb-6 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+          <h2 className="mb-6 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+            <div className="h-2 w-2 rounded-full bg-primary animate-ping" />
             Live Network
           </h2>
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
@@ -358,7 +533,7 @@ export default function BotsPage() {
               <BotCard key={bot.id} bot={bot} />
             ))}
             {activeBots.length === 0 && !loading ? (
-              <div className="col-span-full flex flex-col items-center justify-center rounded-[3rem] border border-dashed border-[var(--glass-border)] bg-[var(--glass-surface)] py-20 text-[var(--muted)] backdrop-blur-xl">
+              <div className="col-span-full flex flex-col items-center justify-center rounded-[3rem] border border-dashed border-border-main bg-canvas py-20 text-text-muted">
                 <Activity size={48} className="mb-4 opacity-10" />
                 <span className="text-[10px] font-black uppercase tracking-[0.3em]">
                   No Active Bot Logic
@@ -369,8 +544,8 @@ export default function BotsPage() {
         </div>
 
         {inactiveBots.length > 0 ? (
-          <div className="border-t border-[var(--glass-border)] pt-12">
-            <h2 className="mb-6 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+          <div className="border-t border-border-main pt-12">
+            <h2 className="mb-6 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
               Parked / Drafts
             </h2>
             <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
@@ -382,11 +557,11 @@ export default function BotsPage() {
         ) : null}
 
         {unassignedBots.length > 0 ? (
-          <div className="border-t border-[var(--glass-border)] pt-12">
-            <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+          <div className="border-t border-border-main pt-12">
+            <h2 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
               Disconnected / No Project
             </h2>
-            <p className="mb-6 max-w-2xl text-sm text-[var(--muted)]">
+            <p className="mb-6 max-w-2xl text-sm text-text-muted">
               These bots are still in this workspace, but they are not linked to any project right now.
               Reassign them from edit to connect them again.
             </p>
@@ -399,7 +574,7 @@ export default function BotsPage() {
         ) : null}
 
         {loading ? (
-          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[rgba(6,8,20,0.45)] text-white backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-canvas text-text-main backdrop-blur-md">
             <Loader2 className="animate-spin" size={40} />
             <span className="animate-pulse text-[10px] font-black uppercase tracking-widest">
               Syncing Database...
@@ -412,17 +587,29 @@ export default function BotsPage() {
           onClose={() => setIsModalOpen(false)}
           onSuccess={load}
         />
+        <BotCopyModal
+          isOpen={isCopyModalOpen}
+          sourceBot={copyingBot}
+          onClose={() => {
+            setIsCopyModalOpen(false);
+            setCopyingBot(null);
+          }}
+        />
         <EditBotModal
           isOpen={isEditModalOpen}
           onClose={() => {
             setIsEditModalOpen(false);
             setEditingBot(null);
+            if (router.query.editBot) {
+              void router.replace("/bots");
+            }
           }}
           bot={editingBot}
           onSuccess={load}
         />
       </div>
-      )}
-    </DashboardLayout>
+      </div>
   );
 }
+
+(BotsPage as any).getLayout = (page: any) => <DashboardLayout>{page}</DashboardLayout>;

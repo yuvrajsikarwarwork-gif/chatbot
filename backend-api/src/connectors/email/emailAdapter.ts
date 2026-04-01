@@ -1,8 +1,5 @@
-import * as nodemailer from "nodemailer";
 import { GenericMessage, OutboundDeliveryResult } from "../../services/messageRouter";
-import { decryptSecret } from "../../utils/encryption";
-import { findLegacyPlatformAccountByBotAndPlatform } from "../../services/integrationService";
-import { findPlatformAccountsByWorkspaceProject } from "../../models/platformAccountModel";
+import { sendWorkspaceEmail } from "../../services/emailService";
 
 /**
  * OUTBOUND: Converts a generic message or generic template into an HTML email.
@@ -16,48 +13,7 @@ export const sendEmailAdapter = async (
   projectId?: string | null
 ): Promise<OutboundDeliveryResult> => {
   try {
-    const scopedAccounts =
-      workspaceId
-        ? await findPlatformAccountsByWorkspaceProject(workspaceId, projectId || null, "email")
-        : [];
-    const scopedAccount =
-      (platformAccountId
-        ? scopedAccounts.find((account) => account.id === platformAccountId)
-        : scopedAccounts[0]) || null;
-    const legacyAccount = scopedAccount || (await findLegacyPlatformAccountByBotAndPlatform(botId, "email"));
-    const metadata = legacyAccount?.metadata && typeof legacyAccount.metadata === "object"
-      ? legacyAccount.metadata
-      : {};
-    const credentials = {
-      host: typeof metadata.host === "string" ? metadata.host : null,
-      user: typeof metadata.user === "string" ? metadata.user : null,
-      pass: decryptSecret(legacyAccount?.token ?? null),
-      port:
-        typeof metadata.port === "number"
-          ? metadata.port
-          : typeof metadata.port === "string"
-            ? Number(metadata.port)
-            : 587,
-      senderName:
-        typeof metadata.senderName === "string" ? metadata.senderName : "Support",
-    };
-
-    if (!credentials.host || !credentials.user || !credentials.pass) {
-      throw { status: 400, message: `Missing SMTP credentials for bot ${botId}` };
-    }
-
-    // 2. Configure the Transporter
-    const transporter = nodemailer.createTransport({
-      host: credentials.host,
-      port: credentials.port || 587,
-      secure: credentials.port === 465, 
-      auth: {
-        user: credentials.user,
-        pass: credentials.pass,
-      },
-    });
-
-    // 3. Normalize Content (Handle standard messages vs dynamic templates)
+    // Normalize content so workspace/system mail routing can handle the final delivery.
     let headerText = "";
     let bodyText = msg.text || "";
     let footerText = "";
@@ -118,18 +74,18 @@ export const sendEmailAdapter = async (
 
     htmlBody += `</div>`;
 
-    // 5. Send the Email
-    const result = await transporter.sendMail({
-      from: `"${credentials.senderName || 'Support'}" <${credentials.user}>`,
+    await sendWorkspaceEmail({
+      workspaceId: workspaceId || null,
       to: toEmail,
-      subject: headerText || "New Message regarding your inquiry", 
+      subject: headerText || "New Message regarding your inquiry",
       html: htmlBody,
-      text: bodyText // Fallback plain text
+      text: bodyText,
+      fromName: "Support",
     });
 
     console.log(`[Email Outbound] Sent standardized template/message to ${toEmail}`);
     return {
-      providerMessageId: result.messageId || null,
+      providerMessageId: null,
       status: "sent",
     };
 

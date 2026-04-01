@@ -37,6 +37,118 @@ const parseSuccessStatuses = (rawValue: any) => {
     .filter((value) => Number.isFinite(value));
 };
 
+const AUTO_ADVANCE_WAIT_NODE_TYPES = new Set([
+  "message",
+  "msg_text",
+  "msg_media",
+  "send_template",
+  "action",
+  "save",
+]);
+
+const AUTO_ADVANCE_DELAY_MS = 1500;
+
+const toDelayMs = (node: any) => {
+  const explicitMs = Number(node.data?.delayMs || node.data?.delay_ms || 0);
+  if (Number.isFinite(explicitMs) && explicitMs > 0) {
+    return explicitMs;
+  }
+
+  const duration = Number(node.data?.duration || 0);
+  const unit = String(node.data?.unit || "seconds").trim().toLowerCase();
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return AUTO_ADVANCE_DELAY_MS;
+  }
+
+  const multipliers: Record<string, number> = {
+    ms: 1,
+    milli: 1,
+    millis: 1,
+    millisecond: 1,
+    milliseconds: 1,
+    second: 1000,
+    seconds: 1000,
+    minute: 60_000,
+    minutes: 60_000,
+    hour: 3_600_000,
+    hours: 3_600_000,
+  };
+
+  return Math.max(0, duration) * (multipliers[unit] || 1000);
+};
+
+const findImplicitNextNode = (currentNodeId: string, nodes: any[]) => {
+  const currentIndex = nodes.findIndex((node: any) => String(node.id) === String(currentNodeId));
+  if (currentIndex < 0) {
+    return null;
+  }
+
+  return nodes.slice(currentIndex + 1).find((node: any) => node && String(node.id || "").trim()) || null;
+};
+
+const findImplicitEntryNode = (nodes: any[], edges: any[]) => {
+  const incomingCounts = new Map<string, number>();
+
+  for (const edge of edges || []) {
+    const targetId = String(edge?.target || edge?.to || "").trim();
+    if (!targetId) {
+      continue;
+    }
+
+    incomingCounts.set(targetId, (incomingCounts.get(targetId) || 0) + 1);
+  }
+
+  const candidates = (nodes || []).filter((node: any) => {
+    const nodeId = String(node?.id || "").trim();
+    if (!nodeId) {
+      return false;
+    }
+
+    const type = String(node?.type || "").trim().toLowerCase();
+    if (type === "start" || type === "trigger") {
+      return false;
+    }
+
+    return (incomingCounts.get(nodeId) || 0) === 0;
+  });
+
+  if (!candidates.length) {
+    return null;
+  }
+
+  const preferredTypes = [
+    "message",
+    "msg_text",
+    "msg_media",
+    "send_template",
+    "delay",
+    "action",
+    "save",
+    "ai_generate",
+    "api",
+    "knowledge_lookup",
+    "business_hours",
+    "menu",
+    "menu_button",
+    "menu_list",
+    "input",
+    "condition",
+    "goto",
+    "handoff",
+    "assign_agent",
+    "end",
+  ];
+
+  for (const preferredType of preferredTypes) {
+    const match = candidates.find((node: any) => String(node?.type || "").trim().toLowerCase() === preferredType);
+    if (match) {
+      return match;
+    }
+  }
+
+  return candidates[0] || null;
+};
+
 const executeApiNode = async (node: any, vars: Record<string, any>) => {
   const method = String(node.data?.method || "GET").trim().toUpperCase();
   const saveTo = String(node.data?.saveTo || "api_response").trim();
@@ -108,7 +220,11 @@ export const executeFlow = async (flow: any, state: any, runtimeContext?: { plat
   const edges = flowJson.edges || [];
 
   // Fallback to finding 'start' or 'trigger' node if no specific current_node_id exists
-  let currentNodeId = state.current_node_id || flowJson.startNode || nodes.find((n: any) => n.type === 'start' || n.type === 'trigger')?.id;
+  let currentNodeId =
+    state.current_node_id ||
+    flowJson.startNode ||
+    nodes.find((n: any) => n.type === 'start' || n.type === 'trigger')?.id ||
+    findImplicitEntryNode(nodes, edges)?.id;
 
   const replies: any[] = [];
   const vars = state.variables || {};
@@ -147,6 +263,13 @@ export const executeFlow = async (flow: any, state: any, runtimeContext?: { plat
         mediaUrl: node.data.media_url,
         text: replaceVariables(node.data.text || "", vars)
       });
+    }
+
+    if (node.type === "delay") {
+      const delayMs = toDelayMs(node);
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
     }
 
     if (node.type === "menu_button" || node.type === "menu_list") {
@@ -287,14 +410,31 @@ export const executeFlow = async (flow: any, state: any, runtimeContext?: { plat
     // Find next node via default response handles
     const edge = findEdge(edges, currentNodeId);
 
-    if (!edge) {
-      // Flow reached a dead end naturally
-      state.current_node_id = null;
-      break; 
+    if (edge) {
+      currentNodeId = edge.target || edge.to;
+      steps++;
+      continue;
     }
 
-    currentNodeId = edge.target || edge.to;
-    steps++;
+    if (AUTO_ADVANCE_WAIT_NODE_TYPES.has(node.type)) {
+      await new Promise((resolve) => setTimeout(resolve, AUTO_ADVANCE_DELAY_MS));
+    }
+
+    if (node.type === "delay") {
+      const implicitNextNode = findImplicitNextNode(currentNodeId, nodes);
+      if (implicitNextNode) {
+        currentNodeId = implicitNextNode.id;
+        steps++;
+        continue;
+      }
+    }
+
+    // Flow reached a dead end naturally
+    state.current_node_id = null;
+    state.waiting_input = false;
+    state.waiting_agent = false;
+    state.status = "closed";
+    break;
   }
 
   state.variables = vars;

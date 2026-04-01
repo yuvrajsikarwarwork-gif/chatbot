@@ -333,7 +333,6 @@ export const sendWhatsAppAdapter = async (
   }
 
   try {
-    console.log("WA TEMPLATE PAYLOAD:", JSON.stringify(payload, null, 2));
     const response = await axios.post(
       `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneNumberId}/messages`,
       payload,

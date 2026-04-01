@@ -35,7 +35,7 @@ export default function ProjectSettingsPage() {
   const setActiveProject = useAuthStore((state) => state.setActiveProject);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const getProjectRole = useAuthStore((state) => state.getProjectRole);
-  const { canViewPage, isPlatformOperator } = useVisibility();
+  const { canViewPage, isPlatformOperator, isReadOnly } = useVisibility();
   const [settingsForm, setSettingsForm] = useState(EMPTY_SETTINGS_FORM);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,7 +53,8 @@ export default function ProjectSettingsPage() {
     ? hasWorkspacePermission(activeWorkspaceId, "delete_projects")
     : false);
   const selectedProjectRole = projectId ? getProjectRole(String(projectId)) : null;
-  const canManageSelectedProject = isPlatformOperator || canManageProjects || selectedProjectRole === "project_admin";
+  const canManageSelectedProject =
+    !isReadOnly && (isPlatformOperator || canManageProjects || selectedProjectRole === "project_admin");
 
   const tabs = useMemo(
     () =>
@@ -268,7 +269,7 @@ export default function ProjectSettingsPage() {
                   value={deleteConfirm}
                   onChange={(event) => setDeleteConfirm(event.target.value)}
                   placeholder="delete my project"
-                  className="w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  className="w-full rounded-2xl border border-rose-200 bg-surface px-4 py-3 text-sm text-text-main outline-none"
                 />
                 <button
                   type="button"

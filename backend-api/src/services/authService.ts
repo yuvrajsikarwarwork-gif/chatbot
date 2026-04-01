@@ -19,7 +19,11 @@ import {
 } from "../models/authTokenModel";
 import { sendPasswordResetOtpEmail } from "./mailService";
 import { query } from "../config/db";
-import { assertPlatformRoles, resolveRolePermissionMap } from "./workspaceAccessService";
+import {
+  assertPlatformRoles,
+  hasWorkspaceSupportEntryAccess,
+  resolveRolePermissionMap,
+} from "./workspaceAccessService";
 import { findWorkspaceById } from "../models/workspaceModel";
 import {
   deleteSupportAccess,
@@ -94,12 +98,13 @@ async function buildAuthContext(user: any) {
     };
   }
 
+  const supportModeWorkspace = isPlatformOperator ? await buildSupportModeWorkspace(user) : null;
   const directActiveWorkspace =
-    eligibleMemberships.find((membership: any) => membership.workspace_id === user.workspace_id) ||
-    (!isPlatformOperator ? eligibleMemberships[0] || recoveryMemberships[0] || null : null);
-  const supportModeWorkspace =
-    isPlatformOperator && !directActiveWorkspace ? await buildSupportModeWorkspace(user) : null;
-  const activeWorkspace = directActiveWorkspace || supportModeWorkspace || null;
+    supportModeWorkspace
+      ? null
+      : eligibleMemberships.find((membership: any) => membership.workspace_id === user.workspace_id) ||
+        (!isPlatformOperator ? eligibleMemberships[0] || recoveryMemberships[0] || null : null);
+  const activeWorkspace = supportModeWorkspace || directActiveWorkspace || null;
 
   return {
     user,
@@ -128,7 +133,8 @@ function hashOtp(email: string, otp: string) {
 }
 
 export async function loginService(email: string, password: string) {
-  const user = await findUserByEmail(email);
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const user = await findUserByEmail(normalizedEmail);
 
   if (!user) {
     throw { status: 400, message: "Invalid login" };
@@ -154,13 +160,17 @@ export async function loginService(email: string, password: string) {
 }
 
 export async function registerService(email: string, password: string, name: string, role?: string) {
-  const existing = await findUserByEmail(email);
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw { status: 400, message: "Email is required" };
+  }
+  const existing = await findUserByEmail(normalizedEmail);
   if (existing) {
     throw { status: 400, message: "User exists" };
   }
 
   const hash = await bcrypt.hash(password, 10);
-  const user = await createUser(email, hash, name, role || 'user');
+  const user = await createUser(normalizedEmail, hash, name, role || "user");
   const token = jwt.sign({ id: user.id, role: user.role }, env.JWT_SECRET, { expiresIn: '24h' });
   const context = await buildAuthContext(user);
 
@@ -342,7 +352,8 @@ export async function createSupportWorkspaceSessionService(input: {
   if (!workspace) {
     throw { status: 404, message: "Workspace not found" };
   }
-  if (input.consentConfirmed !== true) {
+  const hasEntryAccess = await hasWorkspaceSupportEntryAccess(input.actorUserId, input.workspaceId);
+  if (input.consentConfirmed !== true && !hasEntryAccess) {
     throw { status: 400, message: "Explicit client-consent confirmation is required before entering support mode." };
   }
 

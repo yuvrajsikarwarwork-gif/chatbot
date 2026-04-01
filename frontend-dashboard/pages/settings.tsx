@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 import {
   MessageSquareMore,
   ShieldCheck,
@@ -6,6 +7,7 @@ import {
 
 import PageAccessNotice from "../components/access/PageAccessNotice";
 import DashboardLayout from "../components/layout/DashboardLayout";
+import IntegrationsConsole from "../components/integrations/IntegrationsConsole";
 import { useVisibility } from "../hooks/useVisibility";
 import WorkspaceStatusBanner from "../components/workspace/WorkspaceStatusBanner";
 import SectionTabs from "../components/navigation/SectionTabs";
@@ -16,7 +18,10 @@ import {
 } from "../services/conversationSettingsService";
 import { planService, type Plan } from "../services/planService";
 import { workspaceMembershipService, type WorkspaceMember } from "../services/workspaceMembershipService";
-import { workspaceService, type Workspace } from "../services/workspaceService";
+import {
+  workspaceService,
+  type Workspace,
+} from "../services/workspaceService";
 import { useAuthStore } from "../store/authStore";
 import { notify } from "../store/uiStore";
 
@@ -71,13 +76,14 @@ function getBackendFieldError(message: string): SettingsFieldErrors {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const {
     user,
     activeWorkspace: activeWorkspaceMembership,
     activeProject,
     hasWorkspacePermission,
   } = useAuthStore();
-  const { canViewPage, isPlatformOperator } = useVisibility();
+  const { canViewPage, isPlatformOperator, isReadOnly } = useVisibility();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([]);
@@ -86,8 +92,11 @@ export default function SettingsPage() {
   const [form, setForm] = useState<SettingsForm>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [supportRequestSubmitting, setSupportRequestSubmitting] = useState(false);
+  const [supportRequestSent, setSupportRequestSent] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<SettingsFieldErrors>({});
+  const [activeTab, setActiveTab] = useState<"general" | "integrations">("general");
   const canViewSettingsPage = canViewPage("settings");
 
   useEffect(() => {
@@ -135,14 +144,31 @@ export default function SettingsPage() {
     [activeWorkspace?.plan_id, plans]
   );
   const activeWorkspaceId = activeWorkspace?.id || null;
-
   const canOpenSettingsShell = Boolean(user);
   const canManageSettings = activeWorkspace
     ? hasWorkspacePermission(activeWorkspaceId, "manage_workspace")
     : false;
+  const canEditWorkspaceSettings = canManageSettings && !isReadOnly;
   const isPlatformWithoutWorkspace = isPlatformOperator && !activeWorkspaceId;
   const canViewWorkspaceSettings =
     isPlatformOperator || canViewSettingsPage || canManageSettings;
+  const canRequestPlatformSupport =
+    Boolean(activeWorkspaceId) &&
+    !isPlatformOperator &&
+    canViewSettingsPage;
+  const canViewIntegrationsTab =
+    canManageSettings || canViewPage("integrations") || isPlatformOperator;
+
+  useEffect(() => {
+    if (router.query.tab === "integrations") {
+      setActiveTab("integrations");
+      return;
+    }
+
+    if (router.query.tab === "general") {
+      setActiveTab("general");
+    }
+  }, [router.query.tab]);
 
   const settingsTabs = useMemo(
     () => [
@@ -333,7 +359,7 @@ export default function SettingsPage() {
   };
 
   const handleSave = async () => {
-    if (!activeWorkspaceId) {
+    if (!activeWorkspaceId || !canEditWorkspaceSettings) {
       return;
     }
 
@@ -388,6 +414,28 @@ export default function SettingsPage() {
     }
   };
 
+  const handleRequestPlatformSupport = async () => {
+    if (!activeWorkspaceId || !canRequestPlatformSupport || supportRequestSubmitting) {
+      return;
+    }
+
+    try {
+      setSupportRequestSubmitting(true);
+      setError("");
+      await workspaceService.createSupportRequest(activeWorkspaceId, {
+        reason: "Request platform support from workspace settings",
+      });
+      setSupportRequestSent(true);
+      notify("Support request sent to platform operators.", "success");
+    } catch (err: any) {
+      const message = err?.response?.data?.error || "Failed to request platform support";
+      setError(message);
+      notify(message, "error");
+    } finally {
+      setSupportRequestSubmitting(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       {!canOpenSettingsShell ? (
@@ -401,65 +449,125 @@ export default function SettingsPage() {
       <div className="mx-auto max-w-6xl space-y-6">
         {activeWorkspace ? <WorkspaceStatusBanner workspace={activeWorkspace} /> : null}
 
-        <section className="rounded-[1.25rem] border border-border bg-card p-5 shadow-[var(--shadow-soft)] transition-colors duration-300">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
-            Settings
+        <section className="rounded-[1.25rem] border border-border-main bg-surface p-5 shadow-sm transition-all duration-300">
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("general")}
+              className={`rounded-full border px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${
+                activeTab === "general"
+                  ? "border-primary bg-primary-fade text-primary"
+                  : "border-border-main bg-canvas text-text-muted"
+              }`}
+            >
+              General
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("integrations")}
+              disabled={!canViewIntegrationsTab}
+              className={`rounded-full border px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                activeTab === "integrations"
+                  ? "border-primary bg-primary-fade text-primary"
+                  : "border-border-main bg-canvas text-text-muted"
+              }`}
+              >
+              Integrations
+            </button>
           </div>
-          <h1 className="mt-2 text-[1.35rem] font-semibold tracking-tight text-foreground">
-            {isPlatformWithoutWorkspace ? "Platform account settings" : "Account and workspace settings"}
-          </h1>
-          {canViewWorkspaceSettings && settingsTabs.length > 0 ? (
+          {activeTab === "general" && canViewWorkspaceSettings && settingsTabs.length > 0 ? (
             <SectionTabs items={settingsTabs} currentPath="/settings" className="mt-4" />
           ) : null}
         </section>
 
+        {activeTab === "integrations" ? (
+          canViewIntegrationsTab ? (
+            <IntegrationsConsole />
+          ) : (
+            <PageAccessNotice
+              title="Integrations are restricted for this role"
+              description="Only workspace admins and project operators with integration access can open the integrations console."
+              href="/settings"
+              ctaLabel="Open settings"
+            />
+          )
+        ) : (
+          <>
+
         {isPlatformWithoutWorkspace ? (
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-[1.25rem] border border-border bg-card px-5 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+            <div className="rounded-[1.25rem] border border-border-main bg-surface px-5 py-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
                 User
               </div>
-              <div className="mt-2 text-sm font-semibold text-foreground">{user?.name || "Unnamed User"}</div>
-              <div className="mt-1 text-xs text-muted">{user?.role || "user"}</div>
+              <div className="mt-2 text-sm font-semibold text-text-main">{user?.name || "Unnamed User"}</div>
+              <div className="mt-1 text-xs text-text-muted">{user?.role || "user"}</div>
             </div>
-            <div className="rounded-[1.25rem] border border-border bg-card px-5 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+            <div className="rounded-[1.25rem] border border-border-main bg-surface px-5 py-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
                 Scope
               </div>
-              <div className="mt-2 text-sm font-semibold text-foreground">Platform only</div>
-              <div className="mt-1 text-xs text-muted">
+              <div className="mt-2 text-sm font-semibold text-text-main">Platform only</div>
+              <div className="mt-1 text-xs text-text-muted">
                 No workspace is attached to this account session.
               </div>
             </div>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-[1.25rem] border border-border bg-card px-5 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+            <div className="rounded-[1.25rem] border border-border-main bg-surface px-5 py-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
                 User
               </div>
-              <div className="mt-2 text-sm font-semibold text-foreground">{user?.name || "Unnamed User"}</div>
-              <div className="mt-1 text-xs text-muted">{user?.role || "user"}</div>
+              <div className="mt-2 text-sm font-semibold text-text-main">{user?.name || "Unnamed User"}</div>
+              <div className="mt-1 text-xs text-text-muted">{user?.role || "user"}</div>
             </div>
-            <div className="rounded-[1.25rem] border border-border bg-card px-5 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+            <div className="rounded-[1.25rem] border border-border-main bg-surface px-5 py-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
                 Active Workspace
               </div>
-              <div className="mt-2 text-sm font-semibold text-foreground">{activeWorkspace?.name || "Not linked"}</div>
-              <div className="mt-1 text-xs text-muted">{activeWorkspace?.status || "n/a"}</div>
+              <div className="mt-2 text-sm font-semibold text-text-main">{activeWorkspace?.name || "Not linked"}</div>
+              <div className="mt-1 text-xs text-text-muted">{activeWorkspace?.status || "n/a"}</div>
             </div>
-            <div className="rounded-[1.25rem] border border-border bg-card px-5 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+            <div className="rounded-[1.25rem] border border-border-main bg-surface px-5 py-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
                 Active Plan
               </div>
-              <div className="mt-2 text-sm font-semibold text-foreground">{activePlan?.name || "Starter"}</div>
-              <div className="mt-1 text-xs text-muted">INR {activePlan?.monthly_price_inr || 0}/mo</div>
+              <div className="mt-2 text-sm font-semibold text-text-main">{activePlan?.name || "Starter"}</div>
+              <div className="mt-1 text-xs text-text-muted">INR {activePlan?.monthly_price_inr || 0}/mo</div>
             </div>
           </div>
         )}
 
+        {canRequestPlatformSupport ? (
+          <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-800">
+                  Request Platform Support
+                </div>
+                <div className="mt-2 text-sm leading-6 text-amber-900">
+                  Send a support request to platform operators. This will notify the super admin team and unlock support entry once it is acknowledged.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleRequestPlatformSupport}
+                disabled={supportRequestSubmitting || supportRequestSent}
+                className="rounded-[1rem] border border-amber-700 bg-amber-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition duration-200 hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {supportRequestSubmitting
+                  ? "Sending..."
+                  : supportRequestSent
+                    ? "Support Requested"
+                    : "Request Platform Support"}
+              </button>
+            </div>
+          </section>
+        ) : null}
+
         {!canViewWorkspaceSettings ? (
-          <section className="rounded-[1.5rem] border border-dashed border-[var(--line)] bg-[var(--surface)] p-8 text-sm text-[var(--muted)]">
+          <section className="rounded-[1.5rem] border border-dashed border-border-main bg-canvas p-8 text-sm text-text-muted shadow-sm">
             {!activeWorkspaceId
               ? "Basic account details are available above. Select a workspace to open workspace settings."
               : "Basic account details are available above. Workspace settings are only editable for workspace admins and platform operators."}
@@ -467,32 +575,32 @@ export default function SettingsPage() {
         ) : null}
 
         {isPlatformWithoutWorkspace ? (
-          <section className="rounded-[1.5rem] border border-border bg-card p-6 shadow-sm">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+          <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
               Platform Account
             </div>
-            <h2 className="mt-3 text-[1.35rem] font-semibold tracking-tight text-foreground">
+            <h2 className="mt-3 text-[1.35rem] font-semibold tracking-tight text-text-main">
               Platform account controls
             </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
               This page stays platform-only for super admin and developer sessions. Workspace internals, plans, and routing controls are hidden until you explicitly enter a workspace management route.
             </p>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <a
                 href="/workspaces"
-                className="rounded-2xl border border-border bg-transparent px-4 py-3 text-sm text-foreground transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                className="rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition hover:bg-surface hover:border-primary/30"
               >
                 Manage Workspaces
               </a>
               <a
                 href="/users-access/platform-users"
-                className="rounded-2xl border border-border bg-transparent px-4 py-3 text-sm text-foreground transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                className="rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition hover:bg-surface hover:border-primary/30"
               >
                 Manage Platform Users
               </a>
               <a
                 href="/users-access/roles"
-                className="rounded-2xl border border-border bg-transparent px-4 py-3 text-sm text-foreground transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                className="rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition hover:bg-surface hover:border-primary/30"
               >
                 Manage Permissions
               </a>
@@ -501,34 +609,34 @@ export default function SettingsPage() {
         ) : null}
 
         {!isPlatformWithoutWorkspace ? (
-        <section className="rounded-[1.5rem] border border-border bg-card p-6 shadow-sm">
+        <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <div className="flex items-center gap-2 text-sm font-semibold text-text-main">
                 <MessageSquareMore size={16} />
                 Workspace conversation settings
               </div>
             </div>
             {canViewWorkspaceSettings ? (
-              <div className="rounded-full border border-border bg-primary-fade px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-                {canManageSettings ? "Editable" : "Read only"}
+              <div className="rounded-full border border-border-main bg-primary-fade px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                {canEditWorkspaceSettings ? "Editable" : "Read only"}
               </div>
             ) : null}
           </div>
 
           {!canViewWorkspaceSettings ? (
-            <div className="mt-6 rounded-[1.25rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] p-8 text-sm text-[var(--muted)]">
+            <div className="mt-6 rounded-[1.25rem] border border-dashed border-border-main bg-canvas p-8 text-sm text-text-muted shadow-sm">
               Workspace conversation controls are not available for the current account scope.
             </div>
           ) : loading ? (
-            <div className="mt-6 rounded-[1.25rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] p-8 text-sm text-[var(--muted)]">
+            <div className="mt-6 rounded-[1.25rem] border border-dashed border-border-main bg-canvas p-8 text-sm text-text-muted shadow-sm">
               Loading conversation settings...
             </div>
           ) : (
             <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
               <div className="space-y-6">
-                <div className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                <div className="rounded-[1.25rem] border border-border-main bg-canvas p-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                     Automation
                   </div>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -540,13 +648,13 @@ export default function SettingsPage() {
                     ].map(([label, key]) => (
                       <label
                         key={key}
-                        className="flex items-center justify-between rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text)]"
+                        className="flex items-center justify-between rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main"
                       >
                         <span>{label}</span>
                         <input
                           type="checkbox"
                           checked={Boolean(form[key as keyof SettingsForm])}
-                          disabled={!canManageSettings}
+                          disabled={!canEditWorkspaceSettings}
                           onChange={(event) =>
                             setForm((current) => ({
                               ...current,
@@ -559,8 +667,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                <div className="rounded-[1.25rem] border border-border-main bg-canvas p-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                     Visibility
                   </div>
                   <div className="mt-4 grid gap-4 sm:grid-cols-3">
@@ -571,13 +679,13 @@ export default function SettingsPage() {
                     ].map(([label, key]) => (
                       <label
                         key={key}
-                        className="flex items-center justify-between rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text)]"
+                        className="flex items-center justify-between rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main"
                       >
                         <span>{label}</span>
                         <input
                           type="checkbox"
                           checked={Boolean(form[key as keyof SettingsForm])}
-                          disabled={!canManageSettings}
+                          disabled={!canEditWorkspaceSettings}
                           onChange={(event) =>
                             setForm((current) => ({
                               ...current,
@@ -590,16 +698,16 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                <div className="rounded-[1.25rem] border border-border-main bg-canvas p-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                     Routing Defaults
                   </div>
                   <div className="mt-4 grid gap-4">
                     <label className="block">
-                      <span className="mb-2 block text-xs font-medium text-[var(--muted)]">Default agent</span>
+                      <span className="mb-2 block text-xs font-medium text-text-muted">Default agent</span>
                       <select
                         value={form.default_agent || ""}
-                        disabled={!canManageSettings}
+                        disabled={!canEditWorkspaceSettings}
                         onChange={(event) =>
                           {
                             setFieldErrors((current) => ({ ...current, default_agent: undefined }));
@@ -609,8 +717,8 @@ export default function SettingsPage() {
                             }));
                           }
                         }
-                        className={`w-full rounded-2xl border bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text)] outline-none ${
-                          fieldErrors.default_agent ? "border-red-300" : "border-[var(--line)]"
+                        className={`w-full rounded-2xl border bg-surface px-4 py-3 text-sm text-text-main outline-none ${
+                          fieldErrors.default_agent ? "border-red-300" : "border-border-main"
                         }`}
                       >
                         <option value="">No default agent</option>
@@ -623,17 +731,17 @@ export default function SettingsPage() {
                       {fieldErrors.default_agent ? (
                         <span className="mt-2 block text-xs text-red-600">{fieldErrors.default_agent}</span>
                       ) : (
-                        <span className="mt-2 block text-xs text-[var(--muted)]">
+                        <span className="mt-2 block text-xs text-text-muted">
                           Default agent must be active inside this workspace.
                         </span>
                       )}
                     </label>
 
                     <label className="block">
-                      <span className="mb-2 block text-xs font-medium text-[var(--muted)]">Default campaign</span>
+                      <span className="mb-2 block text-xs font-medium text-text-muted">Default campaign</span>
                       <select
                         value={form.default_campaign_id || ""}
-                        disabled={!canManageSettings}
+                        disabled={!canEditWorkspaceSettings}
                         onChange={(event) =>
                           {
                             setFieldErrors((current) => ({
@@ -648,8 +756,8 @@ export default function SettingsPage() {
                             }));
                           }
                         }
-                        className={`w-full rounded-2xl border bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text)] outline-none ${
-                          fieldErrors.default_campaign_id ? "border-red-300" : "border-[var(--line)]"
+                        className={`w-full rounded-2xl border bg-surface px-4 py-3 text-sm text-text-main outline-none ${
+                          fieldErrors.default_campaign_id ? "border-red-300" : "border-border-main"
                         }`}
                       >
                         <option value="">No default campaign</option>
@@ -662,17 +770,17 @@ export default function SettingsPage() {
                       {fieldErrors.default_campaign_id ? (
                         <span className="mt-2 block text-xs text-red-600">{fieldErrors.default_campaign_id}</span>
                       ) : (
-                        <span className="mt-2 block text-xs text-[var(--muted)]">
+                        <span className="mt-2 block text-xs text-text-muted">
                           Only campaigns in the active workspace and project can be selected.
                         </span>
                       )}
                     </label>
 
                     <label className="block">
-                      <span className="mb-2 block text-xs font-medium text-[var(--muted)]">Default list</span>
+                      <span className="mb-2 block text-xs font-medium text-text-muted">Default list</span>
                       <select
                         value={form.default_list_id || ""}
-                        disabled={!canManageSettings || !form.default_campaign_id}
+                        disabled={!canEditWorkspaceSettings || !form.default_campaign_id}
                         onChange={(event) =>
                           {
                             setFieldErrors((current) => ({ ...current, default_list_id: undefined }));
@@ -682,8 +790,8 @@ export default function SettingsPage() {
                             }));
                           }
                         }
-                        className={`w-full rounded-2xl border bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text)] outline-none ${
-                          fieldErrors.default_list_id ? "border-red-300" : "border-[var(--line)]"
+                        className={`w-full rounded-2xl border bg-surface px-4 py-3 text-sm text-text-main outline-none ${
+                          fieldErrors.default_list_id ? "border-red-300" : "border-border-main"
                         }`}
                       >
                         <option value="">No default list</option>
@@ -696,20 +804,20 @@ export default function SettingsPage() {
                       {fieldErrors.default_list_id ? (
                         <span className="mt-2 block text-xs text-red-600">{fieldErrors.default_list_id}</span>
                       ) : (
-                        <span className="mt-2 block text-xs text-[var(--muted)]">
+                        <span className="mt-2 block text-xs text-text-muted">
                           Default list comes from the selected default campaign.
                         </span>
                       )}
                     </label>
 
                     <label className="block">
-                      <span className="mb-2 block text-xs font-medium text-[var(--muted)]">Max open chats per agent</span>
+                      <span className="mb-2 block text-xs font-medium text-text-muted">Max open chats per agent</span>
                       <input
                         type="number"
                         min={1}
                         max={500}
                         value={form.max_open_chats}
-                        disabled={!canManageSettings}
+                        disabled={!canEditWorkspaceSettings}
                         onChange={(event) =>
                           {
                             setFieldErrors((current) => ({ ...current, max_open_chats: undefined }));
@@ -719,14 +827,14 @@ export default function SettingsPage() {
                             }));
                           }
                         }
-                        className={`w-full rounded-2xl border bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text)] outline-none ${
-                          fieldErrors.max_open_chats ? "border-red-300" : "border-[var(--line)]"
+                        className={`w-full rounded-2xl border bg-surface px-4 py-3 text-sm text-text-main outline-none ${
+                          fieldErrors.max_open_chats ? "border-red-300" : "border-border-main"
                         }`}
                       />
                       {fieldErrors.max_open_chats ? (
                         <span className="mt-2 block text-xs text-red-600">{fieldErrors.max_open_chats}</span>
                       ) : (
-                        <span className="mt-2 block text-xs text-[var(--muted)]">
+                        <span className="mt-2 block text-xs text-text-muted">
                           Used by auto-assignment to prevent overloading a single agent.
                         </span>
                       )}
@@ -736,8 +844,8 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-6">
-                <div className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5">
-                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                <div className="rounded-[1.25rem] border border-border-main bg-canvas p-5">
+                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                     <ShieldCheck size={14} />
                     Allowed Platforms
                   </div>
@@ -746,16 +854,16 @@ export default function SettingsPage() {
                       <button
                         key={platform}
                         type="button"
-                        disabled={!canManageSettings}
+                        disabled={!canEditWorkspaceSettings}
                         onClick={() => togglePlatform(platform)}
                         className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
                           form.allowed_platforms.includes(platform)
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                            : "border-[var(--line)] bg-[var(--surface)] text-[var(--text)]"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-border-main bg-surface text-text-main"
                         }`}
                       >
                         <div className="font-medium capitalize">{platform}</div>
-                        <div className="mt-1 text-xs text-[var(--muted)]">
+                        <div className="mt-1 text-xs text-text-muted">
                           {form.allowed_platforms.includes(platform) ? "Enabled" : "Disabled"}
                         </div>
                       </button>
@@ -766,16 +874,16 @@ export default function SettingsPage() {
                       {fieldErrors.allowed_platforms}
                     </div>
                   ) : null}
-                  <div className="mt-4 text-xs leading-5 text-[var(--muted)]">
+                  <div className="mt-4 text-xs leading-5 text-text-muted">
                     Plan limit: {allowedPlatformsByPlan.join(", ")}
                   </div>
                 </div>
 
-                <div className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                <div className="rounded-[1.25rem] border border-border-main bg-canvas p-5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                     Current Summary
                   </div>
-                  <div className="mt-4 space-y-3 text-sm text-[var(--text)]">
+                  <div className="mt-4 space-y-3 text-sm text-text-main">
                     <div>Auto assign: {form.auto_assign ? "On" : "Off"}</div>
                     <div>Manual reply: {form.allow_manual_reply ? "Allowed" : "Blocked"}</div>
                     <div>Agent takeover: {form.allow_agent_takeover ? "Allowed" : "Blocked"}</div>
@@ -807,8 +915,8 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={!canManageSettings || saving || loading}
-                  className="w-full rounded-2xl bg-primary px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-muted"
+                  disabled={!canEditWorkspaceSettings || saving || loading}
+                  className="w-full rounded-2xl bg-primary px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-canvas"
                 >
                   {saving ? "Saving..." : "Save Conversation Settings"}
                 </button>
@@ -818,8 +926,12 @@ export default function SettingsPage() {
         </section>
         ) : null}
 
+          </>
+        )}
+
       </div>
       )}
     </DashboardLayout>
   );
 }
+

@@ -6,6 +6,7 @@ interface WorkspaceInput {
   planId?: string | null;
   status?: string;
   lockReason?: string | null;
+  adminNotes?: string | null;
   agentSeatLimitOverride?: number | null;
   projectLimitOverride?: number | null;
   activeBotLimitOverride?: number | null;
@@ -17,7 +18,7 @@ interface WorkspaceInput {
   purgeAfter?: string | null;
 }
 
-const WORKSPACE_SELECT_BASE = `SELECT
+const WORKSPACE_SELECT_BASE = `SELECT DISTINCT ON (w.id)
        w.*,
        bs.id::text AS subscription_id,
        bs.status AS subscription_status,
@@ -76,7 +77,7 @@ const WORKSPACE_SELECT_PLAN_LIMITS = `,
        p.max_integrations,
        p.max_bots`;
 
-const WORKSPACE_SELECT_LEGACY = `SELECT
+const WORKSPACE_SELECT_LEGACY = `SELECT DISTINCT ON (w.id)
        w.*,
        NULL::text AS subscription_id,
        NULL::text AS subscription_status,
@@ -168,7 +169,7 @@ export async function findWorkspacesByUser(userId: string) {
           )
        )
        AND w.deleted_at IS NULL
-     ORDER BY w.created_at DESC`,
+     ORDER BY w.id, w.created_at DESC`,
     [userId]
   );
 
@@ -234,28 +235,31 @@ export async function updateWorkspace(
        plan_id = COALESCE($2, plan_id),
        status = COALESCE($3, status),
        lock_reason = CASE WHEN $4::text IS NULL THEN lock_reason ELSE $4 END,
+       admin_notes = CASE WHEN $5 THEN $6 ELSE admin_notes END,
        locked_at = CASE
          WHEN COALESCE($3, status) = 'locked' THEN COALESCE(locked_at, NOW())
          WHEN COALESCE($3, status) <> 'locked' THEN NULL
          ELSE locked_at
        END,
-       agent_seat_limit_override = CASE WHEN $5 THEN $6 ELSE agent_seat_limit_override END,
-       project_limit_override = CASE WHEN $7 THEN $8 ELSE project_limit_override END,
-       active_bot_limit_override = CASE WHEN $9 THEN $10 ELSE active_bot_limit_override END,
-       monthly_campaign_limit_override = CASE WHEN $11 THEN $12 ELSE monthly_campaign_limit_override END,
-       max_numbers_override = CASE WHEN $13 THEN $14 ELSE max_numbers_override END,
-       ai_reply_limit_override = CASE WHEN $15 THEN $16 ELSE ai_reply_limit_override END,
-       archived_at = CASE WHEN $17 THEN $18 ELSE archived_at END,
-       deleted_at = CASE WHEN $19 THEN $20 ELSE deleted_at END,
-       purge_after = CASE WHEN $21 THEN $22 ELSE purge_after END,
+       agent_seat_limit_override = CASE WHEN $7 THEN $8 ELSE agent_seat_limit_override END,
+       project_limit_override = CASE WHEN $9 THEN $10 ELSE project_limit_override END,
+       active_bot_limit_override = CASE WHEN $11 THEN $12 ELSE active_bot_limit_override END,
+       monthly_campaign_limit_override = CASE WHEN $13 THEN $14 ELSE monthly_campaign_limit_override END,
+       max_numbers_override = CASE WHEN $15 THEN $16 ELSE max_numbers_override END,
+       ai_reply_limit_override = CASE WHEN $17 THEN $18 ELSE ai_reply_limit_override END,
+       archived_at = CASE WHEN $19 THEN $20 ELSE archived_at END,
+       deleted_at = CASE WHEN $21 THEN $22 ELSE deleted_at END,
+       purge_after = CASE WHEN $23 THEN $24 ELSE purge_after END,
         updated_at = NOW()
-     WHERE id = $23
+     WHERE id = $25
      RETURNING *`,
     [
       input.name || null,
       input.planId || null,
       input.status || null,
       input.lockReason === undefined ? null : input.lockReason,
+      input.adminNotes !== undefined,
+      input.adminNotes ?? null,
       input.agentSeatLimitOverride !== undefined,
       input.agentSeatLimitOverride ?? null,
       input.projectLimitOverride !== undefined,

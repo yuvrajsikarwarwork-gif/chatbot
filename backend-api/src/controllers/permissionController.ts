@@ -50,10 +50,15 @@ export async function getRolePermissionsCtrl(
       return res.status(400).json({ error: "Role is required" });
     }
 
+    const workspaceId =
+      (typeof req.query?.workspaceId === "string" && req.query.workspaceId.trim()) ||
+      (typeof req.query?.workspace_id === "string" && req.query.workspace_id.trim()) ||
+      null;
+
     const data = await getRolePermissionsService({
       actorUserId: userId,
       role,
-      workspaceId: req.activeWorkspaceId || null,
+      workspaceId,
     });
     res.json(data);
   } catch (err) {

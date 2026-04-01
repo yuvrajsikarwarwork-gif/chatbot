@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { X, Clock, Rocket } from "lucide-react";
 
 import { botService } from "../../services/botService";
@@ -19,6 +19,7 @@ export default function BotCreationModal({
 }: BotCreationModalProps) {
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const activeProject = useAuthStore((state) => state.activeProject);
+  const setActiveProject = useAuthStore((state) => state.setActiveProject);
   const [formData, setFormData] = useState({
     bot_name: "",
     trigger_keywords: "",
@@ -64,12 +65,25 @@ export default function BotCreationModal({
     }
     setLoading(true);
     try {
+      const targetProjectId = formData.project_id || activeProject?.id || "";
       await botService.createBot({
         name: formData.bot_name,
         trigger_keywords: formData.trigger_keywords,
         workspaceId: activeWorkspace?.workspace_id || null,
-        projectId: formData.project_id || activeProject?.id || null,
+        projectId: targetProjectId || null,
       });
+      if (targetProjectId && targetProjectId !== activeProject?.id) {
+        const selected = projects.find((project) => project.id === targetProjectId);
+        if (selected) {
+          setActiveProject({
+            id: selected.id,
+            workspace_id: selected.workspace_id,
+            name: selected.name,
+            status: selected.status,
+            is_default: selected.is_default,
+          });
+        }
+      }
       onSuccess();
       onClose();
     } catch (err) {
@@ -82,17 +96,17 @@ export default function BotCreationModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border bg-card p-6">
+      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-border-main bg-surface shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border-main bg-surface p-6">
           <div>
-            <h2 className="text-lg font-black uppercase tracking-tight text-foreground">
+            <h2 className="text-lg font-black uppercase tracking-tight text-text-main">
               Provision Agent
             </h2>
-            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-muted">
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-text-muted">
               Reusable Bot Logic
             </p>
           </div>
-          <button onClick={onClose} className="text-muted transition hover:text-foreground">
+          <button onClick={onClose} className="text-text-muted transition hover:text-text-main">
             <X size={20} />
           </button>
         </div>
@@ -100,12 +114,12 @@ export default function BotCreationModal({
         <form onSubmit={handleSubmit} className="space-y-5 p-8">
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-muted">
+              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                 Agent Name
               </label>
               <input
                 required
-                className="w-full rounded-xl border border-border bg-background p-3 text-sm font-bold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                className="w-full rounded-xl border border-border-main bg-canvas p-3 text-sm font-bold text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 value={formData.bot_name}
                 onChange={(e) =>
                   setFormData({ ...formData, bot_name: e.target.value })
@@ -114,13 +128,13 @@ export default function BotCreationModal({
             </div>
 
             <div>
-              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-muted">
+              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                 Trigger Keywords (Comma Separated)
               </label>
               <input
                 required
                 placeholder="e.g., support, help, sales"
-                className="w-full rounded-xl border border-border bg-background p-3 text-sm font-bold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                className="w-full rounded-xl border border-border-main bg-canvas p-3 text-sm font-bold text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 value={formData.trigger_keywords}
                 onChange={(e) =>
                   setFormData({ ...formData, trigger_keywords: e.target.value })
@@ -128,15 +142,15 @@ export default function BotCreationModal({
               />
             </div>
 
-            <div className="rounded-2xl border border-border bg-background p-4">
-              <div className="text-[10px] font-black uppercase tracking-widest text-muted">
+            <div className="rounded-2xl border border-border-main bg-canvas p-4">
+              <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">
                 Workspace Context
               </div>
-              <div className="mt-2 text-sm font-semibold text-foreground">
+              <div className="mt-2 text-sm font-semibold text-text-main">
                 {activeWorkspace?.workspace_name || activeWorkspace?.workspace_id || "Personal"}
               </div>
               <div className="mt-3">
-                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-muted">
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                   Project
                 </label>
                 <select
@@ -145,7 +159,7 @@ export default function BotCreationModal({
                     setFormData({ ...formData, project_id: e.target.value })
                   }
                   disabled={!activeWorkspace?.workspace_id || loadingProjects}
-                  className="w-full rounded-xl border border-border bg-background p-3 text-sm font-bold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-xl border border-border-main bg-canvas p-3 text-sm font-bold text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="">
                     {loadingProjects
@@ -163,7 +177,7 @@ export default function BotCreationModal({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-primary/20 bg-primary-fade p-4 text-[10px] font-medium text-foreground">
+            <div className="rounded-2xl border border-primary/20 bg-primary-fade p-4 text-[10px] font-medium text-text-main">
               Platform credentials are no longer stored on the bot. Create a campaign
               channel to connect this bot to WhatsApp, website, Instagram, Facebook,
               API, or Telegram.
@@ -174,7 +188,7 @@ export default function BotCreationModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-xl border border-border bg-transparent px-4 py-3 text-xs font-black text-foreground transition-all hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+              className="flex-1 rounded-xl border border-border-main bg-transparent px-4 py-3 text-xs font-black text-text-main transition-all hover:bg-primary-fade hover:text-primary hover:border-primary/30"
             >
               CANCEL
             </button>
@@ -192,3 +206,4 @@ export default function BotCreationModal({
     </div>
   );
 }
+

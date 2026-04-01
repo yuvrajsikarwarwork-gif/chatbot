@@ -27,7 +27,7 @@ export default function CampaignAudiencePage() {
   const setActiveProject = useAuthStore((state) => state.setActiveProject);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const getProjectRole = useAuthStore((state) => state.getProjectRole);
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
   const [campaign, setCampaign] = useState<any>(null);
   const [bots, setBots] = useState<any[]>([]);
   const [listForm, setListForm] = useState(EMPTY_LIST_FORM);
@@ -45,8 +45,8 @@ export default function CampaignAudiencePage() {
   const canDeleteCampaign = hasWorkspacePermission(selectedWorkspaceId, "delete_campaign");
   const projectRole = getProjectRole(selectedProjectId);
   const canEditProjectCampaign =
-    canEditCampaign || projectRole === "project_admin" || projectRole === "editor";
-  const canDeleteProjectCampaign = canDeleteCampaign || projectRole === "project_admin";
+    !isReadOnly && (canEditCampaign || projectRole === "project_admin" || projectRole === "editor");
+  const canDeleteProjectCampaign = !isReadOnly && (canDeleteCampaign || projectRole === "project_admin");
 
   const tabs = useMemo(
     () => [
@@ -54,6 +54,7 @@ export default function CampaignAudiencePage() {
       { label: "Channels", href: `/campaigns/${campaignId}/channels` },
       { label: "Entries", href: `/campaigns/${campaignId}/entries` },
       { label: "Audience", href: `/campaigns/${campaignId}/audience` },
+      { label: "Automation", href: `/campaigns/${campaignId}/automation` },
       { label: "Launch", href: `/campaigns/${campaignId}/launch` },
       { label: "Activity", href: `/campaigns/${campaignId}/activity` },
     ],
@@ -185,6 +186,27 @@ export default function CampaignAudiencePage() {
           {error ? <section className="rounded-[1.5rem] border border-rose-300/40 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</section> : null}
           {success ? <section className="rounded-[1.5rem] border border-emerald-300/35 bg-emerald-500/10 p-4 text-sm text-emerald-200">{success}</section> : null}
 
+          <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                  Saved segments
+                </div>
+                <div className="mt-1 text-sm text-text-muted">
+                  Reusable audience slices and suppression lists are stored as first-class campaign lists.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="rounded-full border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
+                  Segments: {(campaign?.lists || []).filter((list: any) => String(list.source_type || "").toLowerCase() === "segment").length}
+                </div>
+                <div className="rounded-full border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
+                  Suppressions: {(campaign?.lists || []).filter((list: any) => String(list.source_type || "").toLowerCase() === "suppression").length}
+                </div>
+              </div>
+            </div>
+          </section>
+
           <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
             <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
               <div className="space-y-4">
@@ -207,6 +229,7 @@ export default function CampaignAudiencePage() {
                   <option value="campaign">campaign</option>
                   <option value="import">import</option>
                   <option value="segment">segment</option>
+                  <option value="suppression">suppression</option>
                   <option value="entry_point">entry_point</option>
                 </select>
                 <div className="flex gap-3">

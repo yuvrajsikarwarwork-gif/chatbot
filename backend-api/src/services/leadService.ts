@@ -3,6 +3,7 @@ import {
   findLeadById,
   findLeadListSummariesByUser,
   findLeadsByUser,
+  updateLeadStatus,
 } from "../models/leadModel";
 import {
   assertProjectContextAccess,
@@ -133,6 +134,57 @@ export async function deleteLeadService(id: string, userId: string) {
     oldData: lead as unknown as Record<string, unknown>,
   });
   await deleteLead(id, userId);
+}
+
+export async function updateLeadStatusService(
+  id: string,
+  userId: string,
+  status: string
+) {
+  const lead = await findLeadById(id, userId);
+  if (!lead) {
+    throw { status: 404, message: "Lead not found" };
+  }
+
+  if (lead.workspace_id) {
+    await assertWorkspacePermission(
+      userId,
+      String(lead.workspace_id),
+      WORKSPACE_PERMISSIONS.viewLeads
+    );
+  }
+
+  if (lead.resolved_project_id && lead.workspace_id) {
+    await assertProjectContextAccess(
+      userId,
+      String(lead.resolved_project_id),
+      String(lead.workspace_id)
+    );
+  }
+
+  const normalized = String(status || "").trim().toLowerCase();
+  const allowed = new Set(["new", "captured", "qualified", "engaged"]);
+  if (!allowed.has(normalized)) {
+    throw { status: 400, message: "Invalid lead status" };
+  }
+
+  const updated = await updateLeadStatus(id, userId, normalized);
+  if (!updated) {
+    throw { status: 404, message: "Lead not found" };
+  }
+
+  await logAuditSafe({
+    userId,
+    workspaceId: lead.workspace_id,
+    projectId: lead.project_id,
+    action: "update",
+    entity: "lead",
+    entityId: id,
+    oldData: lead as unknown as Record<string, unknown>,
+    newData: updated as unknown as Record<string, unknown>,
+  });
+
+  return updated;
 }
 
 export async function listLeadListsService(

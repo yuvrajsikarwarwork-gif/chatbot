@@ -1,8 +1,6 @@
 import type { AppProps } from 'next/app';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import SupportModeBanner from '../components/layout/SupportModeBanner';
-import UiOverlay from '../components/ui/UiOverlay';
 import { permissionService } from '../services/permissionService';
 import { sessionService } from '../services/sessionService';
 import { useAuthStore } from '../store/authStore';
@@ -17,22 +15,87 @@ export default function App({ Component, pageProps }: AppProps) {
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const activeProject = useAuthStore((state) => state.activeProject);
   const resolvedAccess = useAuthStore((state) => state.resolvedAccess);
+  const isPlatformOperator =
+    user?.role === "super_admin" || user?.role === "developer";
   const supportModeActive =
-    Boolean(resolvedAccess?.support_access) ||
-    Boolean(activeWorkspace?.permissions_json?.support_mode);
-  const supportModeBlockedRoutes = [
+    Boolean(resolvedAccess?.support_access) || Boolean(activeWorkspace?.permissions_json?.support_mode);
+  const publicNoAuthPages = [
+    "/pricing/custom",
+  ];
+  const workspaceZoneSpecialRoutes = [
+    "/users-access/overrides",
+    "/workspaces/[workspaceId]/members-access",
+    "/workspaces/[workspaceId]/members-access/overrides",
+  ];
+  const platformShellRoutes = [
     "/workspaces",
+    "/permissions",
     "/plans",
     "/logs",
+    "/tickets",
+    "/support/tickets",
     "/system-settings",
-    "/permissions",
+    "/users-access",
+    "/platform-accounts",
   ];
+  const nativeSuperAdminAllowedWorkspaceRoutes = [
+    /^\/workspaces$/,
+    /^\/workspaces\/[^/]+$/,
+    /^\/workspaces\/[^/]+\/billing$/,
+  ];
+  const isNativeSuperAdminAllowedWorkspaceRoute = nativeSuperAdminAllowedWorkspaceRoutes.some((pattern) =>
+    pattern.test(router.pathname)
+  );
+  const workspaceZoneExactRoutes = [
+    "/agents",
+    "/analytics",
+    "/audit",
+    "/billing",
+    "/bots",
+    "/campaign-create",
+    "/campaign-detail",
+    "/campaigns",
+    "/conversations",
+    "/dashboard",
+    "/flow-builder",
+    "/flows",
+    "/lead-forms",
+    "/leads",
+    "/queue",
+    "/segments",
+    "/settings",
+    "/templates",
+    "/users",
+    "/support",
+    "/support/new",
+    "/support/access",
+    ...workspaceZoneSpecialRoutes,
+  ];
+  const isWorkspaceZoneRoute =
+    workspaceZoneExactRoutes.some((route) => router.pathname === route) ||
+    (/^\/workspaces\/\[[^/]+\]\/(?!billing$|members-access$|overrides$|support-access$).+/.test(router.pathname));
+  const isPlatformRoute = platformShellRoutes.some((route) =>
+    route === "/workspaces"
+      ? router.pathname === route
+      : router.pathname === route || router.pathname.startsWith(`${route}/`)
+  ) && !isWorkspaceZoneRoute;
+  const isPlatformShellOnlyRoute = isPlatformRoute || isNativeSuperAdminAllowedWorkspaceRoute;
+  const authRedirectPages = [
+    '/login',
+    '/logout',
+    '/register',
+    '/accept-invite',
+    '/invite/[token]',
+    '/forgot-password',
+    '/reset-password',
+  ];
+  const getLayout = (Component as any).getLayout ?? ((page: any) => page);
 
   const getHomeRoute = () => {
     const currentUser = useAuthStore.getState().user;
     return currentUser?.role === "super_admin" || currentUser?.role === "developer"
       ? "/workspaces"
-      : "/";
+      : "/projects";
   };
 
   useEffect(() => {
@@ -40,8 +103,46 @@ export default function App({ Component, pageProps }: AppProps) {
       return;
     }
 
+    if (!isPlatformOperator) {
+      return;
+    }
+
+    if (supportModeActive) {
+      if (isPlatformRoute) {
+        const targetWorkspaceId = activeWorkspace?.workspace_id || null;
+        const targetRoute = targetWorkspaceId ? `/workspaces/${targetWorkspaceId}` : "/workspaces";
+        if (router.pathname !== targetRoute) {
+          router.replace(targetRoute).catch(() => undefined);
+        }
+      }
+      return;
+    }
+
+    if (isPlatformRoute || isNativeSuperAdminAllowedWorkspaceRoute) {
+      return;
+    }
+
+    if (isWorkspaceZoneRoute) {
+      router.replace("/workspaces").catch(() => undefined);
+    }
+  }, [
+    hasHydrated,
+    isNativeSuperAdminAllowedWorkspaceRoute,
+    isPlatformRoute,
+    isWorkspaceZoneRoute,
+    router,
+    supportModeActive,
+    user?.role,
+    activeWorkspace?.workspace_id,
+  ]);
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
     const token = sessionService.getToken();
-    const publicPages = ['/login', '/logout', '/register', '/accept-invite', '/forgot-password', '/reset-password'];
+    const publicPages = [...authRedirectPages, ...publicNoAuthPages];
     
     // Redirect if trying to access dashboard without token
     if (!token && !publicPages.includes(router.pathname)) {
@@ -50,7 +151,7 @@ export default function App({ Component, pageProps }: AppProps) {
     }
     
     // Redirect if logged in and trying to access login page
-    if (token && publicPages.includes(router.pathname) && router.pathname !== "/logout") {
+    if (token && authRedirectPages.includes(router.pathname) && router.pathname !== "/logout") {
       router.push(getHomeRoute());
     }
   }, [hasHydrated, router, router.pathname]);
@@ -87,28 +188,17 @@ export default function App({ Component, pageProps }: AppProps) {
   ]);
 
   useEffect(() => {
-    if (!hasHydrated || !supportModeActive) {
-      return;
-    }
-
-    if (!supportModeBlockedRoutes.includes(router.pathname)) {
-      return;
-    }
-
-    const fallbackRoute = activeWorkspace?.workspace_id
-      ? `/workspaces/${activeWorkspace.workspace_id}`
-      : "/";
-    router.replace(fallbackRoute).catch(() => undefined);
-  }, [activeWorkspace?.workspace_id, hasHydrated, router, router.pathname, supportModeActive]);
-
-  useEffect(() => {
     if (!hasHydrated) {
       return;
     }
 
     const token = sessionService.getToken();
-    const publicPages = ['/login', '/logout', '/register', '/accept-invite', '/forgot-password', '/reset-password'];
+    const publicPages = [...authRedirectPages, ...publicNoAuthPages];
     if (!token || publicPages.includes(router.pathname)) {
+      return;
+    }
+
+    if (isPlatformOperator && !supportModeActive && isPlatformShellOnlyRoute) {
       return;
     }
 
@@ -160,28 +250,19 @@ export default function App({ Component, pageProps }: AppProps) {
     activeWorkspace?.workspace_id,
     hasHydrated,
     memberships,
+    isPlatformRoute,
     resolvedAccess,
     router,
     router.pathname,
     setPermissionSnapshot,
+    supportModeActive,
     user,
+    isPlatformOperator,
   ]);
 
   if (!hasHydrated) {
     return null;
   }
 
-  return (
-    <>
-      <SupportModeBanner />
-      <div
-        className={`bg-background text-foreground transition-colors duration-300 ${
-          supportModeActive ? "pt-16" : ""
-        }`}
-      >
-        <Component {...pageProps} />
-      </div>
-      <UiOverlay />
-    </>
-  );
+  return getLayout(<Component {...pageProps} />);
 }

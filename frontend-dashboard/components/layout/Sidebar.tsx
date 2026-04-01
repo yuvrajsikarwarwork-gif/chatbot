@@ -1,6 +1,29 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { ComponentType, useEffect, useRef } from "react";
+import {
+  BarChart3,
+  Bot,
+  BriefcaseBusiness,
+  ClipboardList,
+  FileText,
+  FolderKanban,
+  History,
+  KeyRound,
+  Landmark,
+  LayoutDashboard,
+  LifeBuoy,
+  MessagesSquare,
+  Megaphone,
+  PlugZap,
+  ReceiptText,
+  ScrollText,
+  Search,
+  Settings2,
+  SlidersHorizontal,
+  UserCircle2,
+  Workflow,
+} from "lucide-react";
 import type { AppSection } from "../../hooks/useVisibility";
 import { useVisibility } from "../../hooks/useVisibility";
 import { useAuthStore } from "../../store/authStore";
@@ -8,82 +31,27 @@ import { useAuthStore } from "../../store/authStore";
 const SIDEBAR_SCROLL_KEY = "dashboard-sidebar-scroll-top";
 
 const Icons = {
-  Dashboard: () => <div className="h-4 w-4 rounded-sm border border-current" />,
-  Bots: () => <div className="h-4 w-4 rounded-full border border-current" />,
-  Flow: () => (
-    <div className="flex h-4 w-4 items-end gap-[3px]">
-      <div className="h-4 w-[3px] rounded-full bg-current" />
-      <div className="h-2 w-[3px] rounded-full bg-current" />
-      <div className="h-3 w-[3px] rounded-full bg-current" />
-    </div>
-  ),
-  Leads: () => <div className="h-4 w-4 rounded-md border border-current" />,
-  Campaigns: () => (
-    <div className="relative h-4 w-4 rounded-full border border-current">
-      <div className="absolute inset-x-[2px] top-1/2 h-px -translate-y-1/2 bg-current" />
-    </div>
-  ),
-  Templates: () => (
-    <div className="relative h-4 w-4 rounded-md border border-current">
-      <div className="absolute left-1 top-1 h-[2px] w-2 bg-current" />
-      <div className="absolute left-1 top-2 h-[2px] w-2 bg-current" />
-      <div className="absolute left-1 top-3 h-[2px] w-1.5 bg-current" />
-    </div>
-  ),
-  Projects: () => (
-    <div className="grid h-4 w-4 grid-cols-2 gap-[2px]">
-      <div className="rounded-sm border border-current" />
-      <div className="rounded-sm border border-current" />
-      <div className="rounded-sm border border-current" />
-      <div className="rounded-sm border border-current" />
-    </div>
-  ),
-  Platforms: () => (
-    <div className="relative h-4 w-4 rounded-md border border-current">
-      <div className="absolute inset-[3px] rounded-sm border border-current" />
-    </div>
-  ),
-  Chat: () => (
-    <div className="relative h-3.5 w-4 rounded-md border border-current">
-      <div className="absolute -bottom-1 left-1 h-1.5 w-1.5 rotate-45 border-b border-r border-current bg-transparent" />
-    </div>
-  ),
-  Workspaces: () => (
-    <div className="relative h-4 w-4 rounded-sm border border-current">
-      <div className="absolute inset-x-0 bottom-0 h-[3px] bg-current" />
-    </div>
-  ),
-  Settings: () => <div className="h-4 w-4 rounded-full border border-dashed border-current" />,
-  Users: () => (
-    <div className="flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px] font-bold">
-      U
-    </div>
-  ),
-  Audit: () => (
-    <div className="relative h-4 w-4 rounded-md border border-current">
-      <div className="absolute left-1 top-1 h-2 w-2 rounded-sm border border-current" />
-    </div>
-  ),
-  Permissions: () => (
-    <div className="relative h-4 w-4 rounded-md border border-current">
-      <div className="absolute inset-x-1 top-1 h-[2px] bg-current" />
-      <div className="absolute left-1 top-2.5 h-[2px] w-2 bg-current" />
-      <div className="absolute left-1 top-4 h-[2px] w-1.5 bg-current" />
-    </div>
-  ),
-  Analytics: () => (
-    <div className="relative h-4 w-4 rounded-md border border-current">
-      <div className="absolute bottom-1 left-1 h-1.5 w-[2px] bg-current" />
-      <div className="absolute bottom-1 left-2.5 h-2.5 w-[2px] bg-current" />
-      <div className="absolute bottom-1 left-4 h-3 w-[2px] bg-current" />
-    </div>
-  ),
-  Tickets: () => (
-    <div className="relative h-4 w-4 rounded-md border border-current">
-      <div className="absolute inset-x-1 top-1.5 h-[2px] bg-current" />
-      <div className="absolute inset-x-1 top-3 h-[2px] bg-current" />
-    </div>
-  ),
+  Dashboard: LayoutDashboard,
+  Projects: FolderKanban,
+  Campaigns: Megaphone,
+  Templates: ScrollText,
+  Bots: Bot,
+  Flow: Workflow,
+  Platforms: PlugZap,
+  Chat: MessagesSquare,
+  Workspaces: BriefcaseBusiness,
+  Settings: Settings2,
+  Users: UserCircle2,
+  Audit: History,
+  Permissions: KeyRound,
+  Analytics: BarChart3,
+  Tickets: ClipboardList,
+  Leads: Search,
+  LeadForms: FileText,
+  Support: LifeBuoy,
+  Billing: Landmark,
+  Plans: ReceiptText,
+  SystemSettings: SlidersHorizontal,
 };
 
 type MenuItem = {
@@ -106,27 +74,15 @@ function SidebarLink({
   return (
     <Link
       href={path}
-      className={`group relative my-1 flex items-center gap-3 overflow-hidden rounded-2xl border px-3 py-2.5 transition duration-300 ${
+      scroll={false}
+      className={`group my-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
         isActive
-          ? "border-primary/20 bg-primary-fade text-primary"
-          : "border-transparent text-muted hover:bg-background hover:text-foreground"
+          ? "border border-primary/20 bg-primary-fade font-medium text-primary"
+          : "text-text-sidebar-muted hover:bg-surface/5 hover:text-text-sidebar"
       }`}
     >
-      <span
-        className={`absolute inset-y-2 left-0 w-1 rounded-full bg-primary transition ${
-          isActive ? "opacity-100" : "opacity-0 group-hover:opacity-70"
-        }`}
-      />
-      <span
-        className={`relative flex h-9 w-9 items-center justify-center rounded-xl border transition ${
-          isActive
-            ? "border-primary/20 bg-primary-fade"
-            : "border-transparent bg-transparent group-hover:border-border group-hover:bg-card"
-        }`}
-      >
-        <Icon />
-      </span>
-      <span className="truncate text-sm font-medium">{label}</span>
+      <Icon />
+      <span className="truncate">{label}</span>
     </Link>
   );
 }
@@ -138,7 +94,9 @@ export default function Sidebar() {
     isPlatformOperator,
     workspaceRole,
     isWorkspaceAdmin,
+    canViewBilling,
     activeProjectRole,
+    supportAccess,
   } = useVisibility();
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const navRef = useRef<HTMLElement | null>(null);
@@ -159,25 +117,24 @@ export default function Sidebar() {
     { label: "Templates", path: "/templates", Icon: Icons.Templates, section: "templates", visible: !isAgent },
     { label: "Bots", path: "/bots", Icon: Icons.Bots, section: "bots", visible: !isAgent },
     { label: "Flows", path: "/flows", Icon: Icons.Flow, section: "flows", visible: !isAgent },
-    { label: "Integrations", path: "/integrations", Icon: Icons.Platforms, section: "integrations", visible: !isAgent },
     { label: "Inbox", path: "/inbox", Icon: Icons.Chat, section: "inbox", visible: true },
     { label: "Leads", path: "/leads", Icon: Icons.Leads, section: "leads", visible: true },
-    { label: "Lead Forms", path: "/lead-forms", Icon: Icons.Leads, section: "leads", visible: canOpenLeadForms && !isAgent },
+    { label: "Lead Forms", path: "/lead-forms", Icon: Icons.LeadForms, section: "leads", visible: canOpenLeadForms && !isAgent },
     { label: "Analytics", path: "/analytics", Icon: Icons.Analytics, section: "analytics", visible: !isAgent },
     { label: "Users & Permissions", path: "/users-access", Icon: Icons.Permissions, section: "users_access", visible: isWorkspaceAdmin },
     { label: "Workspace Settings", path: "/settings", Icon: Icons.Settings, section: "settings", visible: isWorkspaceAdmin },
     { label: "My Profile", path: "/settings", Icon: Icons.Users, section: "dashboard", visible: !isWorkspaceAdmin },
     { label: "Support", path: "/support", Icon: Icons.Tickets, section: "support", visible: isWorkspaceAdmin },
     { label: "Audit", path: "/audit", Icon: Icons.Audit, section: "audit", visible: isWorkspaceAdmin },
-    { label: "Billing", path: workspaceBillingPath, Icon: Icons.Workspaces, section: "billing", visible: false },
+    { label: "Billing", path: workspaceBillingPath, Icon: Icons.Billing, section: "billing", visible: isPlatformOperator || canViewBilling || isWorkspaceAdmin },
   ] as MenuItem[];
   const platformMenu = [
     { label: "Workspaces", path: "/workspaces", Icon: Icons.Workspaces, section: "workspaces" },
     { label: "Permissions", path: "/users-access/roles", Icon: Icons.Permissions, section: "permissions" },
     { label: "Tickets", path: "/support/tickets", Icon: Icons.Tickets, section: "tickets" },
-    { label: "Plans", path: "/plans", Icon: Icons.Workspaces, section: "plans" },
+    { label: "Plans", path: "/plans", Icon: Icons.Plans, section: "plans" },
     { label: "Logs", path: "/logs", Icon: Icons.Audit, section: "logs" },
-    { label: "System Settings", path: "/system-settings", Icon: Icons.Settings, section: "system_settings" },
+    { label: "System Settings", path: "/system-settings", Icon: Icons.SystemSettings, section: "system_settings" },
   ] as MenuItem[];
   const menu = (isPlatformOperator ? platformMenu : workspaceMenu).filter(
     (item) => item.visible !== false && canSeeNav(item.section)
@@ -210,24 +167,29 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="m-3 flex h-[calc(100vh-1.5rem)] w-[16rem] flex-col rounded-[2rem] border-r border border-border bg-card text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.08)] transition-colors duration-300">
-      <div className="border-b border-border px-5 py-5">
+    <aside className="flex h-full w-64 flex-col bg-sidebar border-r border-border-sidebar">
+      <div className="border-b border-border-sidebar px-5 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary-fade text-sm font-bold text-primary">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border-sidebar bg-surface/5 text-sm font-bold text-text-sidebar">
             B
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.26em] text-muted">
+            <div className="text-xs font-semibold uppercase tracking-widest text-text-sidebar-muted">
               Bot Platform
             </div>
-            <div className="truncate text-base font-semibold text-foreground">BOT.OS</div>
+            <div className="truncate text-base font-semibold text-text-sidebar">BOT.OS</div>
           </div>
         </div>
       </div>
 
       <nav ref={navRef} className="flex-1 overflow-y-auto px-3 py-4">
-        <div className="px-3 pb-3 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted">
-          {isPlatformOperator ? "Platform Admin" : "Workspace"}
+        <div className="flex items-center justify-between gap-3 px-3 pb-3 text-xs font-bold uppercase text-text-sidebar-muted">
+          <span>{isPlatformOperator ? "Platform Admin" : "Workspace"}</span>
+          {isPlatformOperator && supportAccess ? (
+            <span className="rounded-full border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.12)] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+              Support mode active
+            </span>
+          ) : null}
         </div>
 
         {menu.map((item) => {
@@ -242,8 +204,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-border px-4 py-4">
-        <div className="rounded-2xl border border-border bg-background px-4 py-3 text-[11px] font-medium text-muted">
+      <div className="border-t border-border-sidebar px-4 py-4">
+        <div className="rounded-lg border border-border-sidebar bg-surface/5 px-4 py-3 text-xs font-medium text-white/90">
           {isPlatformOperator
             ? "Platform operator tools stay isolated from workspace data."
             : "Navigation is tailored to your access."}
@@ -252,3 +214,4 @@ export default function Sidebar() {
     </aside>
   );
 }
+

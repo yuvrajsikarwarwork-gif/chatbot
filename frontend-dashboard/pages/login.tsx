@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import Link from "next/link";
 import { authService } from "../services/authService";
 import { useAuthStore } from "../store/authStore";
@@ -20,7 +20,7 @@ export default function LoginPage() {
       setIsSubmitting(true);
       setError("");
 
-      const data = await authService.login(email, password);
+      const data = await authService.login(email.trim().toLowerCase(), password);
 
       localStorage.removeItem("activeBotId");
       setSelectedBotId(null);
@@ -35,7 +35,12 @@ export default function LoginPage() {
 
       const isPlatformOperator =
         data.user?.role === "super_admin" || data.user?.role === "developer";
-      router.push(isPlatformOperator ? "/workspaces" : "/");
+      const nextRoute = isPlatformOperator
+        ? "/workspaces"
+        : data.activeWorkspace?.workspace_id
+          ? "/projects"
+          : "/";
+      router.push(nextRoute);
     } catch (err: any) {
       setError(err?.response?.data?.error || err?.response?.data?.message || "Login failed");
     } finally {
@@ -44,15 +49,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground transition-colors duration-300">
-      <div className="w-full max-w-sm rounded-[2rem] border border-border bg-card p-8 shadow-xl transition-colors duration-300">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 text-text-main transition-colors duration-300">
+      <div className="w-full max-w-sm rounded-[2rem] border border-border-main bg-surface p-8 shadow-xl transition-colors duration-300">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-text-muted">
           Bot.OS
         </div>
-        <h1 className="mt-3 text-3xl font-black tracking-[-0.04em] text-foreground">
+        <h1 className="mt-3 text-3xl font-black tracking-[-0.04em] text-text-main">
           Sign in
         </h1>
-        <p className="mt-2 text-sm leading-6 text-muted">
+        <p className="mt-2 text-sm leading-6 text-text-muted">
           Access your workspace or platform control view with the Midnight Onyx shell.
         </p>
 
@@ -63,13 +68,13 @@ export default function LoginPage() {
         ) : null}
 
         <input
-          className="mt-5 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+          className="mt-5 w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
           placeholder="email"
           onChange={(e) => setEmail(e.target.value)}
         />
 
         <input
-          className="mt-3 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+          className="mt-3 w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
           placeholder="password"
           type="password"
           onChange={(e) => setPassword(e.target.value)}
@@ -84,7 +89,7 @@ export default function LoginPage() {
         </button>
 
         <div className="mt-3 text-center">
-          <Link href="/forgot-password" className="text-sm text-muted underline">
+          <Link href="/forgot-password" className="text-sm text-text-muted underline">
             Forgot password?
           </Link>
         </div>
@@ -92,3 +97,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

@@ -9,7 +9,7 @@ import { useAuthStore } from "../../store/authStore";
 export default function SupportAccessPage() {
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const user = useAuthStore((state) => state.user);
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
   const [requests, setRequests] = useState<SupportRequest[]>([]);
   const [accessRows, setAccessRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -18,6 +18,7 @@ export default function SupportAccessPage() {
   const canViewSupportPage = canViewPage("support");
   const activeWorkspaceId = activeWorkspace?.workspace_id || "";
   const isPlatformOperator = ["super_admin", "developer"].includes(String(user?.role || ""));
+  const canMutateSupportAccess = isPlatformOperator && !isReadOnly;
 
   const load = async () => {
     if (!activeWorkspaceId || !canViewSupportPage) {
@@ -65,15 +66,15 @@ export default function SupportAccessPage() {
         />
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <section className="rounded-[1.9rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="max-w-3xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 Support Access
               </div>
-              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+              <h1 className="mt-3 text-[1.7rem] font-black tracking-[-0.03em] text-text-main">
                 Temporary support approvals and grants
               </h1>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+              <p className="mt-2 text-sm leading-6 text-text-muted">
                 Review pending support requests, approve or deny them when allowed, and confirm which temporary support grants are still active.
               </p>
             </div>
@@ -93,46 +94,46 @@ export default function SupportAccessPage() {
             ].map((card) => (
               <div
                 key={card.label}
-                className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface)] px-4 py-4 shadow-sm"
+                className="rounded-[1.3rem] border border-border-main bg-canvas px-4 py-4 shadow-sm"
               >
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                   {card.label}
                 </div>
-                <div className="mt-3 text-2xl font-semibold text-[var(--text)]">{card.value}</div>
+                <div className="mt-3 text-2xl font-semibold text-text-main">{card.value}</div>
               </div>
             ))}
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            <section className="rounded-[1.65rem] border border-border-main bg-surface p-6 shadow-sm">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Pending and recent requests
               </div>
               <div className="mt-4 space-y-3">
                 {loading ? (
-                  <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                     Loading requests...
                   </div>
                 ) : requests.length ? (
                   requests.map((request) => (
                     <div
                       key={request.id}
-                      className="rounded-[1.1rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4"
+                      className="rounded-[1.2rem] border border-border-main bg-canvas p-4 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-primary/30"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <div className="text-sm font-semibold text-[var(--text)]">
+                          <div className="text-sm font-semibold text-text-main">
                             {request.requested_by_name || request.requested_by_email || request.requested_by}
                           </div>
-                          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-text-muted">
                             {request.status}
                             {request.target_user_id
                               ? ` · target ${request.target_user_name || request.target_user_email || request.target_user_id}`
                               : ""}
                           </div>
-                          <div className="mt-3 text-sm text-[var(--text)]">{request.reason}</div>
+                          <div className="mt-3 text-sm text-text-main">{request.reason}</div>
                         </div>
-                        <div className="text-xs text-[var(--muted)]">
+                        <div className="text-xs text-text-muted">
                           {request.created_at ? new Date(request.created_at).toLocaleString() : "Unknown"}
                         </div>
                       </div>
@@ -141,20 +142,28 @@ export default function SupportAccessPage() {
                           <button
                             type="button"
                             onClick={async () => {
+                              if (!canMutateSupportAccess) {
+                                return;
+                              }
                               await workspaceService.approveSupportRequest(activeWorkspaceId, request.id);
                               await load();
                             }}
-                            className="rounded-xl bg-slate-900 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white"
+                            disabled={!canMutateSupportAccess}
+                            className="rounded-xl bg-primary px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white"
                           >
                             Approve
                           </button>
                           <button
                             type="button"
                             onClick={async () => {
+                              if (!canMutateSupportAccess) {
+                                return;
+                              }
                               await workspaceService.denySupportRequest(activeWorkspaceId, request.id);
                               await load();
                             }}
-                            className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700"
+                            disabled={!canMutateSupportAccess}
+                            className="rounded-xl border border-rose-200 bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700"
                           >
                             Deny
                           </button>
@@ -163,15 +172,15 @@ export default function SupportAccessPage() {
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                     No support requests recorded for the active workspace.
                   </div>
                 )}
               </div>
             </section>
 
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            <section className="rounded-[1.65rem] border border-border-main bg-surface p-6 shadow-sm">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Active support grants
               </div>
               <div className="mt-4 space-y-3">
@@ -179,21 +188,21 @@ export default function SupportAccessPage() {
                   accessRows.map((row) => (
                     <div
                       key={`${row.workspace_id}-${row.user_id}`}
-                      className="rounded-[1.1rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4"
+                      className="rounded-[1.2rem] border border-border-main bg-canvas p-4 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-primary/30"
                     >
-                      <div className="text-sm font-semibold text-[var(--text)]">
+                      <div className="text-sm font-semibold text-text-main">
                         {row.user_name || row.user_email || row.user_id}
                       </div>
-                      <div className="mt-1 text-xs text-[var(--muted)]">
+                      <div className="mt-1 text-xs text-text-muted">
                         Granted by {row.granted_by_name || row.granted_by_email || row.granted_by || "unknown"}
                       </div>
-                      <div className="mt-2 text-xs text-[var(--muted)]">
+                      <div className="mt-2 text-xs text-text-muted">
                         Expires {row.expires_at ? new Date(row.expires_at).toLocaleString() : "n/a"}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                     No active support grants for the current workspace.
                   </div>
                 )}

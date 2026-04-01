@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Activity, Layers3, Radar, TrendingUp } from "lucide-react";
+import { type ComponentType, useEffect, useState } from "react";
+import { Activity, BarChart3, Layers3, Radar, TrendingUp } from "lucide-react";
 
 import PageAccessNotice from "../components/access/PageAccessNotice";
 import DashboardLayout from "../components/layout/DashboardLayout";
@@ -7,6 +7,80 @@ import { useVisibility } from "../hooks/useVisibility";
 import { analyticsService } from "../services/analyticsService";
 import { conversationService, type AssignmentCapacityResponse } from "../services/conversationService";
 import { useAuthStore } from "../store/authStore";
+
+type StatTone = "slate" | "emerald" | "cyan" | "amber" | "violet" | "rose";
+
+function StatCard({
+  label,
+  value,
+  helper,
+  icon: Icon,
+  tone = "slate",
+}: {
+  label: string;
+  value: number | string;
+  helper?: string;
+  icon: ComponentType<{ size?: number }>;
+  tone?: StatTone;
+}) {
+  const toneClasses: Record<StatTone, { ring: string; icon: string; value: string; glow: string }> = {
+    slate: {
+      ring: "from-slate-300/70 to-slate-400/30",
+      icon: "bg-slate-100 text-slate-700",
+      value: "text-text-main",
+      glow: "shadow-[0_0_0_1px_rgba(148,163,184,0.12)]",
+    },
+    emerald: {
+      ring: "from-emerald-400/70 to-emerald-500/30",
+      icon: "bg-emerald-50 text-emerald-600",
+      value: "text-emerald-700",
+      glow: "shadow-[0_0_0_1px_rgba(16,185,129,0.12)]",
+    },
+    cyan: {
+      ring: "from-cyan-400/70 to-sky-500/30",
+      icon: "bg-cyan-50 text-cyan-600",
+      value: "text-cyan-700",
+      glow: "shadow-[0_0_0_1px_rgba(34,211,238,0.12)]",
+    },
+    amber: {
+      ring: "from-amber-400/70 to-orange-400/30",
+      icon: "bg-amber-50 text-amber-600",
+      value: "text-amber-700",
+      glow: "shadow-[0_0_0_1px_rgba(245,158,11,0.12)]",
+    },
+    violet: {
+      ring: "from-violet-400/70 to-fuchsia-500/30",
+      icon: "bg-violet-50 text-violet-600",
+      value: "text-violet-700",
+      glow: "shadow-[0_0_0_1px_rgba(139,92,246,0.12)]",
+    },
+    rose: {
+      ring: "from-rose-400/70 to-pink-500/30",
+      icon: "bg-rose-50 text-rose-600",
+      value: "text-rose-700",
+      glow: "shadow-[0_0_0_1px_rgba(244,63,94,0.12)]",
+    },
+  };
+  const toneClass = toneClasses[tone];
+
+  return (
+    <div className={`rounded-[1.25rem] border border-border-main bg-surface p-5 shadow-sm ${toneClass.glow}`}>
+      <div className={`-mx-5 -mt-5 mb-4 h-1 rounded-t-[1.25rem] bg-gradient-to-r ${toneClass.ring}`} />
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
+          {label}
+        </div>
+        <div className={`rounded-xl p-2 ${toneClass.icon}`}>
+          <Icon size={16} />
+        </div>
+      </div>
+      <div className={`mt-4 text-2xl font-semibold tracking-tight ${toneClass.value}`}>
+        {value}
+      </div>
+      {helper ? <div className="mt-2 text-sm text-text-muted">{helper}</div> : null}
+    </div>
+  );
+}
 
 export default function AnalyticsPage() {
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
@@ -28,6 +102,7 @@ export default function AnalyticsPage() {
       setPresence([]);
       return;
     }
+
     analyticsService.getWorkspaceUsageSummary().then(setUsageSummary).catch(console.error);
 
     if (!activeWorkspace?.workspace_id) {
@@ -67,6 +142,7 @@ export default function AnalyticsPage() {
     activeCampaigns: 0,
     totalLeads: 0,
   };
+
   const usage = usageSummary?.summary || {
     totalWorkspaces: 0,
     activeWorkspaces: 0,
@@ -88,295 +164,257 @@ export default function AnalyticsPage() {
           ctaLabel="Open dashboard"
         />
       ) : (
-      <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-                Workspace Analytics
+        <div className="mx-auto max-w-7xl space-y-6 text-text-main">
+          <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                  Workspace Analytics
+                </div>
+                <h1 className="mt-2 text-[1.6rem] font-semibold tracking-tight text-text-main">
+                  Runtime telemetry for {activeWorkspace?.workspace_name || "active workspace"}
+                </h1>
+                <p className="mt-2 text-sm leading-6 text-text-muted">
+                  Usage, runtime activity, and subscription state in one clean workspace view.
+                </p>
               </div>
-              <h1 className="mt-2 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
-                Runtime telemetry for {activeWorkspace?.workspace_name || "active workspace"}
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                Usage, runtime activity, and subscription state in one clean workspace view.
-              </p>
+              <div className="rounded-2xl border border-border-main bg-canvas p-3 text-primary">
+                <Radar size={22} />
+              </div>
             </div>
-            <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-[var(--accent)]">
-              <Radar size={22} />
-            </div>
+          </section>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Visible Workspaces"
+              value={usage.totalWorkspaces}
+              helper={`${usage.activeWorkspaces} active / ${usage.lockedWorkspaces} locked`}
+              icon={Layers3}
+              tone="emerald"
+            />
+            <StatCard
+              label="Campaign Usage"
+              value={usage.totalCampaigns}
+              helper={`${usage.campaignCapacity || 0} total capacity`}
+              icon={TrendingUp}
+              tone="amber"
+            />
+            <StatCard
+              label="Account Usage"
+              value={usage.totalPlatformAccounts}
+              helper={`${usage.platformAccountCapacity || 0} total capacity`}
+              icon={Activity}
+              tone="cyan"
+            />
+            <StatCard
+              label="Active Subscriptions"
+              value={usage.subscriptionBreakdown?.active || 0}
+              helper={`${usage.subscriptionBreakdown?.overdue || 0} overdue / ${usage.subscriptionBreakdown?.locked || 0} locked`}
+              icon={Radar}
+              tone="violet"
+            />
+            <StatCard
+              label="Eligible Agents"
+              value={assignmentCapacity?.summary.eligibleCandidates || 0}
+              helper={`${assignmentCapacity?.summary.atCapacityCandidates || 0} at capacity`}
+              icon={BarChart3}
+              tone="rose"
+            />
           </div>
-        </section>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {[
-            {
-              label: "Visible Workspaces",
-              value: usage.totalWorkspaces,
-              helper: `${usage.activeWorkspaces} active / ${usage.lockedWorkspaces} locked`,
-              icon: Layers3,
-            },
-            {
-              label: "Campaign Usage",
-              value: usage.totalCampaigns,
-              helper: `${usage.campaignCapacity || 0} total capacity`,
-              icon: TrendingUp,
-            },
-            {
-              label: "Account Usage",
-              value: usage.totalPlatformAccounts,
-              helper: `${usage.platformAccountCapacity || 0} total capacity`,
-              icon: Activity,
-            },
-            {
-              label: "Active Subscriptions",
-              value: usage.subscriptionBreakdown?.active || 0,
-              helper: `${usage.subscriptionBreakdown?.overdue || 0} overdue / ${usage.subscriptionBreakdown?.locked || 0} locked`,
-              icon: Radar,
-            },
-            {
-              label: "Eligible Agents",
-              value: assignmentCapacity?.summary.eligibleCandidates || 0,
-              helper: `${assignmentCapacity?.summary.atCapacityCandidates || 0} at capacity`,
-              icon: Activity,
-            },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={item.label}
-                className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5 shadow-sm"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                    {item.label}
-                  </div>
-                  <div className="rounded-xl bg-[var(--surface-muted)] p-2 text-[var(--muted)]">
-                    <Icon size={16} />
-                  </div>
-                </div>
-                <div className="mt-4 text-2xl font-semibold tracking-tight text-[var(--text)]">
-                  {item.value}
-                </div>
-                <div className="mt-2 text-sm text-[var(--muted)]">{item.helper}</div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <StatCard label="Total Events" value={stats.totalEvents} icon={Activity} tone="cyan" />
+            <StatCard label="Leads Captured" value={stats.leadsCaptured} icon={TrendingUp} tone="emerald" />
+            <StatCard label="Conversation Forks" value={stats.conversationForks} icon={Layers3} tone="violet" />
+            <StatCard label="Entry Resolutions" value={stats.entryResolutions} icon={Radar} tone="amber" />
+            <StatCard label="Active Campaigns" value={stats.activeCampaigns} icon={Layers3} tone="rose" />
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+              <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                Live Agent Presence
               </div>
-            );
-          })}
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[
-            { label: "Total Events", value: stats.totalEvents, icon: Activity },
-            { label: "Leads Captured", value: stats.leadsCaptured, icon: TrendingUp },
-            { label: "Conversation Forks", value: stats.conversationForks, icon: Layers3 },
-            { label: "Entry Resolutions", value: stats.entryResolutions, icon: Radar },
-            { label: "Active Campaigns", value: stats.activeCampaigns, icon: Layers3 },
-            { label: "Total Leads", value: stats.totalLeads, icon: TrendingUp },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={item.label}
-                className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5 shadow-sm"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
-                    {item.label}
+              <div className="space-y-3">
+                {presence.map((agent) => (
+                  <div
+                    key={agent.user_id}
+                    className="flex items-center justify-between rounded-xl border border-border-main bg-gradient-to-r from-canvas to-emerald-50/40 px-4 py-3"
+                  >
+                    <div>
+                      <div className="font-medium text-text-main">
+                        {agent.name || agent.email || agent.user_id}
+                      </div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.16em] text-text-muted">
+                        {String(agent.session_status || "offline")} • {agent.active_chats || 0} active chats
+                      </div>
+                      {agent.last_action ? (
+                        <div className="mt-1 text-xs text-text-muted">{agent.last_action}</div>
+                      ) : null}
+                    </div>
+                    <div className="text-right text-xs text-text-muted">
+                      {agent.last_activity_at
+                        ? new Date(agent.last_activity_at).toLocaleString()
+                        : "No activity"}
+                    </div>
                   </div>
-                  <div className="rounded-xl bg-[var(--surface-muted)] p-2 text-[var(--muted)]">
-                    <Icon size={16} />
+                ))}
+                {!presence.length ? (
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
+                    No live agent presence recorded yet.
                   </div>
-                </div>
-                <div className="mt-4 text-2xl font-semibold tracking-tight text-[var(--text)]">
-                  {item.value}
-                </div>
+                ) : null}
               </div>
-            );
-          })}
-        </div>
+            </section>
 
-        <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-6 shadow-sm">
-            <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-              Live Agent Presence
-            </div>
-            <div className="space-y-3">
-              {presence.map((agent) => (
-                <div
-                  key={agent.user_id}
-                  className="flex items-center justify-between rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3"
-                >
-                  <div>
-                    <div className="font-medium text-[var(--text)]">
-                      {agent.name || agent.email || agent.user_id}
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                    Agent Capacity
+                  </div>
+                  <div className="mt-2 text-sm text-text-muted">
+                    Live assignment capacity for the current workspace/project scope.
+                  </div>
+                </div>
+                {assignmentCapacity?.requiredSkills?.length ? (
+                  <div className="rounded-full bg-primary-fade px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
+                    {assignmentCapacity.requiredSkills.length} skill signals
+                  </div>
+                ) : null}
+              </div>
+              <div className="space-y-3">
+                {(assignmentCapacity?.candidates || []).slice(0, 8).map((candidate) => (
+                  <div
+                    key={candidate.user_id}
+                    className="rounded-xl border border-border-main bg-gradient-to-br from-canvas to-cyan-50/40 px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="font-medium text-text-main">
+                          {candidate.name || candidate.email || candidate.user_id}
+                        </div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.16em] text-text-muted">
+                          {candidate.role} • {candidate.open_assignment_count}/{candidate.capacity_limit} open
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold text-text-main">
+                          {candidate.capacity_remaining} free
+                        </div>
+                        <div className="mt-1 text-xs text-text-muted">
+                          {candidate.pending_assignment_count} pending
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                      {agent.session_status} • {agent.active_chats || 0} active chats
-                    </div>
-                    {agent.last_action ? (
-                      <div className="mt-1 text-xs text-[var(--muted)]">{agent.last_action}</div>
+                    {(candidate.agent_skills.length > 0 || candidate.required_skills.length > 0) ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {candidate.required_skills.slice(0, 3).map((skill) => (
+                          <span
+                            key={`required-${candidate.user_id}-${skill}`}
+                            className="rounded-full bg-canvas px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted"
+                          >
+                            Need {skill.replace(/_/g, " ")}
+                          </span>
+                        ))}
+                        {candidate.agent_skills.slice(0, 3).map((skill) => (
+                          <span
+                            key={`skill-${candidate.user_id}-${skill}`}
+                            className="rounded-full bg-primary-fade px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary"
+                          >
+                            {skill.replace(/_/g, " ")}
+                          </span>
+                        ))}
+                      </div>
                     ) : null}
                   </div>
-                  <div className="text-right text-xs text-[var(--muted)]">
-                    {agent.last_activity_at
-                      ? new Date(agent.last_activity_at).toLocaleString()
-                      : "No activity"}
+                ))}
+                {!assignmentCapacity?.candidates?.length ? (
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
+                    No assignment capacity data available yet.
                   </div>
-                </div>
-              ))}
-              {!presence.length ? (
-                <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--muted)]">
-                  No live agent presence recorded yet.
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-                  Agent Capacity
-                </div>
-                <div className="mt-2 text-sm text-[var(--muted)]">
-                  Live assignment capacity for the current workspace/project scope.
-                </div>
+                ) : null}
               </div>
-              {assignmentCapacity?.requiredSkills?.length ? (
-                <div className="rounded-full bg-cyan-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
-                  {assignmentCapacity.requiredSkills.length} skill signals
-                </div>
-              ) : null}
-            </div>
-            <div className="space-y-3">
-              {(assignmentCapacity?.candidates || []).slice(0, 8).map((candidate) => (
-                <div
-                  key={candidate.user_id}
-                  className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="font-medium text-[var(--text)]">
-                        {candidate.name || candidate.email || candidate.user_id}
+            </section>
+
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+              <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                Platform Breakdown
+              </div>
+              <div className="space-y-3">
+                {(overview?.platformBreakdown || []).map((item: any) => (
+                  <div
+                    key={item.platform}
+                    className="flex items-center justify-between rounded-xl border border-border-main bg-canvas px-4 py-3"
+                  >
+                    <div className="font-medium capitalize text-text-main">{item.platform}</div>
+                    <div className="text-sm font-semibold text-text-main">{item.total}</div>
+                  </div>
+                ))}
+                {!overview?.platformBreakdown?.length ? (
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
+                    No platform activity yet for this workspace.
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+              <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                Subscription Mix
+              </div>
+              <div className="space-y-3">
+                {Object.entries(usage.subscriptionBreakdown || {}).map(([status, total]) => (
+                  <div
+                    key={status}
+                    className="flex items-center justify-between rounded-xl border border-border-main bg-gradient-to-r from-canvas to-violet-50/40 px-4 py-3"
+                  >
+                    <div className="font-medium capitalize text-text-main">{status}</div>
+                    <div className="text-sm font-semibold text-text-main">{String(total)}</div>
+                  </div>
+                ))}
+                {!Object.keys(usage.subscriptionBreakdown || {}).length ? (
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
+                    No workspace subscription data available yet.
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+              <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                Recent Events
+              </div>
+              <div className="space-y-3">
+                {events.map((event) => (
+                  <div key={event.id} className="rounded-xl border border-border-main bg-gradient-to-r from-canvas to-amber-50/30 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="text-sm font-semibold text-text-main">
+                          {event.event_name || event.event_type}
+                        </div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.16em] text-primary">
+                          {event.platform || "system"}
+                        </div>
                       </div>
-                      <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                        {candidate.role} • {candidate.open_assignment_count}/{candidate.capacity_limit} open
+                      <div className="text-xs text-text-muted">
+                        {event.created_at ? new Date(event.created_at).toLocaleString() : "Unknown"}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-[var(--text)]">
-                        {candidate.capacity_remaining} free
-                      </div>
-                      <div className="mt-1 text-xs text-[var(--muted)]">
-                        {candidate.pending_assignment_count} pending
-                      </div>
+                    <div className="mt-2 text-sm text-text-muted">
+                      {event.description || event.details || "No details"}
                     </div>
                   </div>
-                  {(candidate.agent_skills.length > 0 || candidate.required_skills.length > 0) ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {candidate.required_skills.slice(0, 3).map((skill) => (
-                        <span
-                          key={`required-${candidate.user_id}-${skill}`}
-                          className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600"
-                        >
-                          Need {skill.replace(/_/g, " ")}
-                        </span>
-                      ))}
-                      {candidate.agent_skills.slice(0, 3).map((skill) => (
-                        <span
-                          key={`skill-${candidate.user_id}-${skill}`}
-                          className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-700"
-                        >
-                          {skill.replace(/_/g, " ")}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              {!assignmentCapacity?.candidates?.length ? (
-                <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--muted)]">
-                  No assignment capacity data available yet.
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-6 shadow-sm">
-            <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-              Platform Breakdown
-            </div>
-            <div className="space-y-3">
-              {(overview?.platformBreakdown || []).map((item: any) => (
-                <div
-                  key={item.platform}
-                  className="flex items-center justify-between rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3"
-                >
-                  <div className="font-medium capitalize text-[var(--text)]">{item.platform}</div>
-                  <div className="text-sm font-semibold text-[var(--text)]">{item.total}</div>
-                </div>
-              ))}
-              {!overview?.platformBreakdown?.length ? (
-                <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--muted)]">
-                  No platform activity yet for this workspace.
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-6 shadow-sm">
-            <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-              Subscription Mix
-            </div>
-            <div className="space-y-3">
-              {Object.entries(usage.subscriptionBreakdown || {}).map(([status, total]) => (
-                <div
-                  key={status}
-                  className="flex items-center justify-between rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3"
-                >
-                  <div className="font-medium capitalize text-[var(--text)]">{status}</div>
-                  <div className="text-sm font-semibold text-[var(--text)]">{String(total)}</div>
-                </div>
-              ))}
-              {!Object.keys(usage.subscriptionBreakdown || {}).length ? (
-                <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--muted)]">
-                  No workspace subscription data available yet.
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface-strong)] p-6 shadow-sm">
-            <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-              Recent Events
-            </div>
-            <div className="space-y-3">
-              {events.map((event) => (
-                <div key={event.id} className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-sm font-semibold text-[var(--text)]">
-                        {event.event_name || event.event_type}
-                      </div>
-                      <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                        {event.event_type} {event.platform ? `• ${event.platform}` : ""}
-                      </div>
-                    </div>
-                    <div className="text-xs text-[var(--muted)]">
-                      {new Date(event.created_at).toLocaleString()}
-                    </div>
+                ))}
+                {!events.length ? (
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
+                    No recent analytics events recorded yet.
                   </div>
-                </div>
-              ))}
-              {!events.length ? (
-                <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--muted)]">
-                  No analytics events recorded yet.
-                </div>
-              ) : null}
-            </div>
-          </section>
+                ) : null}
+              </div>
+            </section>
+          </div>
         </div>
-      </div>
       )}
     </DashboardLayout>
   );

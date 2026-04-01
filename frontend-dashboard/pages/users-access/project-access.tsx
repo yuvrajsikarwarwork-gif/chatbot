@@ -22,7 +22,7 @@ export default function UsersAccessProjectAccessPage() {
   const activeProject = useAuthStore((state) => state.activeProject);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const getProjectRole = useAuthStore((state) => state.getProjectRole);
-  const { canViewPage, isPlatformOperator } = useVisibility();
+  const { canViewPage, isPlatformOperator, isReadOnly } = useVisibility();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [summary, setSummary] = useState<ProjectAccessSummary | null>(null);
@@ -39,9 +39,10 @@ export default function UsersAccessProjectAccessPage() {
     ? hasWorkspacePermission(activeWorkspaceId, "manage_users")
     : false;
   const selectedProjectRole = selectedProjectId ? getProjectRole(selectedProjectId) : null;
-  const canManageProjectRoles =
+  const canViewProjectRoles =
     isPlatformOperator || canManageUsers || selectedProjectRole === "project_admin";
-  const canAssignProjectAdmin = isPlatformOperator || canManageUsers;
+  const canEditProjectRoles = !isReadOnly && canViewProjectRoles;
+  const canAssignProjectAdmin = !isReadOnly && (isPlatformOperator || canManageUsers);
 
   useEffect(() => {
     if (!activeWorkspaceId || !canViewUsersAccessPage) {
@@ -72,7 +73,7 @@ export default function UsersAccessProjectAccessPage() {
   }, [activeProject?.id, activeWorkspaceId, canViewUsersAccessPage, routeProjectId]);
 
   useEffect(() => {
-    if (!selectedProjectId || !canManageProjectRoles) {
+    if (!selectedProjectId || !canViewProjectRoles) {
       setSummary(null);
       return;
     }
@@ -88,12 +89,12 @@ export default function UsersAccessProjectAccessPage() {
         setError(err?.response?.data?.error || "Failed to load project access");
       })
       .finally(() => setLoading(false));
-  }, [canManageProjectRoles, selectedProjectId]);
+  }, [canViewProjectRoles, selectedProjectId]);
 
   const availableMembers = useMemo(() => summary?.workspaceMembers || [], [summary]);
 
   const handleSave = async () => {
-    if (!selectedProjectId || !form.userId) {
+    if (!selectedProjectId || !form.userId || !canEditProjectRoles) {
       setError("Choose a project member first.");
       return;
     }
@@ -115,6 +116,9 @@ export default function UsersAccessProjectAccessPage() {
   };
 
   const handleRevoke = async (userId: string) => {
+    if (!canEditProjectRoles) {
+      return;
+    }
     try {
       setSaving(true);
       setError("");
@@ -138,13 +142,6 @@ export default function UsersAccessProjectAccessPage() {
           description="Open this page through users and permissions with project or workspace access management rights."
           href="/users-access"
           ctaLabel="Open users and permissions"
-        />
-      ) : !canManageProjectRoles ? (
-        <PageAccessNotice
-          title="Project access requires additional access"
-          description="This screen is available to workspace user managers and project admins inside the selected project."
-          href="/users-access"
-          ctaLabel="Open access hub"
         />
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
@@ -179,8 +176,9 @@ export default function UsersAccessProjectAccessPage() {
             <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
               <div className="space-y-3">
                 <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                  className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                   value={selectedProjectId}
+                  disabled={!canEditProjectRoles}
                   onChange={(event) => setSelectedProjectId(event.target.value)}
                 >
                   <option value="">Select project</option>
@@ -192,8 +190,9 @@ export default function UsersAccessProjectAccessPage() {
                 </select>
 
                 <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                  className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                   value={form.userId}
+                  disabled={!canEditProjectRoles}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, userId: event.target.value }))
                   }
@@ -207,8 +206,9 @@ export default function UsersAccessProjectAccessPage() {
                 </select>
 
                 <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                  className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                   value={form.role}
+                  disabled={!canEditProjectRoles}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, role: event.target.value }))
                   }
@@ -224,7 +224,7 @@ export default function UsersAccessProjectAccessPage() {
 
                 <button
                   type="button"
-                  disabled={saving || !selectedProjectId}
+                  disabled={saving || !selectedProjectId || !canEditProjectRoles}
                   onClick={handleSave}
                   className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -254,9 +254,9 @@ export default function UsersAccessProjectAccessPage() {
                         </div>
                         <button
                           type="button"
-                          disabled={saving}
+                          disabled={saving || !canEditProjectRoles}
                           onClick={() => handleRevoke(row.user_id)}
-                          className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700 disabled:opacity-50"
+                          className="rounded-xl border border-rose-200 bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700 disabled:opacity-50"
                         >
                           Revoke
                         </button>

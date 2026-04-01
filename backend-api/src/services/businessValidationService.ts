@@ -44,6 +44,24 @@ async function getWorkspaceSubscription(workspaceId: string) {
   return getEffectiveWorkspaceBilling(workspaceId);
 }
 
+async function hasActiveSupportAccessForWorkspace(workspaceId: string, userId?: string | null) {
+  if (!userId) {
+    return false;
+  }
+
+  const res = await query(
+    `SELECT 1
+     FROM support_access
+     WHERE workspace_id = $1
+       AND user_id = $2
+       AND expires_at > NOW()
+     LIMIT 1`,
+    [workspaceId, userId]
+  );
+
+  return Boolean(res.rows[0]);
+}
+
 export async function getWorkspaceBillingStatus(workspaceId: string) {
   const subscription = await findLatestSubscriptionByWorkspace(workspaceId);
   if (!subscription) {
@@ -71,7 +89,7 @@ export async function getWorkspaceBillingStatus(workspaceId: string) {
     };
   }
 
-  if (status === "expired" || status === "canceled") {
+  if (status === "past_due" || status === "expired" || status === "canceled") {
     return {
       status,
       isWriteBlocked: true,
@@ -114,9 +132,14 @@ export async function validateWorkspaceContext(
   options?: {
     allowLocked?: boolean;
     allowWriteBlocked?: boolean;
+    userId?: string | null;
   }
 ) {
   if (!workspaceId) {
+    return;
+  }
+
+  if (await hasActiveSupportAccessForWorkspace(workspaceId, options?.userId)) {
     return;
   }
 
@@ -143,14 +166,16 @@ export async function validateWorkspaceContext(
   }
 
   const workspaceStatus = String(workspace.status || "").toLowerCase();
-  if (!["active", "paused", "locked", "suspended", "archived"].includes(workspaceStatus)) {
+  if (!["active", "paused", "locked", "suspended", "archived", "past_due", "canceled"].includes(workspaceStatus)) {
     throw { status: 400, message: "Workspace must be active" };
   }
 
   if (
     (workspaceStatus === "locked" ||
       workspaceStatus === "suspended" ||
-      workspaceStatus === "archived") &&
+      workspaceStatus === "archived" ||
+      workspaceStatus === "past_due" ||
+      workspaceStatus === "canceled") &&
     !options?.allowLocked
   ) {
     throw { status: 403, message: "Workspace is locked" };
@@ -214,7 +239,8 @@ export async function assertCampaignQuota(
 
 export async function assertPlatformAllowedByPlan(
   platform: string,
-  workspaceId?: string | null
+  workspaceId?: string | null,
+  userId?: string | null
 ) {
   const billing = workspaceId
     ? await getWorkspaceSubscription(workspaceId)
@@ -283,7 +309,7 @@ export async function assertPlatformAccountQuota(
   }
 }
 
-export async function assertUserQuota(workspaceId?: string | null) {
+export async function assertUserQuota(workspaceId?: string | null, userId?: string | null) {
   if (!workspaceId) {
     return;
   }
@@ -319,7 +345,7 @@ export async function assertUserQuota(workspaceId?: string | null) {
   }
 }
 
-export async function assertProjectQuota(workspaceId?: string | null) {
+export async function assertProjectQuota(workspaceId?: string | null, userId?: string | null) {
   if (!workspaceId) {
     return;
   }

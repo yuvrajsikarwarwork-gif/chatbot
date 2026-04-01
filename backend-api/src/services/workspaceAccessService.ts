@@ -16,6 +16,7 @@ import {
 import { findActiveSupportAccess } from "../models/supportAccessModel";
 import { findWorkspaceById } from "../models/workspaceModel";
 import { findBotById } from "../models/botModel";
+import { hasOpenSupportRequestForWorkspace } from "../models/supportRequestModel";
 import { createWorkspaceInviteService } from "./inviteService";
 import { recordAnalyticsEvent } from "./runtimeAnalyticsService";
 import { logAuditSafe } from "./auditLogService";
@@ -183,15 +184,13 @@ export async function resolveWorkspacePermissionMap(
   const role = normalizeWorkspaceRole(roleInput);
   const permissionMap = new Map<string, boolean>();
 
+  for (const item of ROLE_PERMISSIONS[role] || []) {
+    permissionMap.set(item, true);
+  }
+
   const rolePermissions = await listRolePermissions(role);
   for (const row of rolePermissions) {
     permissionMap.set(String(row.permission_key), Boolean(row.allowed));
-  }
-
-  if (permissionMap.size === 0) {
-    for (const item of ROLE_PERMISSIONS[role] || []) {
-      permissionMap.set(item, true);
-    }
   }
 
   const userPermissionRows = await listUserPermissions(userId, workspaceId);
@@ -232,16 +231,15 @@ export async function resolveWorkspacePermissionOverrides(userId: string, worksp
 export async function resolveRolePermissionMap(roleInput: string) {
   const role = normalizeWorkspaceRole(roleInput);
   const permissionMap = new Map<string, boolean>();
+
+  for (const item of ROLE_PERMISSIONS[role] || []) {
+    permissionMap.set(item, true);
+  }
+
   const rolePermissions = await listRolePermissions(role);
 
   for (const row of rolePermissions) {
     permissionMap.set(String(row.permission_key), Boolean(row.allowed));
-  }
-
-  if (permissionMap.size === 0) {
-    for (const item of ROLE_PERMISSIONS[role] || []) {
-      permissionMap.set(item, true);
-    }
   }
 
   return applyPermissionAliases(Object.fromEntries(permissionMap));
@@ -359,6 +357,10 @@ export async function isPlatformSuperAdmin(userId: string) {
   return (await getUserPlatformRole(userId)) === "super_admin";
 }
 
+async function isGlobalSuperAdmin(userId: string) {
+  return (await getUserPlatformRole(userId)) === "super_admin";
+}
+
 export async function assertPlatformRoles(userId: string, allowedRoles: string[]) {
   const role = await getUserPlatformRole(userId);
   if (!allowedRoles.includes(role)) {
@@ -366,6 +368,20 @@ export async function assertPlatformRoles(userId: string, allowedRoles: string[]
   }
 
   return role;
+}
+
+export async function hasWorkspaceSupportEntryAccess(userId: string, workspaceId: string) {
+  const role = await getUserPlatformRole(userId);
+  if (!["super_admin", "developer"].includes(role)) {
+    return false;
+  }
+
+  const [supportAccess, openRequest] = await Promise.all([
+    findActiveSupportAccess(workspaceId, userId).catch(() => null),
+    hasOpenSupportRequestForWorkspace(workspaceId).catch(() => false),
+  ]);
+
+  return Boolean(supportAccess || openRequest);
 }
 
 export function normalizeWorkspaceRole(role?: string): WorkspaceRole {
@@ -420,6 +436,17 @@ export async function assertWorkspaceMembership(userId: string, workspaceId?: st
     return null;
   }
 
+  if (await isGlobalSuperAdmin(userId)) {
+    return {
+      workspace_id: workspaceId,
+      workspace_name: workspaceId,
+      user_id: userId,
+      role: "workspace_admin",
+      status: "active",
+      permissions_json: {},
+    };
+  }
+
   if (await isPlatformInternalOperator(userId)) {
     const supportAccess = await findActiveSupportAccess(workspaceId, userId);
     const workspace = await findWorkspaceById(workspaceId, userId);
@@ -465,9 +492,22 @@ export async function assertWorkspacePermission(
     return null;
   }
 
+  if (await isGlobalSuperAdmin(userId)) {
+    return {
+      workspace_id: workspaceId,
+      workspace_name: workspaceId,
+      user_id: userId,
+      role: "workspace_admin",
+      status: "active",
+      permissions_json: {
+        [permission]: true,
+      },
+    };
+  }
+
   if (await isPlatformInternalOperator(userId)) {
-    const supportAccess = await findActiveSupportAccess(workspaceId, userId);
-    const workspace = await findWorkspaceById(workspaceId, userId);
+    const supportAccess = await hasWorkspaceSupportEntryAccess(userId, workspaceId);
+    const workspace = await findWorkspaceById(workspaceId, userId).catch(() => null);
     return {
       workspace_id: workspaceId,
       workspace_name: workspace?.name || workspaceId,
@@ -479,8 +519,7 @@ export async function assertWorkspacePermission(
         ...(supportAccess
           ? {
               support_mode: true,
-              support_access_id: supportAccess.id,
-              support_expires_at: supportAccess.expires_at,
+              support_access: true,
             }
           : {}),
       },
@@ -548,10 +587,14 @@ export async function assertBotWorkspacePermission(
 }
 
 export async function listWorkspaceMembersService(workspaceId: string, userId: string) {
-  await assertWorkspacePermissionAny(userId, workspaceId, [
-    WORKSPACE_PERMISSIONS.manageUsers,
-    WORKSPACE_PERMISSIONS.managePermissions,
-  ]);
+  try {
+    await assertWorkspacePermissionAny(userId, workspaceId, [
+      WORKSPACE_PERMISSIONS.manageUsers,
+      WORKSPACE_PERMISSIONS.managePermissions,
+    ]);
+  } catch {
+    await assertPlatformRoles(userId, ["super_admin", "developer"]);
+  }
   const members = await findWorkspaceMembers(workspaceId);
   return Promise.all(members.map((membership) => attachEffectivePermissions(membership)));
 }
@@ -611,8 +654,8 @@ export async function assignWorkspaceMemberService(
       }
     | null = null;
   if (!targetUserId && payload.email) {
-    const userRes = await query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [
-      payload.email,
+    const userRes = await query(`SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`, [
+      String(payload.email || "").trim().toLowerCase(),
     ]);
     targetUserId = userRes.rows[0]?.id || null;
   }
@@ -659,7 +702,7 @@ export async function assignWorkspaceMemberService(
 
   const existingMembership = await findWorkspaceMembership(workspaceId, targetUserId);
   if (!existingMembership || String(existingMembership.status || "").toLowerCase() !== "active") {
-    await assertUserQuota(workspaceId);
+    await assertUserQuota(workspaceId, actorUserId);
   }
 
   const requestedStatus = normalizeMembershipStatus(payload.status);

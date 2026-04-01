@@ -34,7 +34,7 @@ export default function CampaignEntriesPage() {
   const setActiveProject = useAuthStore((state) => state.setActiveProject);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const getProjectRole = useAuthStore((state) => state.getProjectRole);
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
   const [campaign, setCampaign] = useState<any>(null);
   const [flowsByBot, setFlowsByBot] = useState<Record<string, any[]>>({});
   const [entryForm, setEntryForm] = useState(EMPTY_ENTRY_FORM);
@@ -52,8 +52,8 @@ export default function CampaignEntriesPage() {
   const canDeleteCampaign = hasWorkspacePermission(selectedWorkspaceId, "delete_campaign");
   const projectRole = getProjectRole(selectedProjectId);
   const canEditProjectCampaign =
-    canEditCampaign || projectRole === "project_admin" || projectRole === "editor";
-  const canDeleteProjectCampaign = canDeleteCampaign || projectRole === "project_admin";
+    !isReadOnly && (canEditCampaign || projectRole === "project_admin" || projectRole === "editor");
+  const canDeleteProjectCampaign = !isReadOnly && (canDeleteCampaign || projectRole === "project_admin");
 
   const tabs = useMemo(
     () => [
@@ -61,6 +61,7 @@ export default function CampaignEntriesPage() {
       { label: "Channels", href: `/campaigns/${campaignId}/channels` },
       { label: "Entries", href: `/campaigns/${campaignId}/entries` },
       { label: "Audience", href: `/campaigns/${campaignId}/audience` },
+      { label: "Automation", href: `/campaigns/${campaignId}/automation` },
       { label: "Launch", href: `/campaigns/${campaignId}/launch` },
       { label: "Activity", href: `/campaigns/${campaignId}/activity` },
     ],
@@ -192,16 +193,16 @@ export default function CampaignEntriesPage() {
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
           <BackButtonStrip href={`/campaigns/${campaignId}/channels`} label="Back to channels" />
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
                   Entry Points
                 </div>
-                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-text-main">
                   Controlled sources into the campaign
                 </h1>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                <p className="mt-2 text-sm leading-6 text-text-muted">
                   Keep every landing route, widget, link, and API source here so routing and analytics stay isolated.
                 </p>
               </div>
@@ -213,47 +214,47 @@ export default function CampaignEntriesPage() {
           {success ? <section className="rounded-[1.5rem] border border-emerald-300/35 bg-emerald-500/10 p-4 text-sm text-emerald-200">{success}</section> : null}
 
           <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
               <div className="space-y-4">
-                <select className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" value={entryForm.channelId} disabled={!canEditProjectCampaign} onChange={(event) => {
+                <select className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" value={entryForm.channelId} disabled={!canEditProjectCampaign} onChange={(event) => {
                   const nextChannel = campaign?.channels?.find((item: any) => item.id === event.target.value) || null;
                   setEntryForm((current) => ({ ...current, channelId: event.target.value, botId: nextChannel?.bot_id || "" }));
                 }}>
                   <option value="">Select channel</option>
                   {(campaign?.channels || []).map((channel: any) => <option key={channel.id} value={channel.id}>{channel.name || channel.platform}</option>)}
                 </select>
-                <select className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" value={entryForm.flowId} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, flowId: event.target.value }))}>
+                <select className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" value={entryForm.flowId} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, flowId: event.target.value }))}>
                   <option value="">Select flow</option>
                   {availableFlows.map((flow) => <option key={flow.id} value={flow.id}>{flow.flow_name || flow.name || flow.id}</option>)}
                 </select>
-                <input className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" placeholder="Entry name" value={entryForm.name} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, name: event.target.value }))} />
-                <input className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" placeholder="Entry key" value={entryForm.entryKey} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, entryKey: event.target.value }))} />
-                <select className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" value={entryForm.entryType} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, entryType: event.target.value }))}>
+                <input className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" placeholder="Entry name" value={entryForm.name} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, name: event.target.value }))} />
+                <input className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" placeholder="Entry key" value={entryForm.entryKey} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, entryKey: event.target.value }))} />
+                <select className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" value={entryForm.entryType} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, entryType: event.target.value }))}>
                   {ENTRY_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
                 </select>
-                <select className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" value={entryForm.listId} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, listId: event.target.value }))}>
+                <select className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" value={entryForm.listId} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, listId: event.target.value }))}>
                   <option value="">Attach list</option>
                   {(campaign?.lists || []).map((list: any) => <option key={list.id} value={list.id}>{list.name}</option>)}
                 </select>
-                <input className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" placeholder="Source reference" value={entryForm.sourceRef} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, sourceRef: event.target.value }))} />
-                <input className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" placeholder="Landing URL" value={entryForm.landingUrl} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, landingUrl: event.target.value }))} />
+                <input className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" placeholder="Source reference" value={entryForm.sourceRef} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, sourceRef: event.target.value }))} />
+                <input className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" placeholder="Landing URL" value={entryForm.landingUrl} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, landingUrl: event.target.value }))} />
                 <div className="grid gap-3 md:grid-cols-2">
                   {[
                     ["isDefault", "Default route"],
                     ["isActive", "Active"],
                   ].map(([key, label]) => (
-                    <label key={key} className="flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-3 text-sm text-[var(--text)]">
+                    <label key={key} className="flex items-center gap-2 rounded-xl border border-border-main bg-canvas px-3 py-3 text-sm text-text-main">
                       <input type="checkbox" checked={Boolean((entryForm as any)[key])} disabled={!canEditProjectCampaign} onChange={(event) => setEntryForm((current) => ({ ...current, [key]: event.target.checked }))} />
                       <span>{label}</span>
                     </label>
                   ))}
                 </div>
                 <div className="flex gap-3">
-                  <button type="button" onClick={handleSave} disabled={busy || !canEditProjectCampaign} className="flex-1 rounded-2xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_30px_var(--accent-glow)] disabled:opacity-50">
+                  <button type="button" onClick={handleSave} disabled={busy || !canEditProjectCampaign} className="flex-1 rounded-2xl border border-primary bg-primary px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-sm disabled:opacity-50">
                     {editingEntryId ? "Save entry" : "Add entry"}
                   </button>
                   {editingEntryId ? (
-                    <button type="button" onClick={resetForm} className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[var(--text)]">
+                    <button type="button" onClick={resetForm} className="rounded-2xl border border-border-main bg-surface px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-text-main">
                       Cancel
                     </button>
                   ) : null}
@@ -261,33 +262,33 @@ export default function CampaignEntriesPage() {
               </div>
             </section>
 
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
               <div className="space-y-3">
                 {(campaign?.entryPoints || []).length ? (
                   campaign.entryPoints.map((entry: any) => (
-                    <div key={entry.id} className="rounded-[1.1rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4">
+                    <div key={entry.id} className="rounded-[1.1rem] border border-border-main bg-canvas p-4">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-[var(--text)]">{entry.name || entry.entry_key}</div>
-                          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                          <div className="text-sm font-semibold text-text-main">{entry.name || entry.entry_key}</div>
+                          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-text-muted">
                             {entry.entry_type || "generic"} · {entry.is_active ? "active" : "inactive"}
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <button type="button" onClick={() => startEdit(entry)} disabled={!canEditProjectCampaign} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text)] disabled:opacity-50">Edit</button>
-                          <button type="button" onClick={() => handleDelete(entry.id)} disabled={!canDeleteProjectCampaign} className="rounded-xl border border-rose-300/35 bg-rose-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-200 disabled:opacity-50">Delete</button>
+                          <button type="button" onClick={() => startEdit(entry)} disabled={!canEditProjectCampaign} className="rounded-xl border border-border-main bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main disabled:opacity-50">Edit</button>
+                          <button type="button" onClick={() => handleDelete(entry.id)} disabled={!canDeleteProjectCampaign} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700 disabled:opacity-50">Delete</button>
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                     No entry points configured yet.
                   </div>
                 )}
               </div>
               <div className="mt-5">
-                <Link href={`/campaigns/${campaignId}/audience`} className="text-sm font-medium text-[var(--accent)]">
+                <Link href={`/campaigns/${campaignId}/audience`} className="text-sm font-medium text-primary">
                   Continue to audience and lists
                 </Link>
               </div>

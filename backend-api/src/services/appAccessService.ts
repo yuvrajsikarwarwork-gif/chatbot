@@ -119,7 +119,7 @@ export function buildResolvedAccessSnapshot(
   const supportAccess =
     Boolean(workspacePermissions.support_access) ||
     Boolean(activeWorkspace?.permissions_json?.support_mode);
-  const platformAdminSurface = isPlatformOperator && !supportAccess;
+  const platformAdminSurface = isPlatformOperator;
 
   const scopedProjectAccesses = Array.isArray(input.projectAccesses)
     ? input.projectAccesses.filter(
@@ -188,6 +188,7 @@ export function buildResolvedAccessSnapshot(
   if (platformAdminSurface) {
     sections.workspaces = { nav: true, page: true };
     sections.permissions = { nav: true, page: true };
+    sections.users_access = { nav: true, page: true };
     sections.tickets = { nav: true, page: true };
     sections.support = { nav: false, page: true };
     sections.billing = { nav: true, page: true };
@@ -265,15 +266,6 @@ export function buildResolvedAccessSnapshot(
       nav: canViewBilling,
       page: canViewBilling,
     };
-  }
-
-  if (supportAccess) {
-    sections.workspaces = { nav: false, page: false };
-    sections.permissions = { nav: false, page: false };
-    sections.plans = { nav: false, page: false };
-    sections.logs = { nav: false, page: false };
-    sections.system_settings = { nav: false, page: false };
-    sections.tickets = { nav: false, page: false };
   }
 
   return {

@@ -1,6 +1,6 @@
-import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import { MessageSquareMore, SlidersHorizontal } from "lucide-react";
+import { Download, MessageSquareMore, SlidersHorizontal } from "lucide-react";
 
 import PageAccessNotice from "../components/access/PageAccessNotice";
 import ChatWindow from "../components/chat/ChatWindow";
@@ -174,7 +174,15 @@ function dedupeConversationThreads(rows: any[]) {
       continue;
     }
 
-    const key = `whatsapp:${normalizedNumber}`;
+    const key = [
+      "whatsapp",
+      String(row?.workspace_id || "").trim(),
+      String(row?.project_id || "").trim(),
+      String(row?.bot_id || "").trim(),
+      String(row?.platform_account_id || "").trim(),
+      String(row?.channel_id || "").trim(),
+      normalizedNumber,
+    ].join(":");
     const existing = deduped.get(key);
     if (!existing) {
       deduped.set(key, row);
@@ -211,6 +219,15 @@ function formatSkillLabel(skill: string) {
   return String(skill || "").replace(/_/g, " ");
 }
 
+function safeFilenamePart(value: unknown) {
+  const slug = String(value || "conversation")
+    .trim()
+    .replace(/[^a-z0-9-_]+/gi, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "conversation";
+}
+
 export default function ConversationsPage() {
   const selectedBotId = useBotStore((state) => state.selectedBotId);
   const syncSelectedBot = useBotStore((state) => state.syncSelectedBot);
@@ -225,6 +242,7 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [activeConversation, setActiveConversation] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [timeline, setTimeline] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<ConversationAssignment[]>([]);
   const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([]);
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
@@ -350,16 +368,28 @@ export default function ConversationsPage() {
 
   const fetchMessages = async (conversationId: string) => {
     try {
-      const [detail, thread, assignmentRows] = await Promise.all([
+      const [detailResult, threadResult, assignmentResult, timelineResult] = await Promise.allSettled([
         conversationService.getDetail(conversationId),
         conversationService.getMessages(conversationId),
         conversationService.getAssignments(conversationId),
+        conversationService.getTimeline(conversationId),
       ]);
+
+      const detail = detailResult.status === "fulfilled" ? detailResult.value : null;
+      const thread = threadResult.status === "fulfilled" ? threadResult.value : [];
+      const assignmentRows = assignmentResult.status === "fulfilled" ? assignmentResult.value : [];
+      const timelineRes = timelineResult.status === "fulfilled" ? timelineResult.value : { timeline: [] };
+
+      if (!detail) {
+        throw new Error("Conversation detail could not be loaded");
+      }
+
       setActiveConversation((prev: any) =>
         prev?.id === conversationId ? { ...prev, ...detail } : detail
       );
       setMessages(Array.isArray(thread) ? thread : []);
       setAssignments(Array.isArray(assignmentRows) ? assignmentRows : []);
+      setTimeline(Array.isArray((timelineRes as any)?.timeline) ? (timelineRes as any).timeline : []);
       setSelectedAgentId(detail?.assigned_to || "");
       setSelectedListId(detail?.list_id || "");
       setContextInput(JSON.stringify(detail?.context_json || {}, null, 2));
@@ -368,6 +398,7 @@ export default function ConversationsPage() {
       console.error("Chat history fetch failed:", err);
       setMessages([]);
       setAssignments([]);
+      setTimeline([]);
     }
   };
 
@@ -413,6 +444,7 @@ export default function ConversationsPage() {
         setMessages([]);
       });
       setAssignments([]);
+      setTimeline([]);
       activeConvoRef.current = null;
     } finally {
       setIsLoadingList(false);
@@ -619,6 +651,7 @@ export default function ConversationsPage() {
         setMessages([]);
       });
       setAssignments([]);
+      setTimeline([]);
       activeConvoRef.current = null;
       return;
     }
@@ -714,6 +747,10 @@ export default function ConversationsPage() {
     } finally {
       setIsUpdatingStatus(false);
     }
+  };
+
+  const handleReconnectConversation = async () => {
+    await handleStatusUpdate("pending");
   };
 
   const handleMessageSent = async (payload: any) => {
@@ -909,6 +946,86 @@ export default function ConversationsPage() {
     }
   };
 
+  const handleExportConversation = () => {
+    if (!activeConversation?.id) {
+      return;
+    }
+
+    const contact = {
+      lead: activeConversation.display_name || activeConversation.contact_name || "",
+      phone: activeConversation.contact_phone_resolved || activeConversation.external_id || "",
+      platform: activeConversation.platform || activeConversation.channel || "",
+      account:
+        activeConversation.platform_account_name ||
+        activeConversation.platform_account_phone_number ||
+        activeConversation.platform_account_external_id ||
+        "",
+      email: activeConversation.contact_email || activeConversation.email || "",
+      assigned_to: activeConversation.assigned_to_name || activeConversation.assigned_to || "",
+      status: activeConversation.inbox_status || activeConversation.status || "",
+      campaign: activeConversation.campaign_name || "",
+      flow: activeConversation.flow_name || "",
+      list: activeConversation.list_name || "",
+      entry: activeConversation.entry_point_name || "",
+      context: activeConversation.context_json || {},
+      tags: tags.map((tag: any) => tag?.tag || tag).filter(Boolean),
+      notes: notes.map((note) => ({
+        id: note.id,
+        note: note.note,
+        author: note.author_name || note.author_email || "Unknown",
+        created_at: note.created_at,
+      })),
+      assignments: assignments.map((assignment) => ({
+        id: assignment.id,
+        agent: assignment.agent_name || assignment.agent_email || assignment.agent_id,
+        assignment_type: assignment.assignment_type,
+        status: assignment.status,
+        assigned_at: assignment.assigned_at,
+        released_at: assignment.released_at || null,
+        notes: assignment.notes || null,
+      })),
+    };
+
+    const payload = {
+      exported_at: new Date().toISOString(),
+      conversation: {
+        id: activeConversation.id,
+        thread_id: activeConversation.thread_id || null,
+        external_id: activeConversation.external_id || null,
+        display_name:
+          activeConversation.display_name ||
+          activeConversation.contact_name ||
+          activeConversation.name ||
+          null,
+      },
+      contact,
+      summary: {
+        created_at: activeConversation.created_at || null,
+        last_message_at: activeConversation.last_message_at || null,
+        last_inbound_at: activeConversation.last_inbound_at || null,
+        last_outbound_at: activeConversation.last_outbound_at || null,
+        effective_last_message_at: activeConversation.effective_last_message_at || null,
+        assigned_to_name: activeConversation.assigned_to_name || null,
+        inbox_status: activeConversation.inbox_status || activeConversation.status || null,
+        platform_account_name: activeConversation.platform_account_name || null,
+      },
+      messages,
+      timeline,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json;charset=utf-8;",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `conversation-${safeFilenamePart(activeConversation.display_name || activeConversation.contact_phone_resolved || activeConversation.id)}-history.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.URL.revokeObjectURL(url);
+  };
+
   const assignmentSummary = assignments[0] || null;
   const notes = Array.isArray(activeConversation?.notes)
     ? (activeConversation.notes as ConversationNote[])
@@ -927,6 +1044,26 @@ export default function ConversationsPage() {
     dateFromFilter,
     dateToFilter,
   ].filter(Boolean).length;
+
+  const shellClassName =
+    "flex h-screen flex-col overflow-hidden bg-canvas text-text-main";
+  const topBarClassName =
+    "border-b border-border-main bg-surface px-6 py-2 md:px-8";
+  const pageShellClassName =
+    "flex h-full min-h-0 overflow-x-auto overflow-y-hidden rounded-[1.75rem] border border-border-main bg-surface shadow-sm";
+  const sidebarClassName = "flex w-[280px] min-w-[260px] max-w-[320px] shrink-0 flex-col bg-surface";
+  const controlClassName =
+    "rounded-xl border border-border-main bg-canvas px-3 py-2 text-sm text-text-main outline-none shadow-sm placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary";
+  const controlButtonClassName =
+    "inline-flex items-center gap-2 rounded-xl border border-border-main bg-canvas px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary";
+  const secondaryButtonClassName =
+    "rounded-xl border border-border-main bg-canvas px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary disabled:cursor-not-allowed disabled:opacity-50";
+  const detailCardClassName =
+    "rounded-xl border border-border-main bg-canvas px-4 py-3 shadow-sm";
+  const detailHeadingClassName =
+    "text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted";
+  const detailTextClassName = "break-words text-sm font-medium text-text-main";
+  const smallValueClassName = "text-xs text-text-muted";
 
   const clearFilters = () => {
     setSearchFilter("");
@@ -951,36 +1088,36 @@ export default function ConversationsPage() {
         />
       </DashboardLayout>
     ) : (
-    <div className="flex h-screen flex-col overflow-hidden bg-transparent text-[var(--text)]">
-      <div className="border-b border-[var(--line)] bg-[var(--surface)] px-6 py-2 backdrop-blur-xl md:px-8">
+    <div className={shellClassName}>
+      <div className={topBarClassName}>
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-3xl">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] text-[var(--accent)] shadow-sm">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border-main bg-surface text-primary shadow-sm">
                 <MessageSquareMore className="h-4.5 w-4.5" />
               </div>
               <div>
-                <h1 className="text-[1.45rem] font-black tracking-tight text-[var(--text)]">Inbox</h1>
-                <p className="mt-0.5 max-w-2xl text-sm leading-5 text-[var(--muted)]">
+                <h1 className="text-[1.45rem] font-black tracking-tight text-text-main">Inbox</h1>
+                <p className="mt-0.5 max-w-2xl text-sm leading-5 text-text-muted">
                   Manage live conversations, assignments, agent takeover, and automation state from one inbox.
                 </p>
               </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-[170px] items-center justify-between gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 shadow-sm">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            <div className="flex min-w-[170px] items-center justify-between gap-3 rounded-2xl border border-border-main bg-surface px-3 py-2 shadow-sm">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Open Threads
               </div>
-              <div className="text-base font-semibold text-[var(--text)]">
+              <div className="text-base font-semibold text-text-main">
                 {conversations.length}
               </div>
             </div>
-            <div className="flex min-w-[260px] items-center justify-between gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 shadow-sm">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            <div className="flex min-w-[260px] items-center justify-between gap-3 rounded-2xl border border-border-main bg-surface px-3 py-2 shadow-sm">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Active Context
               </div>
-              <div className="truncate text-sm font-medium text-[var(--text)]">
+              <div className="truncate text-sm font-medium text-text-main">
                 {activeWorkspace?.workspace_name || validatedBotId || selectedBotId || "Global view"}
               </div>
             </div>
@@ -990,12 +1127,12 @@ export default function ConversationsPage() {
 
       <div className="min-h-0 flex-1 px-4 pb-4 pt-2 md:px-6 md:pb-6 md:pt-2">
         <GlobalBackStrip className="mb-2" labelOverride="Inbox" />
-        <div className="flex h-full min-h-0 overflow-x-auto overflow-y-hidden rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] shadow-[var(--shadow-soft)] backdrop-blur-xl">
+        <div className={pageShellClassName}>
           <div className="flex h-full min-w-[900px] flex-1 xl:min-w-0">
-          <div className="flex w-[280px] min-w-[260px] max-w-[320px] shrink-0 flex-col bg-[var(--surface-strong)]">
+          <div className={sidebarClassName}>
             <div className="px-5 pb-3 pt-4">
               <div>
-                <h2 className="text-lg font-semibold tracking-tight text-[var(--text)]">
+                <h2 className="text-lg font-semibold tracking-tight text-text-main">
                   Active Threads
                 </h2>
               </div>
@@ -1005,7 +1142,7 @@ export default function ConversationsPage() {
                 value={searchFilter}
                 onChange={(event) => setSearchFilter(event.target.value)}
                 placeholder="Search name, phone, campaign"
-                className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                className={controlClassName}
               />
               <div className="grid grid-cols-2 gap-2">
                 <select
@@ -1014,7 +1151,7 @@ export default function ConversationsPage() {
                     setCampaignFilter(event.target.value);
                     setListFilter("");
                   }}
-                  className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                  className={controlClassName}
                 >
                   <option value="">Campaigns</option>
                   {campaigns.map((campaign) => (
@@ -1026,7 +1163,7 @@ export default function ConversationsPage() {
                 <select
                   value={platformFilter}
                   onChange={(event) => setPlatformFilter(event.target.value)}
-                  className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                  className={controlClassName}
                 >
                   <option value="">Platforms</option>
                   {platformOptions.map((platform) => (
@@ -1040,7 +1177,7 @@ export default function ConversationsPage() {
                 <button
                   type="button"
                   onClick={() => setShowAdvancedFilters((current) => !current)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text)]"
+                  className={controlButtonClassName}
                 >
                   <SlidersHorizontal className="h-4 w-4" />
                   {showAdvancedFilters ? "Hide filters" : "More filters"}
@@ -1050,18 +1187,18 @@ export default function ConversationsPage() {
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]"
+                    className={secondaryButtonClassName}
                   >
                     Clear filters
                   </button>
                 ) : null}
               </div>
               {showAdvancedFilters ? (
-                <div className="grid gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-3">
+                <div className="grid gap-2 rounded-2xl border border-border-main bg-canvas p-3 shadow-sm">
                   <select
                     value={platformAccountFilter}
                     onChange={(event) => setPlatformAccountFilter(event.target.value)}
-                    className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                    className={controlClassName}
                   >
                     <option value="">All platform accounts</option>
                     {platformAccounts.map((account) => (
@@ -1074,7 +1211,7 @@ export default function ConversationsPage() {
                     <select
                       value={statusFilter}
                       onChange={(event) => setStatusFilter(event.target.value)}
-                      className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                      className={controlClassName}
                     >
                       <option value="">All statuses</option>
                       <option value="bot">Bot</option>
@@ -1086,7 +1223,7 @@ export default function ConversationsPage() {
                       value={listFilter}
                       onChange={(event) => setListFilter(event.target.value)}
                       disabled={!campaignFilter}
-                      className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none disabled:opacity-60"
+                      className={`${controlClassName} disabled:opacity-60`}
                     >
                       <option value="">All lists</option>
                       {filterLists.map((list: any) => (
@@ -1099,7 +1236,7 @@ export default function ConversationsPage() {
                   <select
                     value={agentFilter}
                     onChange={(event) => setAgentFilter(event.target.value)}
-                    className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                    className={controlClassName}
                   >
                     <option value="">All assignees</option>
                     {isWorkspaceManager || (isWorkspaceAgent && (conversationSettings?.allow_agent_takeover ?? true)) ? (
@@ -1117,13 +1254,13 @@ export default function ConversationsPage() {
                       type="date"
                       value={dateFromFilter}
                       onChange={(event) => setDateFromFilter(event.target.value)}
-                      className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                      className={controlClassName}
                     />
                     <input
                       type="date"
                       value={dateToFilter}
                       onChange={(event) => setDateToFilter(event.target.value)}
-                      className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                      className={controlClassName}
                     />
                   </div>
                 </div>
@@ -1139,12 +1276,13 @@ export default function ConversationsPage() {
             </div>
           </div>
 
-          <div className="min-w-[360px] flex-1 bg-[var(--surface-muted)] xl:min-w-0">
+          <div className="min-w-[360px] flex-1 bg-canvas xl:min-w-0">
             <div className="h-full p-3 md:p-4">
               <ChatWindow
                 messages={messages}
                 activeConversation={activeConversation}
                 onResumeBot={handleResumeBot}
+                onReconnectConversation={handleReconnectConversation}
                 onMessageSent={handleMessageSent}
                 canResumeBot={conversationSettings?.allow_bot_resume ?? true}
                 canManualReply={conversationSettings?.allow_manual_reply ?? true}
@@ -1155,23 +1293,34 @@ export default function ConversationsPage() {
             </div>
           </div>
 
-          <aside className="hidden w-[280px] shrink-0 border-l border-[var(--line)] bg-[var(--surface-strong)] xl:block 2xl:w-[320px]">
+          <aside className="hidden w-[280px] shrink-0 border-l border-border-main bg-surface xl:block 2xl:w-[320px]">
             <div className="h-full overflow-y-auto p-5 [scrollbar-gutter:stable]">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Conversation Details
               </div>
               {activeConversation ? (
                 <div className="mt-4 space-y-3">
-                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-                      Actions
+                  <div className={detailCardClassName}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className={detailHeadingClassName}>
+                        Actions
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleExportConversation}
+                        data-allow-export="true"
+                        className="inline-flex items-center gap-2 rounded-full border border-primary bg-primary px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white transition hover:opacity-90"
+                      >
+                        <Download size={13} />
+                        Export History
+                      </button>
                     </div>
                     <div className="mt-3 space-y-3">
                       <select
                         value={activeConversation.inbox_status || activeConversation.status || "bot"}
                         onChange={(event) => handleStatusUpdate(event.target.value)}
                         disabled={isUpdatingStatus}
-                        className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                        className={`${controlClassName} w-full`}
                       >
                         <option value="bot">Bot</option>
                         <option value="pending">Pending</option>
@@ -1182,7 +1331,7 @@ export default function ConversationsPage() {
                         value={selectedAgentId}
                         disabled={!canManageAssignments || isSavingAssignment}
                         onChange={(event) => setSelectedAgentId(event.target.value)}
-                        className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                        className={`${controlClassName} w-full`}
                       >
                         <option value="">Select assignee</option>
                         {assignableMembers.map((member) => (
@@ -1194,21 +1343,21 @@ export default function ConversationsPage() {
                           </option>
                         ))}
                       </select>
-                      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-3">
+                      <div className="rounded-xl border border-border-main bg-canvas px-3 py-3 shadow-sm">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
                             Agent Capacity
                           </div>
                           {assignmentCapacity ? (
-                            <div className="text-[10px] text-[var(--muted)]">
+                            <div className="text-xs text-text-muted">
                               {assignmentCapacity.summary.eligibleCandidates} eligible / {assignmentCapacity.summary.skillMatchedCandidates} skill-matched
                             </div>
                           ) : null}
                         </div>
                         {isLoadingCapacity ? (
-                          <div className="mt-3 text-xs text-[var(--muted)]">Loading capacity...</div>
+                          <div className="mt-3 text-xs text-text-muted">Loading capacity...</div>
                         ) : visibleCapacityCandidates.length === 0 ? (
-                          <div className="mt-3 text-xs text-[var(--muted)]">
+                          <div className="mt-3 text-xs text-text-muted">
                             No eligible agents available for this conversation yet.
                           </div>
                         ) : (
@@ -1221,17 +1370,17 @@ export default function ConversationsPage() {
                                 disabled={!canManageAssignments}
                                 className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                                   selectedAgentId === candidate.user_id
-                                    ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                                    : "border-[var(--line)] bg-[var(--surface-muted)] hover:bg-[var(--surface)]"
+                                    ? "border-primary bg-primary-fade"
+                                    : "border-border-main bg-surface hover:bg-canvas"
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium text-[var(--text)]">
+                                    <div className="truncate text-sm font-medium text-text-main">
                                       {candidate.name || candidate.email || candidate.user_id}
                                     </div>
-                                    <div className="mt-1 text-xs text-[var(--muted)]">
-                                      {candidate.role} • {candidate.capacity_remaining} slots free
+                                    <div className="mt-1 text-xs text-text-muted">
+                                      {candidate.role} - {candidate.capacity_remaining} slots free
                                     </div>
                                   </div>
                                   <div className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${getCapacityTone(candidate.capacity_status)}`}>
@@ -1239,49 +1388,49 @@ export default function ConversationsPage() {
                                   </div>
                                 </div>
                                 <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.12em]">
-                                  <span className="rounded-full bg-[var(--surface-strong)] px-2 py-1 text-[var(--muted)]">
+                                  <span className="rounded-full border border-border-main bg-canvas px-2 py-1 text-text-muted">
                                     {formatCapacityLabel(candidate)}
                                   </span>
                                   {candidate.pending_assignment_count > 0 ? (
-                                    <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">
+                                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
                                       {candidate.pending_assignment_count} pending
                                     </span>
                                   ) : null}
                                   {candidate.matched_skill_count > 0 ? (
-                                    <span className="rounded-full bg-cyan-50 px-2 py-1 text-cyan-700">
+                                    <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-cyan-700">
                                       {candidate.matched_skill_count} skill match
                                     </span>
                                   ) : null}
                                   {candidate.recommended ? (
-                                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+                                    <span className="rounded-full border border-primary/20 bg-primary-fade px-2 py-1 text-primary">
                                       Recommended
                                     </span>
                                   ) : null}
                                   {!candidate.scope_matches ? (
-                                    <span className="rounded-full bg-red-50 px-2 py-1 text-red-700">
+                                    <span className="rounded-full border border-red-200 bg-red-50 px-2 py-1 text-red-700">
                                       Scope mismatch
                                     </span>
                                   ) : null}
                                   {!candidate.has_project_access ? (
-                                    <span className="rounded-full bg-red-50 px-2 py-1 text-red-700">
+                                    <span className="rounded-full border border-red-200 bg-red-50 px-2 py-1 text-red-700">
                                       No project access
                                     </span>
                                   ) : null}
                                 </div>
                                 {candidate.last_assigned_at ? (
-                                  <div className="mt-2 text-xs text-[var(--muted)]">
+                                  <div className="mt-2 text-xs text-text-muted">
                                     Last assigned {new Date(candidate.last_assigned_at).toLocaleString()}
                                   </div>
                                 ) : null}
                                 {(candidate.required_skills.length > 0 || candidate.agent_skills.length > 0) ? (
                                   <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.12em]">
                                     {candidate.required_skills.slice(0, 4).map((skill) => (
-                                      <span key={`required-${candidate.user_id}-${skill}`} className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">
+                                      <span key={`required-${candidate.user_id}-${skill}`} className="rounded-full border border-border-main bg-canvas px-2 py-1 text-text-muted">
                                         Need {formatSkillLabel(skill)}
                                       </span>
                                     ))}
                                     {candidate.agent_skills.slice(0, 4).map((skill) => (
-                                      <span key={`agent-${candidate.user_id}-${skill}`} className="rounded-full bg-cyan-50 px-2 py-1 text-cyan-700">
+                                      <span key={`agent-${candidate.user_id}-${skill}`} className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-cyan-700">
                                         {formatSkillLabel(skill)}
                                       </span>
                                     ))}
@@ -1296,7 +1445,7 @@ export default function ConversationsPage() {
                         type="button"
                         onClick={handleAssign}
                         disabled={!canManageAssignments || !selectedAgentId || isSavingAssignment}
-                        className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        className="w-full rounded-xl border border-primary bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {activeConversation.assigned_to ? "Reassign Conversation" : "Assign Conversation"}
                       </button>
@@ -1304,7 +1453,7 @@ export default function ConversationsPage() {
                         type="button"
                         onClick={handleRelease}
                         disabled={!canManageAssignments || !activeConversation.assigned_to || isSavingAssignment}
-                        className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--surface)] disabled:cursor-not-allowed disabled:opacity-50"
+                        className={secondaryButtonClassName + " w-full"}
                       >
                         Release Assignment
                       </button>
@@ -1343,70 +1492,70 @@ export default function ConversationsPage() {
                     ["Agent", activeConversation.assigned_to_name || "Unassigned"],
                     ["Status", activeConversation.inbox_status || activeConversation.status || "n/a"],
                   ].map(([label, value]) => (
-                    <div key={label} className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <div key={label} className={detailCardClassName}>
+                      <div className={detailHeadingClassName}>
                         {label}
                       </div>
-                      <div className="mt-1 break-words text-sm font-medium text-[var(--text)]">
+                      <div className={`mt-1 ${detailTextClassName}`}>
                         {value}
                       </div>
                     </div>
                   ))}
 
-                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <div className={detailCardClassName}>
+                    <div className={detailHeadingClassName}>
                       Assignment History
                     </div>
                     <div className="mt-3 space-y-3">
                       {assignments.length === 0 ? (
-                        <div className="text-sm text-[var(--muted)]">No assignment history yet.</div>
+                        <div className="text-sm text-text-muted">No assignment history yet.</div>
                       ) : (
                         assignments.map((assignment) => (
-                          <div key={assignment.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-3">
-                            <div className="text-sm font-medium text-[var(--text)]">
+                          <div key={assignment.id} className="rounded-lg border border-border-main bg-surface px-3 py-3 shadow-sm">
+                            <div className="text-sm font-medium text-text-main">
                               {assignment.agent_name || assignment.agent_email || assignment.agent_id}
                             </div>
-                            <div className="mt-1 text-xs text-[var(--muted)]">
+                            <div className="mt-1 text-xs text-text-muted">
                               {assignment.status} via {assignment.assignment_type}
                             </div>
-                            <div className="mt-1 text-xs text-[var(--muted)]">
+                            <div className="mt-1 text-xs text-text-muted">
                               Assigned by {assignment.assigned_by_name || "system"} on{" "}
                               {new Date(assignment.assigned_at).toLocaleString()}
                             </div>
                             {assignment.released_at ? (
-                              <div className="mt-1 text-xs text-[var(--muted)]">
+                              <div className="mt-1 text-xs text-text-muted">
                                 Closed by {assignment.released_by_name || "system"} on{" "}
                                 {new Date(assignment.released_at).toLocaleString()}
                               </div>
                             ) : null}
                             {assignment.notes ? (
-                              <div className="mt-1 text-xs text-[var(--text)]">{assignment.notes}</div>
+                              <div className="mt-1 text-xs text-text-main">{assignment.notes}</div>
                             ) : null}
                           </div>
                         ))
                       )}
                     </div>
                     {assignmentSummary ? (
-                      <div className="mt-3 text-xs text-[var(--muted)]">
+                      <div className="mt-3 text-xs text-text-muted">
                         Current assignment source: {assignmentSummary.assignment_type}
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <div className={detailCardClassName}>
+                    <div className={detailHeadingClassName}>
                       Tags
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {tags.length === 0 ? (
-                        <div className="text-sm text-[var(--muted)]">No tags yet.</div>
+                        <div className="text-sm text-text-muted">No tags yet.</div>
                       ) : (
                         tags.map((tag: any) => (
                           <button
                             key={tag.tag}
                             type="button"
                             onClick={() => handleRemoveTag(tag.tag)}
-                            className="rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white"
+                            className="rounded-full border border-border-main bg-surface px-3 py-1 text-xs font-medium text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary"
                           >
                             {tag.tag} x
                           </button>
@@ -1418,31 +1567,31 @@ export default function ConversationsPage() {
                         value={tagInput}
                         onChange={(event) => setTagInput(event.target.value)}
                         placeholder="Add tag"
-                        className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                        className={`${controlClassName} flex-1`}
                       />
                       <button
                         type="button"
                         onClick={handleAddTag}
                         disabled={isSavingMeta || !tagInput.trim()}
-                        className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:bg-slate-300"
+                        className={secondaryButtonClassName}
                       >
                         Add
                       </button>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <div className={detailCardClassName}>
+                    <div className={detailHeadingClassName}>
                       Notes
                     </div>
                     <div className="mt-3 space-y-3">
                       {notes.length === 0 ? (
-                        <div className="text-sm text-[var(--muted)]">No notes yet.</div>
+                        <div className="text-sm text-text-muted">No notes yet.</div>
                       ) : (
                         notes.map((note) => (
-                          <div key={note.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-3">
-                            <div className="text-sm text-[var(--text)]">{note.note}</div>
-                            <div className="mt-1 text-xs text-[var(--muted)]">
+                          <div key={note.id} className="rounded-lg border border-border-main bg-surface px-3 py-3 shadow-sm">
+                            <div className="text-sm text-text-main">{note.note}</div>
+                            <div className="mt-1 text-xs text-text-muted">
                               {note.author_name || note.author_email || "Unknown"} on{" "}
                               {new Date(note.created_at).toLocaleString()}
                             </div>
@@ -1455,28 +1604,62 @@ export default function ConversationsPage() {
                         value={noteInput}
                         onChange={(event) => setNoteInput(event.target.value)}
                         placeholder="Add internal note"
-                        className="min-h-[90px] w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                        className="min-h-[90px] w-full rounded-xl border border-border-main bg-canvas px-3 py-2 text-sm text-text-main outline-none shadow-sm placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary"
                       />
                       <button
                         type="button"
                         onClick={handleAddNote}
                         disabled={isSavingMeta || !noteInput.trim()}
-                        className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:bg-slate-300"
+                        className="w-full rounded-xl border border-primary bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Save Note
                       </button>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <div className={detailCardClassName}>
+                    <div className={detailHeadingClassName}>
+                      Unified Timeline
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {timeline.length === 0 ? (
+                        <div className="text-sm text-text-muted">
+                          No merged timeline events yet.
+                        </div>
+                      ) : (
+                        timeline.slice(0, 12).map((item) => (
+                          <div key={`${item.event_type}-${item.event_id}`} className="rounded-lg border border-border-main bg-surface px-3 py-3 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-medium text-text-main">
+                                  {String(item.title || item.event_type || "event")}
+                                </div>
+                                <div className="mt-1 text-xs uppercase tracking-[0.14em] text-text-muted">
+                                  {String(item.event_type || "event")} · {String(item.source_type || "source")}
+                                </div>
+                              </div>
+                              <div className="rounded-full border border-border-main bg-canvas px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted">
+                                {String(item.status || "n/a")}
+                              </div>
+                            </div>
+                            <div className="mt-2 text-xs text-text-muted">
+                              {new Date(item.happened_at || item.updated_at || item.created_at || Date.now()).toLocaleString()}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className={detailCardClassName}>
+                    <div className={detailHeadingClassName}>
                       Move List
                     </div>
                     <div className="mt-3 flex gap-2">
                       <select
                         value={selectedListId}
                         onChange={(event) => setSelectedListId(event.target.value)}
-                        className="flex-1 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                        className={`${controlClassName} flex-1`}
                       >
                         <option value="">No list</option>
                         {availableLists.map((list: any) => (
@@ -1489,15 +1672,15 @@ export default function ConversationsPage() {
                         type="button"
                         onClick={handleMoveList}
                         disabled={isSavingMeta}
-                        className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:bg-slate-300"
+                        className={secondaryButtonClassName}
                       >
                         Save
                       </button>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <div className={detailCardClassName}>
+                    <div className={detailHeadingClassName}>
                       Context
                     </div>
                     <div className="mt-3 space-y-2">
@@ -1516,7 +1699,7 @@ export default function ConversationsPage() {
                           ["List Id", "listId"],
                         ].map(([label, key]) => (
                           <label key={key} className="block">
-                            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
+                            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
                               {label}
                             </span>
                             <input
@@ -1527,7 +1710,7 @@ export default function ConversationsPage() {
                                   [key]: event.target.value,
                                 }))
                               }
-                              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm text-[var(--text)] outline-none"
+                              className={`${controlClassName} w-full`}
                             />
                           </label>
                         ))}
@@ -1536,14 +1719,14 @@ export default function ConversationsPage() {
                         type="button"
                         onClick={handleSaveStructuredContext}
                         disabled={isSavingMeta}
-                        className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:bg-slate-300"
+                        className="w-full rounded-xl border border-primary bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Save Context Fields
                       </button>
                       <button
                         type="button"
                         onClick={() => setShowAdvancedContext((value) => !value)}
-                        className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-sm font-semibold text-[var(--text)]"
+                        className={secondaryButtonClassName + " w-full"}
                       >
                         {showAdvancedContext ? "Hide Advanced JSON" : "Show Advanced JSON"}
                       </button>
@@ -1552,13 +1735,13 @@ export default function ConversationsPage() {
                           <textarea
                             value={contextInput}
                             onChange={(event) => setContextInput(event.target.value)}
-                            className="min-h-[180px] w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 font-mono text-xs text-[var(--text)] outline-none"
+                            className="min-h-[180px] w-full rounded-xl border border-border-main bg-canvas px-3 py-2 font-mono text-xs text-text-main outline-none shadow-sm placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary"
                           />
                           <button
                             type="button"
                             onClick={handleSaveContext}
                             disabled={isSavingMeta}
-                            className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:bg-slate-300"
+                            className="w-full rounded-xl border border-primary bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Save Raw JSON
                           </button>
@@ -1568,7 +1751,7 @@ export default function ConversationsPage() {
                   </div>
                 </div>
               ) : (
-                <div className="mt-4 rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-muted)] px-4 py-6 text-sm text-[var(--muted)]">
+                <div className="mt-4 rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                   Select a conversation to view campaign, platform, routing, and assignment context.
                 </div>
               )}
@@ -1581,3 +1764,4 @@ export default function ConversationsPage() {
     )
   );
 }
+

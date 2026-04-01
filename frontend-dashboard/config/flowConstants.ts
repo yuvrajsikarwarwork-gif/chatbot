@@ -1,54 +1,48 @@
-import { 
-  MessageSquare, MousePointerClick, List, Image as ImageIcon, Type, Zap, 
-  Clock, LogOut, Split, Database, Webhook, Timer, ArrowRight, 
-  ShieldAlert, Play, Hourglass, LayoutTemplate, Headset, Bot, BrainCircuit
+import {
+  MessageSquare,
+  List,
+  Type,
+  Clock,
+  LogOut,
+  Split,
+  Database,
+  Webhook,
+  ArrowRight,
+  Headset,
+  LayoutTemplate,
+  BrainCircuit,
+  Bot,
 } from "lucide-react";
 
 export const AUTO_SAVE_DELAY = 10000;
 
 export const NODE_CATEGORIES = [
   { 
-    title: "1. Core & Messages", color: "emerald",
+    title: "1. Communication", color: "emerald",
     items: [
-      { type: "start", label: "Start Node", icon: Play, info: "Entry point for the conversation." },
-      { type: "trigger", label: "Trigger Node", icon: Zap, info: "Keyword or event based trigger." },
-      { type: "msg_text", label: "Text Message", icon: MessageSquare, info: "Sends standard text message." },
-      { type: "msg_media", label: "Media Message", icon: ImageIcon, info: "Sends Image, Video, or Documents." },
+      { type: "message", label: "Message", icon: MessageSquare, info: "Send text, image, video, audio, or file messages from one node." },
       { type: "send_template", label: "Send Template", icon: LayoutTemplate, info: "Trigger official Meta templates." }
     ] 
   },
   { 
-    title: "2. User Inputs", color: "violet",
+    title: "2. Data Capture", color: "violet",
     items: [
-      { type: "input", label: "User Input", icon: Type, info: "Smart input with validation, Reset footer, and Timeout paths." }
+      { type: "input", label: "Input", icon: Type, info: "Collect answers with validation, timeout rules, and built-in retry behavior." },
+      { type: "menu", label: "Interactive Menu", icon: List, info: "Buttons or list options in one node. The UI adapts based on the number of choices." }
     ] 
   },
   { 
-    title: "3. Interactive Menus", color: "purple",
-    items: [
-      { type: "menu_button", label: "Menu Button", icon: MousePointerClick, info: "Standard buttons (Max 4)." },
-      { type: "menu_list", label: "List Menu", icon: List, info: "Dropdown-style menus (Max 10)." }
-    ] 
-  },
-  {
-    title: "4. AI & Knowledge", color: "sky",
-    items: [
-      { type: "knowledge_lookup", label: "AI Knowledge", icon: BrainCircuit, info: "Search workspace knowledge and save results for downstream replies." }
-    ]
-  },
-  { 
-    title: "5. System & Logic", color: "amber",
+    title: "3. Logic & Routing", color: "purple",
     items: [
       { type: "condition", label: "Condition", icon: Split, info: "Decision branching logic." },
+      { type: "split_traffic", label: "Split Traffic", icon: Split, info: "Randomly route traffic between two branches for A/B testing." },
+      { type: "business_hours", label: "Business Hours", icon: Clock, info: "Route based on whether the current time is inside your schedule." },
+      { type: "goto", label: "Go To", icon: ArrowRight, info: "Jump to another node, flow, or bot." },
       { type: "api", label: "API Request", icon: Webhook, info: "External system integrations." },
       { type: "save", label: "Save Data", icon: Database, info: "Persist data to lead profile." },
-      { type: "reminder", label: "Reminder", icon: Clock, info: "Nudge user if inactive." },
-      { type: "delay", label: "Delay", icon: Timer, info: "Pause execution momentarily." },
-      { type: "timeout", label: "Timeout", icon: Hourglass, info: "Connection target for idle sessions." },
-      { type: "error_handler", label: "Error Handler", icon: ShieldAlert, info: "Floating global listener for unrecognized inputs." },
+      { type: "knowledge_lookup", label: "Knowledge Lookup", icon: BrainCircuit, info: "Search workspace knowledge and save results for downstream replies." },
+      { type: "ai_generate", label: "AI Generate", icon: Bot, info: "Prompt an AI model and save the generated reply or summary." },
       { type: "assign_agent", label: "Assign Agent", icon: Headset, info: "Switch from Bot to Human mode." },
-      { type: "resume_bot", label: "Resume Bot", icon: Bot, info: "Switch back to Bot with Resume/Restart options." },
-      { type: "goto", label: "Go To", icon: ArrowRight, info: "Jump to another node, another flow in this bot, or another bot." },
       { type: "end", label: "End Flow", icon: LogOut, info: "Clean session termination." }
     ] 
   }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+﻿import React, { useEffect, useRef } from "react";
 
 interface MessageListProps {
   messages: any[];
@@ -281,7 +281,7 @@ export default function MessageList({ messages }: MessageListProps) {
 
   if (!messages || messages.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center px-6 text-center text-sm font-bold text-muted">
+      <div className="flex h-full items-center justify-center px-6 text-center text-sm font-bold text-text-muted">
         No messages in this conversation yet.
       </div>
     );
@@ -292,7 +292,7 @@ export default function MessageList({ messages }: MessageListProps) {
       ref={containerRef}
       className="absolute inset-0 flex flex-col gap-4 overflow-y-auto p-5 custom-scrollbar md:p-6"
     >
-      <div className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.22em] text-muted">
+      <div className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.22em] text-text-muted">
         Conversation Started
       </div>
 
@@ -328,7 +328,7 @@ export default function MessageList({ messages }: MessageListProps) {
                     ? "rounded-br-none bg-primary text-white"
                     : isBot
                       ? "rounded-br-none bg-primary text-white"
-                      : "rounded-bl-none border border-border bg-card text-foreground"
+                      : "rounded-bl-none border border-border-main bg-surface text-text-main"
                 }`}
               >
                 {renderMessageContent(message)}
@@ -336,7 +336,7 @@ export default function MessageList({ messages }: MessageListProps) {
               </div>
               <div
                 className={`mt-1 flex flex-wrap gap-x-2 gap-y-1 break-all text-[9px] font-bold uppercase tracking-[0.22em] opacity-70 ${
-                  isSystem ? "justify-end text-muted" : "justify-start text-muted"
+                  isSystem ? "justify-end text-text-muted" : "justify-start text-text-muted"
                 }`}
               >
                 <span>{sender}</span>
@@ -351,3 +351,4 @@ export default function MessageList({ messages }: MessageListProps) {
     </div>
   );
 }
+

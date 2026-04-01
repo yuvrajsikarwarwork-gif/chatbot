@@ -127,63 +127,63 @@ export default function PlatformUsersConsole() {
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
           <UsersAccessTabs activeHref="/users-access/platform-users" />
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="max-w-3xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 Platform Users
               </div>
-              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-text-main">
                 Manage developer and super admin access
               </h1>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+              <p className="mt-2 text-sm leading-6 text-text-muted">
                 Create and manage platform-level accounts without going through workspace membership first.
               </p>
             </div>
           </section>
 
           {!canManageUsers ? (
-            <section className="rounded-[1.5rem] border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.12)] p-6 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+            <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 shadow-sm">
               Developer or super admin access is required to manage platform users.
             </section>
           ) : (
             <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-              <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+              <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
                 <div className="mb-5 flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[rgba(129,140,248,0.34)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-[0_16px_28px_var(--accent-glow)]">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary bg-primary text-white shadow-sm">
                     <Plus size={20} />
                   </div>
                     <div>
-                      <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
+                      <div className="text-[11px] font-black uppercase tracking-[0.24em] text-text-muted">
                         User Editor
                       </div>
-                      <div className="text-lg font-semibold tracking-tight text-[var(--text)]">
+                        <div className="text-lg font-semibold tracking-tight text-text-main">
                       {editingUserId ? "Edit platform user" : "Create platform user"}
                       </div>
                     </div>
                   </div>
 
-                <div className="space-y-3 rounded-[1.2rem] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
+                <div className="space-y-3 rounded-[1.2rem] border border-border-main bg-canvas p-4 shadow-sm">
                   <input
-                    className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--line-strong)] focus:shadow-[0_0_0_4px_var(--accent-soft)]"
+                    className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition focus:border-primary focus:shadow-[0_0_0_4px_var(--primary-fade)]"
                     placeholder="Full name"
                     value={form.name}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                   />
                   <input
-                    className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--line-strong)] focus:shadow-[0_0_0_4px_var(--accent-soft)]"
+                    className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition focus:border-primary focus:shadow-[0_0_0_4px_var(--primary-fade)]"
                     placeholder="Email"
                     value={form.email}
                     onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                   />
                   <input
                     type="password"
-                    className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--line-strong)] focus:shadow-[0_0_0_4px_var(--accent-soft)]"
+                    className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition focus:border-primary focus:shadow-[0_0_0_4px_var(--primary-fade)]"
                     placeholder={editingUserId ? "Password unchanged" : "Password"}
                     value={form.password}
                     onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                   />
                   <select
-                    className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--line-strong)] focus:shadow-[0_0_0_4px_var(--accent-soft)]"
+                    className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition focus:border-primary focus:shadow-[0_0_0_4px_var(--primary-fade)]"
                     value={form.role}
                     onChange={(event) =>
                       setForm((current) => ({
@@ -198,19 +198,19 @@ export default function PlatformUsersConsole() {
                     <option value="super_admin">Super Admin</option>
                   </select>
                   {error ? (
-                    <div className="rounded-2xl border border-[rgba(248,113,113,0.3)] bg-[rgba(248,113,113,0.12)] px-4 py-3 text-sm text-[var(--text)]">
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                       {error}
                     </div>
                   ) : null}
                   {success ? (
-                    <div className="rounded-2xl border border-[rgba(52,211,153,0.28)] bg-[rgba(16,185,129,0.12)] px-4 py-3 text-sm text-[var(--text)]">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                       {success}
                     </div>
                   ) : null}
                   <div className="flex flex-wrap gap-3">
                     <button
                       onClick={handleSaveUser}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-[rgba(129,140,248,0.34)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_32px_var(--accent-glow)] transition duration-300 hover:-translate-y-0.5"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-primary bg-primary px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-sm transition duration-300 hover:-translate-y-0.5"
                     >
                       {editingUserId ? <PencilLine size={14} /> : <Plus size={14} />}
                       {editingUserId ? "Save User" : "Create User"}
@@ -219,7 +219,7 @@ export default function PlatformUsersConsole() {
                       <button
                         type="button"
                         onClick={handleEditCancel}
-                        className="rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[var(--text)]"
+                        className="rounded-2xl border border-border-main bg-canvas px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-text-main"
                       >
                         Cancel
                       </button>
@@ -230,17 +230,17 @@ export default function PlatformUsersConsole() {
 
               <section className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface)] px-4 py-4 shadow-sm">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Users</div>
-                    <div className="mt-2 text-xl font-semibold text-[var(--text)]">{users.length}</div>
+                  <div className="rounded-[1.2rem] border border-border-main bg-surface px-4 py-4 shadow-sm">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">Users</div>
+                    <div className="mt-2 text-xl font-semibold text-text-main">{users.length}</div>
                   </div>
-                  <div className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface)] px-4 py-4 shadow-sm">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Developers</div>
-                    <div className="mt-2 text-xl font-semibold text-[var(--text)]">{users.filter((item) => item.role === "developer").length}</div>
+                  <div className="rounded-[1.2rem] border border-border-main bg-surface px-4 py-4 shadow-sm">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">Developers</div>
+                    <div className="mt-2 text-xl font-semibold text-text-main">{users.filter((item) => item.role === "developer").length}</div>
                   </div>
-                  <div className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface)] px-4 py-4 shadow-sm">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Super Admins</div>
-                    <div className="mt-2 text-xl font-semibold text-[var(--text)]">{users.filter((item) => item.role === "super_admin").length}</div>
+                  <div className="rounded-[1.2rem] border border-border-main bg-surface px-4 py-4 shadow-sm">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">Super Admins</div>
+                    <div className="mt-2 text-xl font-semibold text-text-main">{users.filter((item) => item.role === "super_admin").length}</div>
                   </div>
                 </div>
 
@@ -248,20 +248,20 @@ export default function PlatformUsersConsole() {
                   {users.map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm"
+                      className="rounded-[1.25rem] border border-border-main bg-surface p-5 shadow-sm"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate text-base font-semibold tracking-tight text-[var(--text)]">
+                          <div className="truncate text-base font-semibold tracking-tight text-text-main">
                             {item.name || "Unnamed User"}
                           </div>
-                          <div className="mt-1 truncate text-sm text-[var(--muted)]">{item.email}</div>
+                          <div className="mt-1 truncate text-sm text-text-muted">{item.email}</div>
                         </div>
-                        <div className="rounded-full border border-[var(--glass-border)] bg-[var(--surface-muted)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--muted)]">
+                        <div className="rounded-full border border-border-main bg-canvas px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
                           {item.role}
                         </div>
                       </div>
-                      <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
+                      <div className="mt-4 space-y-2 text-sm text-text-muted">
                         <div className="flex items-center gap-2">
                           <UserCog size={14} />
                           Platform role: {item.role}
@@ -275,7 +275,7 @@ export default function PlatformUsersConsole() {
                         <button
                           type="button"
                           onClick={() => handleEditStart(item)}
-                          className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--text)]"
+                          className="inline-flex items-center gap-2 rounded-xl border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-text-main"
                         >
                           <PencilLine size={12} />
                           Edit

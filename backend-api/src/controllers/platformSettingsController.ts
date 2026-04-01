@@ -29,8 +29,10 @@ export async function updateGlobalIntegrationsSettings(req: Request, res: Respon
     embeddedSignupConfigId: String(req.body?.embeddedSignupConfigId || ""),
     metaAppSecret:
       typeof req.body?.metaAppSecret === "string" ? req.body.metaAppSecret : null,
-    legacyVerifyToken:
-      typeof req.body?.legacyVerifyToken === "string" ? req.body.legacyVerifyToken : null,
+    metaWebhookVerifyToken:
+      typeof req.body?.metaWebhookVerifyToken === "string"
+        ? req.body.metaWebhookVerifyToken
+        : null,
   });
 
   res.json(result);
@@ -66,12 +68,26 @@ export async function updateEmailServicesSettings(req: Request, res: Response) {
       smtpReplyTo: typeof req.body?.smtpReplyTo === "string" ? req.body.smtpReplyTo : null,
       testRecipient: typeof req.body?.testRecipient === "string" ? req.body.testRecipient : null,
       smtpPass: typeof req.body?.smtpPass === "string" ? req.body.smtpPass : null,
+      smtpEncryption: typeof req.body?.smtpEncryption === "string" ? req.body.smtpEncryption : null,
+      smtpSenderName: typeof req.body?.smtpSenderName === "string" ? req.body.smtpSenderName : null,
     })
   );
 }
 
-export async function testEmailServicesSettings(_req: Request, res: Response) {
-  res.json(await testEmailServicesSettingsService());
+export async function testEmailServicesSettings(req: Request, res: Response) {
+  res.json(
+    await testEmailServicesSettingsService({
+      smtpHost: typeof req.body?.smtpHost === "string" ? req.body.smtpHost : null,
+      smtpPort: req.body?.smtpPort,
+      smtpUser: typeof req.body?.smtpUser === "string" ? req.body.smtpUser : null,
+      smtpFrom: typeof req.body?.smtpFrom === "string" ? req.body.smtpFrom : null,
+      smtpReplyTo: typeof req.body?.smtpReplyTo === "string" ? req.body.smtpReplyTo : null,
+      testRecipient: typeof req.body?.testRecipient === "string" ? req.body.testRecipient : null,
+      smtpPass: typeof req.body?.smtpPass === "string" ? req.body.smtpPass : null,
+      smtpEncryption: typeof req.body?.smtpEncryption === "string" ? req.body.smtpEncryption : null,
+      smtpSenderName: typeof req.body?.smtpSenderName === "string" ? req.body.smtpSenderName : null,
+    })
+  );
 }
 
 export async function getAiProvidersSettings(_req: Request, res: Response) {

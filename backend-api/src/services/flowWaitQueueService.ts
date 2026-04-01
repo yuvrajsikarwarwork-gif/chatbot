@@ -18,7 +18,7 @@ let processorBusy = false;
 
 const processFlowWaitJob = async (job: any, io: any) => {
   const payload = job?.payload || {};
-  const type = String(job?.type || "");
+  const type = String(job?.job_type || job?.type || "");
 
   if (type === "flow_wait_reminder") {
     await sendWaitingNodeReminder({
@@ -65,8 +65,8 @@ const drainDueJobs = async (io: any) => {
         await markJobCompleted(job.id);
       } catch (error: any) {
         const errorMessage = error?.message || "Flow wait job failed";
-        const retryCount = Number(job?.attempts || 0);
-        const maxRetries = Number(job?.max_attempts ?? 2);
+        const retryCount = Number(job?.retry_count || job?.attempts || 0);
+        const maxRetries = Number(job?.max_retries ?? job?.max_attempts ?? 2);
 
         if (retryCount + 1 >= maxRetries) {
           await markJobFailed(job.id, errorMessage);

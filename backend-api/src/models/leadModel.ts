@@ -191,6 +191,33 @@ export async function deleteLead(id: string, userId: string) {
   );
 }
 
+export async function updateLeadStatus(id: string, userId: string, status: string) {
+  const res = await query(
+    `UPDATE leads l
+     SET status = $3,
+         updated_at = NOW()
+     FROM campaigns c
+     WHERE l.id = $1
+       AND l.campaign_id = c.id
+       AND (
+         l.user_id = $2
+         OR (
+           c.workspace_id IS NOT NULL
+           AND c.workspace_id IN (
+             SELECT workspace_id
+             FROM workspace_memberships
+             WHERE user_id = $2
+               AND status = 'active'
+           )
+         )
+       )
+     RETURNING l.*`,
+    [id, userId, status]
+  );
+
+  return res.rows[0];
+}
+
 export async function findLeadListSummariesByUser(
   userId: string,
   campaignId?: string,

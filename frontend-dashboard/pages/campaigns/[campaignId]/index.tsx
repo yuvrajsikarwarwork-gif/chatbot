@@ -18,7 +18,7 @@ export default function CampaignOverviewPage() {
   const setActiveProject = useAuthStore((state) => state.setActiveProject);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const getProjectRole = useAuthStore((state) => state.getProjectRole);
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
   const [campaign, setCampaign] = useState<any>(null);
   const [form, setForm] = useState({
     name: "",
@@ -40,7 +40,7 @@ export default function CampaignOverviewPage() {
   const canEditCampaign = hasWorkspacePermission(selectedWorkspaceId, "edit_campaign");
   const projectRole = getProjectRole(selectedProjectId);
   const canEditProjectCampaign =
-    canEditCampaign || projectRole === "project_admin" || projectRole === "editor";
+    !isReadOnly && (canEditCampaign || projectRole === "project_admin" || projectRole === "editor");
 
   const tabs = useMemo(
     () => [
@@ -48,6 +48,7 @@ export default function CampaignOverviewPage() {
       { label: "Channels", href: `/campaigns/${campaignId}/channels` },
       { label: "Entries", href: `/campaigns/${campaignId}/entries` },
       { label: "Audience", href: `/campaigns/${campaignId}/audience` },
+      { label: "Automation", href: `/campaigns/${campaignId}/automation` },
       { label: "Launch", href: `/campaigns/${campaignId}/launch` },
       { label: "Activity", href: `/campaigns/${campaignId}/activity` },
     ],
@@ -167,7 +168,7 @@ export default function CampaignOverviewPage() {
                     Campaign name
                   </label>
                   <input
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                    className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                     value={form.name}
                     disabled={!canEditProjectCampaign || loading}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
@@ -178,7 +179,7 @@ export default function CampaignOverviewPage() {
                     Description
                   </label>
                   <textarea
-                    className="min-h-[120px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                    className="min-h-[120px] w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                     value={form.description}
                     disabled={!canEditProjectCampaign || loading}
                     onChange={(event) =>
@@ -192,7 +193,7 @@ export default function CampaignOverviewPage() {
                       Status
                     </label>
                     <select
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                       value={form.status}
                       disabled={!canEditProjectCampaign || loading}
                       onChange={(event) =>
@@ -211,7 +212,7 @@ export default function CampaignOverviewPage() {
                     </label>
                     <input
                       type="date"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                       value={form.startDate}
                       disabled={!canEditProjectCampaign || loading}
                       onChange={(event) =>
@@ -225,7 +226,7 @@ export default function CampaignOverviewPage() {
                     </label>
                     <input
                       type="date"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                       value={form.endDate}
                       disabled={!canEditProjectCampaign || loading}
                       onChange={(event) =>

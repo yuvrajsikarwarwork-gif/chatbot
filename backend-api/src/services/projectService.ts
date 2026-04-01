@@ -112,7 +112,7 @@ export async function createProjectService(userId: string, payload: Record<strin
   }
 
   await assertWorkspacePermission(userId, workspaceId, WORKSPACE_PERMISSIONS.createProjects);
-  await assertProjectQuota(workspaceId);
+  await assertProjectQuota(workspaceId, userId);
 
   const input = {
     workspaceId,

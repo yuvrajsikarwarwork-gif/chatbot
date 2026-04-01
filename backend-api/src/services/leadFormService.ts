@@ -116,16 +116,14 @@ async function assertLeadFormReadAccess(
   workspaceId: string,
   projectId?: string | null
 ) {
-  try {
-    await assertWorkspacePermission(
-      userId,
-      workspaceId,
-      WORKSPACE_PERMISSIONS.viewLeads
-    );
-    return;
-  } catch (err: any) {
-    if (err?.status && err.status !== 403) {
-      throw err;
+  for (const permission of [WORKSPACE_PERMISSIONS.viewLeads, WORKSPACE_PERMISSIONS.editWorkflow]) {
+    try {
+      await assertWorkspacePermission(userId, workspaceId, permission);
+      return;
+    } catch (err: any) {
+      if (err?.status && err.status !== 403) {
+        throw err;
+      }
     }
   }
 

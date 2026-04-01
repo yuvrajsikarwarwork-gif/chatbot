@@ -15,11 +15,11 @@ import {
   updateGlobalIntegrationsSettings,
 } from "../controllers/platformSettingsController";
 import { authMiddleware } from "../middleware/authMiddleware";
-import { requireAuthenticatedUser, requirePlatformRoles } from "../middleware/policyMiddleware";
+import { requireAuthenticatedUser, requireSuperAdmin } from "../middleware/policyMiddleware";
 
 const router = Router();
 
-router.use(authMiddleware, requireAuthenticatedUser, requirePlatformRoles(["super_admin", "developer"]));
+router.use(authMiddleware, requireAuthenticatedUser, requireSuperAdmin);
 
 router.get("/global-integrations", getGlobalIntegrationsSettings);
 router.put("/global-integrations", updateGlobalIntegrationsSettings);

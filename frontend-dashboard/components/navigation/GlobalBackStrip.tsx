@@ -77,7 +77,9 @@ function getBackTarget(
     case "/plans":
     case "/platform-accounts":
     case "/system-settings":
-      return { href: "/workspaces", label: "Back to workspaces" };
+      return platformMode
+        ? { href: "/workspaces", label: "Back to workspaces" }
+        : { href: "/dashboard", label: "Back to dashboard" };
     case "/tickets":
     case "/audit":
     case "/billing":

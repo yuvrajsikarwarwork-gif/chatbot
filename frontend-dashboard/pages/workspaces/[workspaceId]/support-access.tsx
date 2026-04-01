@@ -14,7 +14,7 @@ import { confirmAction, notify } from "../../../store/uiStore";
 export default function WorkspaceSupportAccessPage() {
   const router = useRouter();
   const { workspaceId } = router.query;
-  const { isPlatformOperator } = useVisibility();
+  const { isPlatformOperator, isWorkspaceAdmin, isReadOnly } = useVisibility();
   const user = useAuthStore((state) => state.user);
   const memberships = useAuthStore((state) => state.memberships);
   const projectAccesses = useAuthStore((state) => state.projectAccesses);
@@ -28,7 +28,8 @@ export default function WorkspaceSupportAccessPage() {
   const [consentNote, setConsentNote] = useState("");
 
   const normalizedWorkspaceId = String(workspaceId || "").trim();
-  const canViewSupportTab = isPlatformOperator;
+  const canViewSupportTab = isPlatformOperator || isWorkspaceAdmin;
+  const canMutateSupportAccess = isPlatformOperator && !isReadOnly;
 
   const load = async () => {
     if (!normalizedWorkspaceId || !canViewSupportTab) {
@@ -215,13 +216,28 @@ export default function WorkspaceSupportAccessPage() {
                   <button
                     type="button"
                     onClick={handleEnterWorkspace}
-                    disabled={!consentConfirmed}
+                    disabled={!consentConfirmed || !canMutateSupportAccess}
                     className="rounded-[1.05rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 transition duration-200 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Enter Workspace
                   </button>
                 </div>
-              ) : null}
+              ) : (
+                <div className="space-y-3 rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4 text-sm text-[var(--text)]">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+                    Workspace admin support shortcut
+                  </div>
+                  <p className="text-[var(--muted)]">
+                    Need help from a super admin or platform operator? Create a support request and they can approve temporary access from the platform support console.
+                  </p>
+                  <a
+                    href="/support/new"
+                    className="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700 transition hover:bg-emerald-100"
+                  >
+                    Create Support Request
+                  </a>
+                </div>
+              )}
             </div>
           </section>
 
@@ -269,7 +285,7 @@ export default function WorkspaceSupportAccessPage() {
                           <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
                             {request.status}
                             {request.target_user_id
-                              ? ` · target ${request.target_user_name || request.target_user_email || request.target_user_id}`
+                              ? ` Â· target ${request.target_user_name || request.target_user_email || request.target_user_id}`
                               : ""}
                           </div>
                           <div className="mt-3 text-sm text-[var(--text)]">{request.reason}</div>
@@ -283,6 +299,7 @@ export default function WorkspaceSupportAccessPage() {
                           <button
                             type="button"
                             onClick={() => handleApprove(request)}
+                            disabled={!canMutateSupportAccess}
                             className="rounded-xl bg-slate-900 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white"
                           >
                             Approve
@@ -290,7 +307,8 @@ export default function WorkspaceSupportAccessPage() {
                           <button
                             type="button"
                             onClick={() => handleDeny(request)}
-                            className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700"
+                            disabled={!canMutateSupportAccess}
+                            className="rounded-xl border border-rose-200 bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700"
                           >
                             Deny
                           </button>
@@ -333,7 +351,8 @@ export default function WorkspaceSupportAccessPage() {
                           <button
                             type="button"
                             onClick={() => handleRevoke(row)}
-                            className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700"
+                            disabled={!canMutateSupportAccess}
+                            className="rounded-xl border border-rose-200 bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700"
                           >
                             Revoke
                           </button>

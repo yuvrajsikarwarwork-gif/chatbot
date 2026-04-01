@@ -12,7 +12,7 @@ import { workspaceService, type Workspace, type WorkspaceWalletSummary } from ".
 export default function WorkspaceBillingPage() {
   const router = useRouter();
   const { workspaceId } = router.query;
-  const { canViewPage, isPlatformOperator } = useVisibility();
+  const { canViewPage, isPlatformOperator, isWorkspaceAdmin, isReadOnly } = useVisibility();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [wallet, setWallet] = useState<WorkspaceWalletSummary | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -22,7 +22,9 @@ export default function WorkspaceBillingPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const canViewBillingPage = canViewPage("billing") || isPlatformOperator;
+  const canViewBillingPage = canViewPage("billing") || isPlatformOperator || isWorkspaceAdmin;
+  const canEditBillingPage = isPlatformOperator && !isReadOnly;
+  const currentPlanLabel = workspace?.subscription_plan_name || workspace?.effective_plan_id || workspace?.plan_id || "starter";
 
   const loadData = async () => {
     const id = String(workspaceId || "").trim();
@@ -30,12 +32,11 @@ export default function WorkspaceBillingPage() {
     setLoading(true);
     try {
       setError("");
-      const [billingContext, planRows] = await Promise.all([
-        workspaceService.getBillingContext(id),
+      const [workspaceRow, walletRow, planRows] = await Promise.all([
+        workspaceService.get(id),
+        workspaceService.getWallet(id),
         isPlatformOperator ? planService.list() : Promise.resolve([]),
       ]);
-      const workspaceRow = billingContext.workspace;
-      const walletRow = billingContext.wallet;
       setWorkspace(workspaceRow);
       setWallet(walletRow);
       setPlans(Array.isArray(planRows) ? planRows : []);
@@ -75,6 +76,9 @@ export default function WorkspaceBillingPage() {
     setSaving(true);
     try {
       setError("");
+      if (!canEditBillingPage) {
+        return;
+      }
       await workspaceService.updateBilling(id, {
         ...form,
         workspaceStatus:
@@ -115,7 +119,7 @@ export default function WorkspaceBillingPage() {
       {!canViewBillingPage ? (
         <PageAccessNotice
           title="Workspace billing is restricted for this role"
-          description="Billing details are only available through workspace settings and platform billing access."
+          description="Billing details are visible to workspace admins and platform billing users. Only platform operators can change billing settings."
           href="/settings"
           ctaLabel="Open settings"
         />
@@ -127,6 +131,11 @@ export default function WorkspaceBillingPage() {
         <div className="mx-auto max-w-6xl space-y-6">
           <WorkspaceStatusBanner workspace={workspace} />
           <WorkspaceConsoleTabs workspaceId={workspace.id} activeSlug="billing" />
+          {isWorkspaceAdmin && !isPlatformOperator ? (
+            <section className="rounded-[1.3rem] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+              Workspace admins can review billing, wallet balance, subscription status, and renewal timing here. Only platform operators can make billing changes.
+            </section>
+          ) : null}
 
           {error ? (
             <section className="rounded-[1.2rem] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -150,16 +159,41 @@ export default function WorkspaceBillingPage() {
 
           <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
             <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Subscription controls</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Subscription controls
+                </div>
+                {!canEditBillingPage ? (
+                  <div className="rounded-full border border-border-main bg-canvas px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
+                    Read only
+                  </div>
+                ) : null}
+              </div>
               <div className="mt-5 grid gap-3">
-                <select value={form.planId || ""} onChange={(event) => setForm((current: any) => ({ ...current, planId: event.target.value }))} className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]">
-                  {plans.map((plan) => (
-                    <option key={plan.id} value={plan.id}>
-                      {plan.name || plan.id}
-                    </option>
-                  ))}
-                </select>
-                <select value={form.subscriptionStatus || "active"} onChange={(event) => setForm((current: any) => ({ ...current, subscriptionStatus: event.target.value }))} className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]">
+                {canEditBillingPage ? (
+                  <select
+                    value={form.planId || ""}
+                    onChange={(event) => setForm((current: any) => ({ ...current, planId: event.target.value }))}
+                    disabled={!canEditBillingPage}
+                    className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {plans.map((plan) => (
+                      <option key={plan.id} value={plan.id}>
+                        {plan.name || plan.id}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]">
+                    {currentPlanLabel}
+                  </div>
+                )}
+                <select
+                  value={form.subscriptionStatus || "active"}
+                  onChange={(event) => setForm((current: any) => ({ ...current, subscriptionStatus: event.target.value }))}
+                  disabled={!canEditBillingPage}
+                  className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-70"
+                >
                   <option value="active">active</option>
                   <option value="trialing">trialing</option>
                   <option value="overdue">overdue</option>
@@ -167,7 +201,12 @@ export default function WorkspaceBillingPage() {
                   <option value="canceled">canceled</option>
                   <option value="locked">locked</option>
                 </select>
-                <select value={form.billingCycle || "monthly"} onChange={(event) => setForm((current: any) => ({ ...current, billingCycle: event.target.value }))} className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]">
+                <select
+                  value={form.billingCycle || "monthly"}
+                  onChange={(event) => setForm((current: any) => ({ ...current, billingCycle: event.target.value }))}
+                  disabled={!canEditBillingPage}
+                  className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-70"
+                >
                   <option value="monthly">monthly</option>
                   <option value="yearly">yearly</option>
                 </select>
@@ -182,22 +221,42 @@ export default function WorkspaceBillingPage() {
                   ["walletLowBalanceThreshold", "Low balance threshold"],
                   ["externalCustomerRef", "External customer ref"],
                   ["externalSubscriptionRef", "External subscription ref"],
-                ].map(([key, label]) => (
-                  <input
-                    key={key}
-                    type={key.toLowerCase().includes("ref") ? "text" : "number"}
-                    value={form[key] ?? ""}
-                    onChange={(event) => setForm((current: any) => ({ ...current, [key]: event.target.value }))}
-                    className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]"
-                    placeholder={label}
-                  />
-                ))}
+                ].map(([key, label]) =>
+                  canEditBillingPage ? (
+                    <input
+                      key={key}
+                      type={key.toLowerCase().includes("ref") ? "text" : "number"}
+                      value={form[key] ?? ""}
+                      onChange={(event) => setForm((current: any) => ({ ...current, [key]: event.target.value }))}
+                      disabled={!canEditBillingPage}
+                      className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]"
+                      placeholder={label}
+                    />
+                  ) : (
+                    <div
+                      key={key}
+                      className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]"
+                    >
+                      {String(form[key] ?? "0")}
+                    </div>
+                  )
+                )}
                 <label className="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)]">
-                  <input type="checkbox" checked={Boolean(form.walletAutoTopupEnabled)} onChange={(event) => setForm((current: any) => ({ ...current, walletAutoTopupEnabled: event.target.checked }))} />
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.walletAutoTopupEnabled)}
+                    onChange={(event) => setForm((current: any) => ({ ...current, walletAutoTopupEnabled: event.target.checked }))}
+                    disabled={!canEditBillingPage}
+                  />
                   Enable wallet auto top-up
                 </label>
-                <button type="button" onClick={handleSave} disabled={saving} className="rounded-2xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white disabled:opacity-50">
-                  {saving ? "Saving..." : "Save billing"}
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || !canEditBillingPage}
+                  className="rounded-2xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : canEditBillingPage ? "Save billing" : "View only"}
                 </button>
               </div>
             </section>
@@ -206,15 +265,45 @@ export default function WorkspaceBillingPage() {
               <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Wallet controls</div>
                 <div className="mt-5 grid gap-3">
-                  <select value={walletForm.transactionType} onChange={(event) => setWalletForm((current) => ({ ...current, transactionType: event.target.value }))} className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]">
-                    <option value="credit">credit</option>
-                    <option value="debit">debit</option>
-                    <option value="adjustment">adjustment</option>
-                  </select>
-                  <input value={walletForm.amount} onChange={(event) => setWalletForm((current) => ({ ...current, amount: event.target.value }))} className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]" placeholder="Amount" />
-                  <textarea value={walletForm.note} onChange={(event) => setWalletForm((current) => ({ ...current, note: event.target.value }))} className="min-h-[90px] w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]" placeholder="Adjustment note" />
-                  <button type="button" onClick={handleWalletAdjustment} disabled={saving} className="rounded-2xl border border-emerald-300/35 bg-emerald-500/10 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-emerald-700 disabled:opacity-50">
-                    Apply wallet change
+                  {canEditBillingPage ? (
+                    <>
+                      <select
+                        value={walletForm.transactionType}
+                        onChange={(event) => setWalletForm((current) => ({ ...current, transactionType: event.target.value }))}
+                        disabled={!canEditBillingPage}
+                        className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        <option value="credit">credit</option>
+                        <option value="debit">debit</option>
+                        <option value="adjustment">adjustment</option>
+                      </select>
+                      <input
+                        value={walletForm.amount}
+                        onChange={(event) => setWalletForm((current) => ({ ...current, amount: event.target.value }))}
+                        disabled={!canEditBillingPage}
+                        className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-70"
+                        placeholder="Amount"
+                      />
+                      <textarea
+                        value={walletForm.note}
+                        onChange={(event) => setWalletForm((current) => ({ ...current, note: event.target.value }))}
+                        disabled={!canEditBillingPage}
+                        className="min-h-[90px] w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-70"
+                        placeholder="Adjustment note"
+                      />
+                    </>
+                  ) : (
+                    <div className="rounded-2xl border border-border-main bg-canvas px-4 py-5 text-sm text-text-muted">
+                      Wallet adjustments are view only for workspace admins.
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleWalletAdjustment}
+                    disabled={saving || !canEditBillingPage}
+                    className="rounded-2xl border border-emerald-300/35 bg-emerald-500/10 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-emerald-700 disabled:opacity-50"
+                  >
+                    {canEditBillingPage ? "Apply wallet change" : "View only"}
                   </button>
                 </div>
               </section>

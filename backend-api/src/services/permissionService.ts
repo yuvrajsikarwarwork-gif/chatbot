@@ -4,6 +4,8 @@ import {
 } from "../models/permissionModel";
 import { findWorkspaceMembership } from "../models/workspaceMembershipModel";
 import { findUserById } from "../models/userModel";
+import { findActiveSupportAccess } from "../models/supportAccessModel";
+import { findWorkspaceById } from "../models/workspaceModel";
 import { logAuditSafe } from "./auditLogService";
 import {
   assertPlatformRoles,
@@ -40,11 +42,16 @@ function getActiveWorkspaceFromMemberships(
 
 const PERMISSION_STORAGE_ALIASES: Record<string, string> = {
   create_campaign: "can_create_campaign",
+  manage_project: "edit_projects",
+  view_analytics: "view_workspace",
+  manage_plan: "manage_workspace",
   manage_integrations: "can_manage_platform_accounts",
   edit_bot: "edit_bots",
   view_conversations: "view_conversation",
   reply_conversation: "view_conversation",
 };
+
+const VALID_ROLE_PERMISSION_KEYS = new Set<string>(Object.values(WORKSPACE_PERMISSIONS));
 
 function normalizePermissionPatch(input: Record<string, boolean>) {
   const normalized = new Map<string, boolean>();
@@ -54,7 +61,17 @@ function normalizePermissionPatch(input: Record<string, boolean>) {
     }
 
     const key = PERMISSION_STORAGE_ALIASES[rawKey] || rawKey;
-    normalized.set(key, rawValue);
+    if (VALID_ROLE_PERMISSION_KEYS.has(key)) {
+      normalized.set(key, rawValue);
+    }
+
+    if (rawKey === "manage_project") {
+      ["view_projects", "create_projects", "edit_projects", "delete_projects", "manage_workspace"].forEach((permissionKey) => {
+        if (VALID_ROLE_PERMISSION_KEYS.has(permissionKey)) {
+          normalized.set(permissionKey, rawValue);
+        }
+      });
+    }
   }
 
   return Object.fromEntries(normalized);
@@ -82,6 +99,39 @@ async function buildResolvedWorkspaceAccess(
   };
 }
 
+async function buildSyntheticPlatformWorkspaceAccess(input: {
+  userId: string;
+  workspaceId: string;
+}) {
+  const workspace = await findWorkspaceById(input.workspaceId, input.userId).catch(() => null);
+  const supportAccess = await findActiveSupportAccess(input.workspaceId, input.userId).catch(
+    () => null
+  );
+  if (!supportAccess) {
+    return null;
+  }
+
+  const workspacePermissions = await resolveRolePermissionMap("workspace_admin");
+
+  return {
+    workspace_id: input.workspaceId,
+    workspace_name: workspace?.name || workspace?.workspace_name || null,
+    role: "workspace_admin",
+    status: String(workspace?.status || "active"),
+    permissions_json: {
+      support_mode: true,
+      support_access_id: supportAccess.id,
+      support_expires_at: supportAccess.expires_at,
+    },
+    effective_permissions: {
+      ...workspacePermissions,
+      support_access: true,
+      support_mode: true,
+    },
+    permission_overrides: {},
+  };
+}
+
 export async function getMyPermissionsService(input: {
   userId: string;
   workspaceId?: string | null;
@@ -89,16 +139,28 @@ export async function getMyPermissionsService(input: {
 }) {
   const user = await findUserById(input.userId);
   const platformRole = await getUserPlatformRole(input.userId);
+  const isPlatformOperator =
+    platformRole === "super_admin" || platformRole === "developer";
   const memberships = await listUserWorkspaceMembershipsService(input.userId);
-  const activeWorkspace =
-    input.workspaceId && input.workspaceId.trim()
-      ? await buildResolvedWorkspaceAccess(input.userId, input.workspaceId)
-      : getActiveWorkspaceFromMemberships(memberships, input.workspaceId);
+  const workspaceId = String(input.workspaceId || "").trim() || null;
+  let activeWorkspace = null;
+  if (workspaceId) {
+    if (isPlatformOperator) {
+      activeWorkspace = await buildSyntheticPlatformWorkspaceAccess({
+        userId: input.userId,
+        workspaceId,
+      });
+    } else {
+      activeWorkspace = await buildResolvedWorkspaceAccess(input.userId, workspaceId);
+    }
+  } else {
+    activeWorkspace = getActiveWorkspaceFromMemberships(memberships, input.workspaceId);
+  }
 
-  const workspaceId = String(activeWorkspace?.workspace_id || input.workspaceId || "").trim() || null;
-  const projectAccesses = await listUserProjectAccessService(input.userId, workspaceId).catch(() => []);
+  const resolvedWorkspaceId = String(activeWorkspace?.workspace_id || workspaceId || "").trim() || null;
+  const projectAccesses = await listUserProjectAccessService(input.userId, resolvedWorkspaceId).catch(() => []);
   const activeProject = input.projectId
-    ? await assertProjectContextAccess(input.userId, input.projectId, workspaceId)
+    ? await assertProjectContextAccess(input.userId, input.projectId, resolvedWorkspaceId)
     : null;
 
   return {
@@ -135,13 +197,18 @@ export async function getRolePermissionsService(input: {
 }) {
   const normalizedRole = normalizeWorkspaceRole(input.role);
   const workspaceId = String(input.workspaceId || "").trim();
+  const platformRole = await getUserPlatformRole(input.actorUserId);
+  const isPlatformOperator =
+    platformRole === "super_admin" || platformRole === "developer";
 
   if (workspaceId) {
-    await assertWorkspacePermission(
-      input.actorUserId,
-      workspaceId,
-      WORKSPACE_PERMISSIONS.managePermissions
-    );
+    if (!isPlatformOperator) {
+      await assertWorkspacePermission(
+        input.actorUserId,
+        workspaceId,
+        WORKSPACE_PERMISSIONS.manageUsers
+      );
+    }
   } else {
     await assertPlatformRoles(input.actorUserId, ["developer", "super_admin"]);
   }

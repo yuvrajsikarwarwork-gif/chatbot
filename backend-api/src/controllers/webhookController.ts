@@ -9,6 +9,7 @@ import {
 import * as FlowEngine from "../services/flowEngine";
 import {
   findLegacyWhatsAppBotMatch,
+  findActiveWhatsAppPlatformAccountByPhoneNumberId,
   findWebhookIntegration,
   getIntegrationVerifyToken,
 } from "../services/integrationService";
@@ -16,10 +17,13 @@ import {
   updateMessageDeliveryStatusByExternalId,
   updateMessageDeliveryStatusByOpaqueRef,
 } from "../models/messageModel";
-import { routeMessage } from "../services/messageRouter";
+import { GenericMessage, routeMessage } from "../services/messageRouter";
 import { decryptSecret } from "../utils/encryption";
 import { applyTemplateStatusUpdate } from "./templateController";
 import { normalizeWhatsAppPlatformUserId } from "../services/contactIdentityService";
+import {
+  findCampaignChannelsByPlatformAccountRefId,
+} from "../models/campaignModel";
 
 async function isWorkspaceOrBotSoftDeleted(input: {
   workspaceId?: string | null;
@@ -59,8 +63,8 @@ async function isWorkspaceOrBotSoftDeleted(input: {
   return false;
 }
 
-function getLegacyVerifyToken() {
-  return process.env.WA_VERIFY_TOKEN || process.env.VERIFY_TOKEN;
+function getMetaWebhookVerifyToken() {
+  return process.env.META_WEBHOOK_VERIFY_TOKEN;
 }
 
 async function findLatestWhatsAppConversationBot(
@@ -252,7 +256,7 @@ export const verifyWebhook = async (req: Request, res: Response) => {
   const challenge = req.query["hub.challenge"];
   const { platform, botId } = req.params;
 
-  let verifyToken: string | null | undefined = getLegacyVerifyToken();
+  let verifyToken: string | null | undefined = getMetaWebhookVerifyToken();
 
   if (platform && botId) {
     const channelConfigs = await findCampaignChannelsByBotAndPlatform(
@@ -301,8 +305,12 @@ export const receiveMessage = async (req: Request, res: Response) => {
   }
 
   console.log("\n=========================================");
-  console.log("Incoming webhook:");
-  console.log(JSON.stringify(body, null, 2));
+  console.log("Incoming webhook:", {
+    platform: resolvedPlatform,
+    hasEntry: Array.isArray(body?.entry),
+    hasMessages: Boolean(body?.entry?.[0]?.changes?.[0]?.value?.messages?.length),
+    hasStatuses: Boolean(body?.entry?.[0]?.changes?.[0]?.value?.statuses?.length),
+  });
   console.log("=========================================\n");
 
   const containsTemplateWebhook =
@@ -360,7 +368,7 @@ export const receiveMessage = async (req: Request, res: Response) => {
         buttonId;
     }
 
-    const matchedChannels = phoneNumberId
+    let matchedChannels = phoneNumberId
       ? await findCampaignChannelsByWhatsAppPhoneNumberId(phoneNumberId)
       : [];
     let matchedChannel =
@@ -372,6 +380,24 @@ export const receiveMessage = async (req: Request, res: Response) => {
     const isCsatReply =
       ["csat_good", "csat_okay", "csat_bad"].includes(String(buttonId || "").trim().toLowerCase()) ||
       ["great", "good", "okay", "ok", "fine", "bad", "poor"].includes(normalizedIncomingText);
+
+    const platformAccount =
+      !matchedChannel && phoneNumberId
+        ? await findActiveWhatsAppPlatformAccountByPhoneNumberId(phoneNumberId)
+        : null;
+
+    if (!matchedChannel && platformAccount) {
+      const platformAccountChannels = await findCampaignChannelsByPlatformAccountRefId(
+        platformAccount.id
+      );
+      if (platformAccountChannels.length > 0) {
+        matchedChannels = platformAccountChannels;
+        matchedChannel =
+          matchedChannels.length === 1
+            ? matchedChannels[0]
+            : null;
+      }
+    }
 
     if (matchedChannels.length > 1 && (incomingText.trim() || buttonId.trim())) {
       if (isCsatReply) {
@@ -424,18 +450,29 @@ export const receiveMessage = async (req: Request, res: Response) => {
       matchedChannel = await findCampaignChannelByWhatsAppPhoneNumberId(phoneNumberId);
     }
 
-    const matchedIntegration =
+    const legacyMatchedIntegration =
       matchedChannel || !phoneNumberId
         ? null
         : await findLegacyWhatsAppBotMatch(phoneNumberId);
+    const matchedIntegration =
+      matchedChannel || !phoneNumberId
+        ? null
+        : platformAccount?.bot_id
+          ? platformAccount
+          : legacyMatchedIntegration;
 
     const botId = routeBotId || matchedChannel?.bot_id || matchedIntegration?.bot_id;
     const workspaceId = matchedChannel?.workspace_id || matchedIntegration?.workspace_id || null;
 
     if (!botId) {
-      console.warn(
-        `No active WhatsApp integration found for phone number id '${phoneNumberId}'.`
-      );
+      console.warn("No active WhatsApp integration found for phone number id", {
+        phoneNumberId: phoneNumberId || null,
+        matchedChannelsCount: matchedChannels.length,
+        matchedChannelBotId: matchedChannel?.bot_id || null,
+        platformAccountId: platformAccount?.id || null,
+        platformAccountBotId: platformAccount?.bot_id || null,
+        legacyMatchedBotId: legacyMatchedIntegration?.bot_id || null,
+      });
       return res.sendStatus(200);
     }
 
@@ -462,7 +499,7 @@ export const receiveMessage = async (req: Request, res: Response) => {
 
     if (result?.conversationId && result.actions?.length) {
       for (const action of result.actions) {
-        await routeMessage(result.conversationId, action, io);
+        await routeMessage(result.conversationId, action as GenericMessage, io);
       }
     }
 

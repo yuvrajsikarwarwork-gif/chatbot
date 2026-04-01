@@ -14,7 +14,7 @@ const ACTIVE_KEY_VERSION = String(process.env.INTEGRATION_SECRET_KEY_VERSION || 
 
 const PLATFORM_SETTINGS_SECRET_KEYS = new Set([
   "metaAppSecret",
-  "legacyVerifyToken",
+  "metaWebhookVerifyToken",
   "smtpPass",
   "openaiApiKey",
   "geminiApiKey",

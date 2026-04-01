@@ -22,6 +22,7 @@ import {
   deleteEntryPointForCampaignCtrl,
   deleteListCtrl,
   getCampaign,
+  getCampaignBroadcastAnalyticsCtrl,
   listCampaignActivityCtrl,
   listCampaignAudienceCtrl,
   listCampaignChannelsCtrl,
@@ -35,6 +36,15 @@ import {
   updateEntryPointForCampaignCtrl,
   updateListCtrl,
 } from "../controllers/campaignController";
+import {
+  cloneCampaignAutomationRuleCtrl,
+  getCampaignAutomationRuntimeCtrl,
+  pauseCampaignAutomationRuleCtrl,
+  replayCampaignAutomationRuleCtrl,
+  resumeCampaignAutomationRuleCtrl,
+  saveCampaignAutomationVersionCtrl,
+  setCampaignAutomationVersionStatusCtrl,
+} from "../controllers/campaignAutomationOpsController";
 
 const router = Router();
 
@@ -58,6 +68,14 @@ router.post("/:id/audience", createAudienceListForCampaignCtrl);
 router.put("/:campaignId/audience/:listId", updateAudienceListForCampaignCtrl);
 router.delete("/:campaignId/audience/:listId", deleteAudienceListForCampaignCtrl);
 router.get("/:id/activity", listCampaignActivityCtrl);
+router.get("/:id/broadcast-analytics", getCampaignBroadcastAnalyticsCtrl);
+router.get("/:id/automation/runtime", getCampaignAutomationRuntimeCtrl);
+router.post("/:id/automation/runtime/version", saveCampaignAutomationVersionCtrl);
+router.post("/:id/automation/runtime/version/:versionId/status", setCampaignAutomationVersionStatusCtrl);
+router.post("/:id/automation/:ruleId/clone", cloneCampaignAutomationRuleCtrl);
+router.post("/:id/automation/:ruleId/pause", pauseCampaignAutomationRuleCtrl);
+router.post("/:id/automation/:ruleId/resume", resumeCampaignAutomationRuleCtrl);
+router.post("/:id/automation/:ruleId/replay", replayCampaignAutomationRuleCtrl);
 router.post("/", createCampaignCtrl);
 router.put("/:id", updateCampaignCtrl);
 router.delete("/:id", deleteCampaignCtrl);

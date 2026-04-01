@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, ShieldCheck, Users } from "lucide-react";
+import { Activity, Download, ShieldCheck, Users } from "lucide-react";
 
 import PageAccessNotice from "../components/access/PageAccessNotice";
 import DashboardLayout from "../components/layout/DashboardLayout";
@@ -17,6 +17,7 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const hasAuditWorkspaceRights =
     hasWorkspacePermission(activeWorkspace?.workspace_id, "manage_workspace") ||
@@ -110,6 +111,70 @@ export default function AuditPage() {
   const isSupportEvent = (event: any) =>
     Boolean(event.metadata?.support_mode) || event.entity === "support_session";
 
+  const handleExport = () => {
+    if (!filteredEvents.length) {
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const headers = Array.from(
+        filteredEvents.reduce((set, event) => {
+          [
+            "id",
+            "entity",
+            "action",
+            "actor",
+            "project_id",
+            "created_at",
+            "payload",
+          ].forEach((key) => set.add(key));
+          Object.keys(event.metadata || {}).forEach((key) => set.add(`metadata.${key}`));
+          Object.keys(event.new_data || {}).forEach((key) => set.add(`new_data.${key}`));
+          Object.keys(event.old_data || {}).forEach((key) => set.add(`old_data.${key}`));
+          return set;
+        }, new Set<string>())
+      );
+
+      const escape = (value: unknown) =>
+        `"${String(value === null || value === undefined ? "" : value)
+          .replace(/\r?\n/g, " ")
+          .replace(/"/g, '""')}"`;
+      const csv = [
+        headers.map(escape).join(","),
+        ...filteredEvents.map((event) =>
+          (headers as string[])
+            .map((header: string) => {
+              if (header === "id") return escape(event.id);
+              if (header === "entity") return escape(event.entity);
+              if (header === "action") return escape(event.action);
+              if (header === "actor") return escape(formatActorLabel(event));
+              if (header === "project_id") return escape(event.project_id || "");
+              if (header === "created_at") return escape(event.created_at || "");
+              if (header === "payload") return escape(formatEventPayload(event));
+              if (header.startsWith("metadata.")) return escape(event.metadata?.[header.slice(9)] ?? "");
+              if (header.startsWith("new_data.")) return escape(event.new_data?.[header.slice(9)] ?? "");
+              if (header.startsWith("old_data.")) return escape(event.old_data?.[header.slice(9)] ?? "");
+              return escape("");
+            })
+            .join(",")
+        ),
+      ].join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `audit-${filter}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       {!canOpenAuditShell ? (
@@ -122,7 +187,7 @@ export default function AuditPage() {
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
           {!canViewAudit ? (
-            <section className="rounded-[1.5rem] border border-dashed border-[var(--line)] bg-[var(--surface)] p-8 text-sm text-[var(--muted)]">
+            <section className="rounded-[1.5rem] border border-dashed border-border-main bg-surface p-8 text-sm text-text-muted">
               {!activeWorkspace?.workspace_id
                 ? "Select a workspace first to review its audit trail."
                 : "Workspace audit is available to operators with workspace, user, or permission management access."}
@@ -161,16 +226,16 @@ export default function AuditPage() {
                 ].map((item) => {
                   const Icon = item.icon;
                   return (
-                    <div key={item.label} className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface-strong)] p-5 shadow-sm">
+                    <div key={item.label} className="rounded-[1.25rem] border border-border-main bg-surface p-5 shadow-sm">
                       <div className="flex items-center justify-between">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
                           {item.label}
                         </div>
-                        <div className="rounded-xl bg-[var(--surface-muted)] p-2 text-[var(--muted)]">
+                        <div className="rounded-xl bg-canvas p-2 text-text-muted">
                           <Icon size={16} />
                         </div>
                       </div>
-                      <div className="mt-4 text-2xl font-semibold tracking-tight text-[var(--text)]">
+                      <div className="mt-4 text-2xl font-semibold tracking-tight text-text-main">
                         {item.value}
                       </div>
                     </div>
@@ -178,7 +243,7 @@ export default function AuditPage() {
                 })}
               </div>
 
-                  <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+                  <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
                 {supportModeActive ? (
                   <div className="mb-4 rounded-[1rem] border border-amber-300/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
                     Showing only audit events performed by your current support session inside this workspace.
@@ -198,29 +263,39 @@ export default function AuditPage() {
                       onClick={() => setFilter(key)}
                       className={`rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] ${
                         filter === key
-                          ? "bg-[var(--accent-strong)] text-white"
-                          : "border border-[var(--line)] bg-[var(--surface-strong)] text-[var(--muted)]"
+                          ? "bg-primary text-white"
+                          : "border border-border-main bg-surface text-text-muted"
                       }`}
                     >
                       {label}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={handleExport}
+                    disabled={!filteredEvents.length || exporting}
+                    data-allow-export="true"
+                    className="inline-flex items-center gap-2 rounded-full border border-primary bg-primary px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Download size={14} />
+                    {exporting ? "Exporting..." : "Export Current View"}
+                  </button>
                 </div>
 
                 <div className="space-y-3">
                   {loading ? (
-                    <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                    <div className="rounded-xl border border-dashed border-border-main bg-surface px-4 py-6 text-sm text-text-muted">
                       Loading audit logs...
                     </div>
                   ) : filteredEvents.length ? (
                     filteredEvents.map((event) => (
-                      <div key={event.id} className="rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-4">
+                      <div key={event.id} className="rounded-xl border border-border-main bg-surface p-4">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
-                            <div className="text-sm font-semibold text-[var(--text)]">
+                            <div className="text-sm font-semibold text-text-main">
                               {event.entity} {event.action}
                             </div>
-                            <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">
+                            <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-text-muted">
                               {formatActorLabel(event)}
                               {event.project_id ? " • project scoped" : ""}
                             </div>
@@ -230,24 +305,24 @@ export default function AuditPage() {
                               </div>
                             ) : null}
                             {isSupportEvent(event) && (event.metadata?.support_access_id || event.support_access_id) ? (
-                              <div className="mt-2 text-[11px] text-[var(--muted)]">
+                              <div className="mt-2 text-[11px] text-text-muted">
                                 Session: {String(event.metadata?.support_access_id || event.support_access_id)}
                               </div>
                             ) : null}
-                            <div className="mt-3 text-xs text-[var(--muted)] break-all">
-                              <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-[var(--muted)]">
+                            <div className="mt-3 text-xs text-text-muted break-all">
+                              <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-text-muted">
                                 {formatEventPayload(event)}
                               </pre>
                             </div>
                           </div>
-                          <div className="text-xs text-[var(--muted)]">
+                          <div className="text-xs text-text-muted">
                             {new Date(event.created_at).toLocaleString()}
                           </div>
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                    <div className="rounded-xl border border-dashed border-border-main bg-surface px-4 py-6 text-sm text-text-muted">
                       No audit logs match the current filter.
                     </div>
                   )}

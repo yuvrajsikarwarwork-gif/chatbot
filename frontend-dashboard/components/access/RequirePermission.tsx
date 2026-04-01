@@ -21,7 +21,7 @@ export default function RequirePermission({
   const user = useAuthStore((state) => state.user);
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
-  const { workspaceRole, isPlatformOperator } = useVisibility();
+  const { workspaceRole, isPlatformOperator, isReadOnly } = useVisibility();
 
   const currentPlatformRole = String(user?.role || "").trim().toLowerCase();
   const hasAllowedPlatformRole = Array.isArray(platformRoles) && platformRoles.length > 0
@@ -33,12 +33,17 @@ export default function RequirePermission({
   const hasRequiredPermission = permissionKey
     ? hasWorkspacePermission(activeWorkspace?.workspace_id, permissionKey)
     : false;
+  const isReadOnlyWritePermission =
+    Boolean(permissionKey) &&
+    !String(permissionKey || "").startsWith("view_") &&
+    !String(permissionKey || "").startsWith("can_view") &&
+    permissionKey !== "view_workspace";
 
   const allowed =
     hasAllowedPlatformRole ||
     (isPlatformOperator && (!platformRoles || platformRoles.length === 0) && !roles && !permissionKey) ||
     hasAllowedWorkspaceRole ||
-    hasRequiredPermission ||
+    (hasRequiredPermission && !(isReadOnly && isReadOnlyWritePermission)) ||
     (!permissionKey && !roles && !platformRoles);
 
   return allowed ? <>{children}</> : <>{fallback}</>;

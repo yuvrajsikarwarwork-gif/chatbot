@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { AuthRequest } from "../middleware/authMiddleware";
+import { findPlans } from "../models/planModel";
 
 import {
   createPlanService,
@@ -24,6 +25,21 @@ export async function listPlansCtrl(
     }
 
     const data = await listPlansService(userId);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listPublicPlansCtrl(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const data = (await findPlans()).filter(
+      (plan: any) => String(plan.status || "").trim().toLowerCase() === "active"
+    );
     res.json(data);
   } catch (err) {
     next(err);

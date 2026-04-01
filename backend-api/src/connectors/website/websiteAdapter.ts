@@ -1,4 +1,4 @@
-import { Server, Socket } from "socket.io";
+﻿import { Server, Socket } from "socket.io";
 import crypto from "crypto";
 import * as FlowEngine from "../../services/flowEngine";
 import { GenericMessage, OutboundDeliveryResult, routeMessage } from "../../services/messageRouter";
@@ -43,7 +43,7 @@ export const initializeWebConnector = (io: Server) => {
 
           if (result?.conversationId && result.actions?.length) {
             for (const action of result.actions) {
-              await routeMessage(result.conversationId, action, io);
+              await routeMessage(result.conversationId, action as GenericMessage, io);
             }
           }
         } catch (err: any) {

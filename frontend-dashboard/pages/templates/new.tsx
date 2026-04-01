@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -325,7 +325,7 @@ function PlatformTemplatePreview({
 
   const mediaHeaderBlock =
     headerType === "image" ? (
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+      <div className="overflow-hidden rounded-xl border border-border-main bg-surface">
         {hasRemoteAsset ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -334,7 +334,7 @@ function PlatformTemplatePreview({
             className="h-40 w-full object-cover"
           />
         ) : (
-          <div className="px-4 py-8 text-center text-xs font-semibold text-slate-500">
+          <div className="px-4 py-8 text-center text-xs font-semibold text-text-muted">
             {showsMetaHandleHint
               ? "Meta media handle stored. Preview is not available for handles."
               : "Paste a Meta media handle for submission. Public image URLs are preview-only and will be rejected by Meta."}
@@ -342,7 +342,7 @@ function PlatformTemplatePreview({
         )}
       </div>
     ) : headerType === "video" ? (
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
+      <div className="overflow-hidden rounded-xl border border-border-main bg-black">
         {hasRemoteAsset ? (
           <video
             src={normalizedHeaderSource}
@@ -350,7 +350,7 @@ function PlatformTemplatePreview({
             className="h-40 w-full bg-black object-cover"
           />
         ) : (
-          <div className="px-4 py-8 text-center text-xs font-semibold text-slate-300">
+          <div className="px-4 py-8 text-center text-xs font-semibold text-text-muted">
             {showsMetaHandleHint
               ? "Meta media handle stored. Preview is not available for handles."
               : "Paste a Meta media handle for submission. Public video URLs are preview-only and will be rejected by Meta."}
@@ -358,30 +358,30 @@ function PlatformTemplatePreview({
         )}
       </div>
     ) : headerType === "document" ? (
-      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-        <div className="font-semibold text-slate-900">Document header</div>
-        <div className="mt-1 break-all text-xs text-slate-500">
+      <div className="rounded-xl border border-border-main bg-surface px-4 py-4 text-sm text-text-muted">
+        <div className="font-semibold text-text-main">Document header</div>
+        <div className="mt-1 break-all text-xs text-text-muted">
           {normalizedHeaderSource || "Paste a Meta media handle for the document header sample"}
         </div>
       </div>
     ) : headerType !== "none" ? (
-      <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">
+      <div className="rounded-xl bg-surface p-3 text-sm text-text-muted">
         {headerText || "Header text"}
       </div>
     ) : null;
 
   const previewHeaderBar = (
-    <div className="mb-4 flex items-center justify-between rounded-2xl border border-black/5 bg-white/80 px-4 py-3 shadow-sm">
+    <div className="mb-4 flex items-center justify-between rounded-2xl border border-border-main bg-surface px-4 py-3 shadow-sm">
       <div className="flex items-center gap-3">
         <button
           type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-main bg-surface text-text-main"
           aria-label="Back"
         >
           <ArrowLeft size={14} />
         </button>
         <div>
-          <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-text-muted">
             {platform === "whatsapp"
               ? "WhatsApp"
               : platform === "telegram"
@@ -392,15 +392,15 @@ function PlatformTemplatePreview({
                     ? "SMS"
                     : "Instagram"}
           </div>
-          <div className="text-xs text-slate-500">{campaignName || "Preview mode"}</div>
+          <div className="text-xs text-text-muted">{campaignName || "Preview mode"}</div>
         </div>
       </div>
-      <div className="text-[11px] font-semibold text-slate-400">Return</div>
+      <div className="text-[11px] font-semibold text-text-muted">Return</div>
     </div>
   );
 
   const metaBlock = (
-    <div className="rounded-xl border border-dashed border-slate-200 px-4 py-3 text-xs text-slate-500">
+    <div className="rounded-xl border border-dashed border-border-main px-4 py-3 text-xs text-text-muted">
       <div><strong>Name:</strong> {name || "Untitled template"}</div>
       <div className="mt-1"><strong>Platform:</strong> {platform}</div>
       <div className="mt-1"><strong>Category:</strong> {category}</div>
@@ -412,18 +412,18 @@ function PlatformTemplatePreview({
     return (
       <div className="space-y-4">
         {previewHeaderBar}
-        <div className="mx-auto max-w-[420px] rounded-[1.25rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-          <div className="border-b border-slate-100 px-5 py-4">
-            <div className="text-sm font-bold text-slate-900">Email preview</div>
-            <div className="mt-2 text-xs text-slate-500">To: sample@example.com</div>
-            <div className="mt-1 text-xs text-slate-500">Subject: {name || "Template subject"}</div>
+        <div className="mx-auto max-w-[420px] rounded-[1.25rem] border border-border-main bg-surface shadow-lg">
+          <div className="border-b border-border-main px-5 py-4">
+            <div className="text-sm font-bold text-text-main">Email preview</div>
+            <div className="mt-2 text-xs text-text-muted">To: sample@example.com</div>
+            <div className="mt-1 text-xs text-text-muted">Subject: {name || "Template subject"}</div>
           </div>
-          <div className="px-5 py-5 text-sm leading-6 text-slate-800">
-            <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white">
+          <div className="px-5 py-5 text-sm leading-6 text-text-main">
+            <div className="overflow-hidden rounded-2xl border border-border-main bg-surface">
               {mediaHeaderBlock}
               <div className="space-y-4 px-4 py-4">
                 <div>{bodyText || "Your email body will appear here."}</div>
-                {footerText ? <div className="border-t border-slate-100 pt-3 text-xs text-slate-500">{footerText}</div> : null}
+                {footerText ? <div className="border-t border-border-main pt-3 text-xs text-text-muted">{footerText}</div> : null}
               </div>
             </div>
           </div>
@@ -437,11 +437,11 @@ function PlatformTemplatePreview({
     return (
       <div className="space-y-4">
         {previewHeaderBar}
-        <div className="mx-auto max-w-[320px] rounded-[2rem] border border-slate-300 bg-slate-900 px-4 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.2)]">
-          <div className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+        <div className="mx-auto max-w-[320px] rounded-[2rem] border border-border-main bg-surface px-4 py-5 shadow-sm">
+          <div className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
             SMS preview
           </div>
-          <div className="rounded-[1.25rem] bg-emerald-400 px-4 py-3 text-sm leading-6 text-slate-950">
+          <div className="rounded-[1.25rem] bg-primary px-4 py-3 text-sm leading-6 text-white">
             {bodyText || "Your SMS body will appear here."}
           </div>
         </div>
@@ -454,13 +454,13 @@ function PlatformTemplatePreview({
     return (
       <div className="space-y-4">
         {previewHeaderBar}
-        <div className="mx-auto max-w-[340px] rounded-[1.75rem] border border-sky-200 bg-[#eaf4fb] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-          <div className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+        <div className="mx-auto max-w-[340px] rounded-[1.75rem] border border-border-main bg-canvas p-4 shadow-lg">
+          <div className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
             Telegram preview
           </div>
-          <div className="rounded-2xl bg-white px-4 py-3 text-sm leading-6 text-slate-900 shadow-sm">
+          <div className="rounded-2xl bg-surface px-4 py-3 text-sm leading-6 text-text-main shadow-sm">
             {bodyText || "Your Telegram message will appear here."}
-            {footerText ? <div className="mt-3 border-t border-slate-100 pt-2 text-[11px] text-slate-500">{footerText}</div> : null}
+            {footerText ? <div className="mt-3 border-t border-border-main pt-2 text-[11px] text-text-muted">{footerText}</div> : null}
           </div>
         </div>
         {metaBlock}
@@ -472,15 +472,15 @@ function PlatformTemplatePreview({
     return (
       <div className="space-y-4">
         {previewHeaderBar}
-        <div className="mx-auto max-w-[340px] rounded-[1.75rem] border border-fuchsia-100 bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-          <div className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-fuchsia-700">
+        <div className="mx-auto max-w-[340px] rounded-[1.75rem] border border-border-main bg-surface p-4 shadow-lg">
+          <div className="mb-4 text-center text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
             Instagram DM preview
           </div>
-          <div className="overflow-hidden rounded-2xl bg-[linear-gradient(180deg,#faf5ff,#ffffff)] text-sm leading-6 text-slate-900 shadow-sm">
+          <div className="overflow-hidden rounded-2xl bg-canvas text-sm leading-6 text-text-main shadow-sm">
             {mediaHeaderBlock}
             <div className="px-4 py-3">
               {bodyText || "Your Instagram message will appear here."}
-              {footerText ? <div className="mt-3 border-t border-fuchsia-100 pt-2 text-[11px] text-slate-500">{footerText}</div> : null}
+              {footerText ? <div className="mt-3 border-t border-border-main pt-2 text-[11px] text-text-muted">{footerText}</div> : null}
             </div>
           </div>
         </div>
@@ -492,33 +492,33 @@ function PlatformTemplatePreview({
   return (
     <div className="space-y-4">
       {previewHeaderBar}
-      <div className="mx-auto max-w-[360px] rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-        <div className="border-b border-slate-100 px-4 py-3">
-          <div className="text-sm font-bold text-slate-900">WhatsApp preview</div>
-          <div className="mt-1 text-xs text-slate-500">{campaignName || "No campaign link"}</div>
+      <div className="mx-auto max-w-[360px] rounded-[1.5rem] border border-border-main bg-surface shadow-lg">
+        <div className="border-b border-border-main px-4 py-3">
+          <div className="text-sm font-bold text-text-main">WhatsApp preview</div>
+          <div className="mt-1 text-xs text-text-muted">{campaignName || "No campaign link"}</div>
         </div>
-        <div className="space-y-4 bg-[#efeae2] px-4 py-5">
+        <div className="space-y-4 bg-canvas px-4 py-5">
           <div className="flex justify-start">
             <div className="relative w-full max-w-[292px]">
-              <div className="absolute left-0 top-0 h-3 w-3 -translate-x-[7px] rotate-45 rounded-[2px] bg-white" />
-              <div className="relative overflow-hidden rounded-[18px] rounded-tl-[6px] bg-white shadow-[0_1px_1px_rgba(15,23,42,0.18)]">
+              <div className="absolute left-0 top-0 h-3 w-3 -translate-x-[7px] rotate-45 rounded-[2px] bg-surface" />
+              <div className="relative overflow-hidden rounded-[18px] rounded-tl-[6px] bg-surface shadow-md">
                 {mediaHeaderBlock ? (
-                  <div className="border-b border-black/5">{mediaHeaderBlock}</div>
+                  <div className="border-b border-border-main">{mediaHeaderBlock}</div>
                 ) : null}
                 {headerType === "text" && headerText ? (
-                  <div className="px-4 pb-1 pt-3 text-[13.5px] font-semibold leading-tight text-[#111b21]">
+                  <div className="px-4 pb-1 pt-3 text-[13.5px] font-semibold leading-tight text-text-main">
                     {headerText}
                   </div>
                 ) : null}
-                <div className="px-4 pb-2 pt-3 text-[14.2px] leading-[1.62] text-[#111b21]">
+                <div className="px-4 pb-2 pt-3 text-[14.2px] leading-[1.62] text-text-main">
                   {bodyText ? renderWhatsAppText(bodyText) : "Your template body will appear here."}
                 </div>
                 {footerText ? (
-                  <div className="px-4 pb-1 text-[11px] text-[#667781]">
+                  <div className="px-4 pb-1 text-[11px] text-text-muted">
                     {footerText}
                   </div>
                 ) : null}
-                <div className="flex justify-end px-4 pb-2 text-[11px] text-[#667781]">
+                <div className="flex justify-end px-4 pb-2 text-[11px] text-text-muted">
                   12:00 PM
                 </div>
               </div>
@@ -531,7 +531,7 @@ function PlatformTemplatePreview({
                 return (
                   <div
                     key={`${button?.title || button?.value || "button"}-${index}`}
-                    className="flex items-center justify-center rounded-[14px] bg-white px-4 py-3 text-center text-[13.5px] font-medium text-[#00a884] shadow-[0_1px_1px_rgba(15,23,42,0.18)]"
+                    className="flex items-center justify-center rounded-[14px] bg-surface px-4 py-3 text-center text-[13.5px] font-medium text-text-main shadow-sm"
                   >
                     {type === "url" ? "Link" : type === "phone" ? "Call" : ""}
                     {type === "url" || type === "phone" ? <span className="mr-2" /> : null}
@@ -554,7 +554,7 @@ export default function NewTemplatePage() {
   const activeProject = useAuthStore((state) => state.activeProject);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const getProjectRole = useAuthStore((state) => state.getProjectRole);
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
 
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [selectedCampaignChannels, setSelectedCampaignChannels] = useState<any[]>([]);
@@ -569,7 +569,7 @@ export default function NewTemplatePage() {
   const canCreateTemplates = hasWorkspacePermission(activeWorkspace?.workspace_id, "can_create_campaign");
   const projectRole = getProjectRole(activeProject?.id);
   const canCreateProjectTemplates =
-    canCreateTemplates || projectRole === "project_admin" || projectRole === "editor";
+    !isReadOnly && (canCreateTemplates || projectRole === "project_admin" || projectRole === "editor");
   const canViewTemplatesPage = canViewPage("templates");
   const editRouteId = useMemo(() => {
     if (router.pathname !== "/templates/[id]/edit") {
@@ -925,31 +925,31 @@ export default function NewTemplatePage() {
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
-          <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+        <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-lg">
+          <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-text-muted">
             {pageMode === "edit" ? "Editing existing template" : pageMode === "duplicate" ? "Duplicating template" : "New template"}
           </div>
-          <h1 className="mt-4 text-[1.8rem] font-extrabold tracking-tight text-[var(--text)]">
+          <h1 className="mt-4 text-[1.8rem] font-extrabold tracking-tight text-text-main">
             {pageMode === "edit" ? "Edit template" : pageMode === "duplicate" ? "Duplicate template" : "Create template"}
           </h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          <p className="mt-2 text-sm leading-6 text-text-muted">
             Configure template content on the left. The right side shows how the message will look before you save it.
           </p>
         </section>
 
         {!activeWorkspace?.workspace_id || !activeProject?.id ? (
-          <section className="rounded-[1.5rem] border border-dashed border-[var(--line)] bg-[var(--surface)] p-8 text-sm text-[var(--muted)]">
+          <section className="rounded-[1.5rem] border border-dashed border-border-main bg-surface p-8 text-sm text-text-muted">
             Select a workspace and project before creating templates.
           </section>
         ) : (
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             {isTemplateHydrating ? (
-              <section className="xl:col-span-2 rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-8 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]">
+              <section className="xl:col-span-2 rounded-[1.5rem] border border-border-main bg-surface p-8 text-sm text-text-muted shadow-lg">
                 Loading template into editor...
               </section>
             ) : (
             <>
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-lg">
               {!canCreateProjectTemplates ? (
                 <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   Template creation is not available for this access level.
@@ -957,11 +957,11 @@ export default function NewTemplatePage() {
               ) : null}
 
               <div>
-                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                   Connected campaign
                 </label>
                 <select
-                  className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-3 text-sm text-[var(--text)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                  className="w-full rounded-xl border border-border-main bg-surface p-3 text-sm text-text-main outline-none"
                   value={formData.campaign_id || ""}
                   onChange={(e) => setFormData({ ...formData, campaign_id: e.target.value })}
                 >
@@ -976,8 +976,8 @@ export default function NewTemplatePage() {
                   <div
                     className={`mt-2 rounded-xl border px-3 py-2 text-xs ${
                       selectedCampaignHasActiveWhatsAppChannel
-                        ? "border-emerald-300/45 bg-emerald-500/12 text-emerald-800"
-                        : "border-amber-300/45 bg-amber-500/12 text-amber-800"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
                     }`}
                   >
                     {selectedCampaignHasActiveWhatsAppChannel
@@ -989,7 +989,7 @@ export default function NewTemplatePage() {
 
               <div className="mt-5 space-y-4">
                 <div>
-                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                     Target platform
                   </label>
                   <div className="grid grid-cols-5 gap-2">
@@ -1000,8 +1000,8 @@ export default function NewTemplatePage() {
                         onClick={() => setFormData({ ...formData, platform_type: platform.id })}
                         className={`flex items-center justify-center rounded-xl border p-3 transition-all ${
                           formData.platform_type === platform.id
-                            ? "border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-[0_18px_30px_var(--accent-glow)]"
-                            : "border-[var(--line)] bg-[var(--surface-strong)] text-[var(--muted)] hover:border-[var(--line-strong)]"
+                            ? "border-primary bg-primary text-white shadow-lg"
+                            : "border-border-main bg-surface text-text-muted hover:border-primary"
                         }`}
                       >
                         <platform.icon size={16} />
@@ -1011,12 +1011,12 @@ export default function NewTemplatePage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                  <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                     Internal name
                   </label>
                   <input
                     type="text"
-                    className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-3 font-mono text-sm text-[var(--text)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                    className="w-full rounded-xl border border-border-main bg-surface p-3 font-mono text-sm text-text-main outline-none"
                     placeholder="welcome_user_v1"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -1025,11 +1025,11 @@ export default function NewTemplatePage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                       Category
                     </label>
                     <select
-                      className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-3 text-sm text-[var(--text)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                      className="w-full rounded-xl border border-border-main bg-surface p-3 text-sm text-text-main outline-none"
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     >
@@ -1039,11 +1039,11 @@ export default function NewTemplatePage() {
                     </select>
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                       Language
                     </label>
                     <select
-                      className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-3 text-sm text-[var(--text)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                      className="w-full rounded-xl border border-border-main bg-surface p-3 text-sm text-text-main outline-none"
                       value={formData.language}
                       onChange={(e) => setFormData({ ...formData, language: e.target.value })}
                     >
@@ -1057,13 +1057,13 @@ export default function NewTemplatePage() {
                 </div>
 
                 {formData.platform_type === "whatsapp" ? (
-                  <div className="space-y-3 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-4">
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                  <div className="space-y-3 rounded-xl border border-border-main bg-surface p-4">
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-text-muted">
                       Header content
                     </label>
                     <div className="flex gap-2">
                       <select
-                        className="w-1/3 rounded-lg border border-[var(--line)] bg-white p-2 text-xs outline-none"
+                        className="w-1/3 rounded-lg border border-border-main bg-surface p-2 text-xs outline-none"
                         value={formData.header_type}
                         onChange={(e) => setFormData({ ...formData, header_type: e.target.value })}
                       >
@@ -1076,25 +1076,25 @@ export default function NewTemplatePage() {
                       </select>
                       {formData.header_type !== "none" ? (
                         <input
-                          className="flex-1 rounded-lg border border-[var(--line)] bg-white p-2 text-xs outline-none"
+                          className="flex-1 rounded-lg border border-border-main bg-surface p-2 text-xs outline-none"
                           placeholder={
                             formData.header_type === "text"
                               ? "Header text"
                               : formData.header_type === "location"
                                 ? "Optional location label"
-                              : "Meta media handle required for submission"
+                                : "Meta media handle required for submission"
                           }
                           value={formData.header}
                           onChange={(e) => setFormData({ ...formData, header: e.target.value })}
                         />
                       ) : null}
                     </div>
-                    <div className="text-[11px] text-[var(--muted)]">
+                    <div className="text-[11px] text-text-muted">
                       WhatsApp text headers should stay within 60 characters. Image, video, and document headers must use a valid Meta media handle for template submission. Location headers need latitude and longitude.
                     </div>
                     {formData.header_type === "text" && extractVariableTokens(formData.header).length > 0 ? (
                       <input
-                        className="w-full rounded-lg border border-[var(--line)] bg-white p-2 text-xs outline-none"
+                        className="w-full rounded-lg border border-border-main bg-surface p-2 text-xs outline-none"
                         placeholder="Header sample text for {{1}}"
                         value={formData.samples?.headerText?.[0] || ""}
                         onChange={(e) =>
@@ -1106,9 +1106,9 @@ export default function NewTemplatePage() {
                       />
                     ) : null}
                     {["image", "video", "document"].includes(formData.header_type) ? (
-                      <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] p-3">
+                      <div className="rounded-xl border border-dashed border-border-main bg-canvas p-3">
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                          <div className="text-[11px] text-[var(--muted)]">
+                          <div className="text-[11px] text-text-muted">
                             {formData.header_type === "image"
                               ? "Upload an image from your desktop. The platform will upload it to Meta, apply the returned media handle automatically, and keep a local preview."
                               : formData.header_type === "video"
@@ -1119,7 +1119,7 @@ export default function NewTemplatePage() {
                             type="button"
                             onClick={() => headerPreviewInputRef.current?.click()}
                             disabled={isUploadingHeaderPreview}
-                            className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--text)] disabled:opacity-50"
+                            className="inline-flex items-center gap-2 rounded-lg border border-border-main bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-text-main disabled:opacity-50"
                           >
                             <Upload size={14} />
                             {isUploadingHeaderPreview ? "Uploading..." : getMediaUploadLabel(formData.header_type)}
@@ -1133,7 +1133,7 @@ export default function NewTemplatePage() {
                           onChange={handleHeaderPreviewUpload}
                         />
                         {headerPreviewUrl ? (
-                          <div className="mt-2 text-[11px] text-[var(--muted)]">
+                          <div className="mt-2 text-[11px] text-text-muted">
                             Preview asset ready. The Meta media handle has been applied automatically. Images are compressed before upload when possible.
                           </div>
                         ) : null}
@@ -1142,7 +1142,7 @@ export default function NewTemplatePage() {
                     {formData.header_type === "location" ? (
                       <div className="grid gap-3 md:grid-cols-2">
                         <input
-                          className="rounded-lg border border-[var(--line)] bg-white p-2 text-xs outline-none"
+                          className="rounded-lg border border-border-main bg-surface p-2 text-xs outline-none"
                           placeholder="Latitude"
                           value={formData.header_location?.latitude || ""}
                           onChange={(e) =>
@@ -1153,7 +1153,7 @@ export default function NewTemplatePage() {
                           }
                         />
                         <input
-                          className="rounded-lg border border-[var(--line)] bg-white p-2 text-xs outline-none"
+                          className="rounded-lg border border-border-main bg-surface p-2 text-xs outline-none"
                           placeholder="Longitude"
                           value={formData.header_location?.longitude || ""}
                           onChange={(e) =>
@@ -1164,7 +1164,7 @@ export default function NewTemplatePage() {
                           }
                         />
                         <input
-                          className="rounded-lg border border-[var(--line)] bg-white p-2 text-xs outline-none"
+                          className="rounded-lg border border-border-main bg-surface p-2 text-xs outline-none"
                           placeholder="Place name"
                           value={formData.header_location?.placeName || ""}
                           onChange={(e) =>
@@ -1175,7 +1175,7 @@ export default function NewTemplatePage() {
                           }
                         />
                         <input
-                          className="rounded-lg border border-[var(--line)] bg-white p-2 text-xs outline-none"
+                          className="rounded-lg border border-border-main bg-surface p-2 text-xs outline-none"
                           placeholder="Address"
                           value={formData.header_location?.address || ""}
                           onChange={(e) =>
@@ -1191,16 +1191,16 @@ export default function NewTemplatePage() {
                 ) : null}
 
                 <div>
-                  <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                  <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                     Body text
                   </label>
                   <textarea
-                    className="h-32 w-full resize-none rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-3 text-sm text-[var(--text)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                    className="h-32 w-full resize-none rounded-xl border border-border-main bg-surface p-3 text-sm text-text-main outline-none"
                     placeholder="Hello {{1}}, how can we help today?"
                     value={formData.body}
                     onChange={(e) => setFormData({ ...formData, body: e.target.value })}
                   />
-                  <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--muted)]">
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-text-muted">
                     <span>{formData.platform_type === "whatsapp" ? "WhatsApp body limit: 1024" : formData.platform_type === "sms" ? "SMS text limit: 160" : "Message body"}</span>
                     <span>{String(formData.body || "").length}</span>
                   </div>
@@ -1213,7 +1213,7 @@ export default function NewTemplatePage() {
                         <Users size={12} />
                         Variable mapper
                       </h3>
-                      <span className="rounded bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-1.5 py-0.5 text-[8px] font-black text-white">
+                      <span className="rounded bg-primary px-1.5 py-0.5 text-[8px] font-black text-white">
                         Preview active
                       </span>
                     </div>
@@ -1222,7 +1222,7 @@ export default function NewTemplatePage() {
                         <div className="flex items-center gap-2">
                           <span className="w-8 text-xs font-black text-blue-500">{variable}</span>
                           <select
-                            className="flex-1 rounded-lg border border-blue-200 bg-white p-2 text-[10px] font-bold outline-none"
+                            className="flex-1 rounded-lg border border-border-main bg-surface p-2 text-[10px] font-bold outline-none"
                             value={formData.variables[variable] || ""}
                             onChange={(e) =>
                               setFormData({
@@ -1239,7 +1239,7 @@ export default function NewTemplatePage() {
                           </select>
                         </div>
                         {formData.variables[variable] ? (
-                          <div className="ml-10 flex items-center gap-1 text-[9px] font-bold italic text-[var(--muted)]">
+                          <div className="ml-10 flex items-center gap-1 text-[9px] font-bold italic text-text-muted">
                             <Eye size={10} /> Currently holds: "{previewData[formData.variables[variable]] || "No data"}"
                           </div>
                         ) : null}
@@ -1249,23 +1249,23 @@ export default function NewTemplatePage() {
                 ) : null}
 
                 {formData.platform_type === "whatsapp" ? (
-                  <div className="space-y-3 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-4">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                  <div className="space-y-3 rounded-xl border border-border-main bg-surface p-4">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-muted">
                       <Upload size={12} />
                       Approval sample data
                     </div>
-                    <div className="text-[11px] text-[var(--muted)]">
+                    <div className="text-[11px] text-text-muted">
                       Use this section the same way Meta does: variables, dynamic URLs, and media headers all need sample values during review.
                     </div>
                     {dynamicVars.length > 0 ? (
                       <div className="space-y-2">
                         {dynamicVars.map((variable, index) => (
                           <div key={`body-sample-${variable}`} className="grid gap-2 md:grid-cols-[110px_1fr]">
-                            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--text)]">
+                            <div className="rounded-lg border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-text-main">
                               Body {variable}
                             </div>
                             <input
-                              className="rounded-lg border border-[var(--line)] bg-white p-2 text-xs outline-none"
+                              className="rounded-lg border border-border-main bg-surface p-2 text-xs outline-none"
                               placeholder={`Sample value for ${variable}`}
                               value={formData.samples?.bodyText?.[index] || ""}
                               onChange={(e) =>
@@ -1285,7 +1285,7 @@ export default function NewTemplatePage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-3 py-3 text-xs text-[var(--muted)]">
+                      <div className="rounded-lg border border-dashed border-border-main bg-canvas px-3 py-3 text-xs text-text-muted">
                         No body variables found. Static templates can skip body samples.
                       </div>
                     )}
@@ -1294,18 +1294,18 @@ export default function NewTemplatePage() {
 
                 {formData.platform_type === "whatsapp" || formData.platform_type === "telegram" ? (
                   <div>
-                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-text-muted">
                       Footer text
                     </label>
                     <input
                       type="text"
-                      className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-3 text-sm text-[var(--text)] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                      className="w-full rounded-xl border border-border-main bg-surface p-3 text-sm text-text-main outline-none"
                       placeholder="Small grey text at bottom..."
                       value={formData.footer}
                       onChange={(e) => setFormData({ ...formData, footer: e.target.value })}
                     />
                     {formData.platform_type === "whatsapp" ? (
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--muted)]">
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-text-muted">
                         <span>WhatsApp footer limit: 60</span>
                         <span>{String(formData.footer || "").length}</span>
                       </div>
@@ -1313,17 +1313,17 @@ export default function NewTemplatePage() {
                   </div>
                 ) : null}
 
-                <div className="space-y-3 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-4">
+                <div className="space-y-3 rounded-xl border border-border-main bg-surface p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">
                         Buttons and actions
                       </div>
-                      <div className="mt-1 text-xs text-[var(--muted)]">
+                      <div className="mt-1 text-xs text-text-muted">
                         {buttonLimits[formData.platform_type]?.hint}
                       </div>
                       {formData.platform_type === "whatsapp" ? (
-                        <div className="mt-1 text-[11px] text-[var(--muted)]">
+                        <div className="mt-1 text-[11px] text-text-muted">
                           WhatsApp supports grouped mixed buttons here: quick replies first, then CTA buttons. Max 10 total.
                         </div>
                       ) : null}
@@ -1338,7 +1338,7 @@ export default function NewTemplatePage() {
                           }))
                         }
                         disabled={(formData.buttons || []).length >= currentButtonLimit}
-                        className="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--text)] disabled:opacity-50"
+                        className="rounded-lg border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-text-main disabled:opacity-50"
                       >
                         Add button
                       </button>
@@ -1346,13 +1346,13 @@ export default function NewTemplatePage() {
                   </div>
 
                   {currentButtonLimit === 0 ? (
-                    <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-3 py-3 text-xs text-[var(--muted)]">
+                    <div className="rounded-lg border border-dashed border-border-main bg-canvas px-3 py-3 text-xs text-text-muted">
                       Use body text such as "Reply YES" or include a short URL for SMS campaigns.
                     </div>
                   ) : (formData.buttons || []).length > 0 ? (
                     <div className="space-y-3">
                       {(formData.buttons || []).map((button: any, index: number) => (
-                        <div key={`${formData.platform_type}-btn-${index}`} className="grid gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 md:grid-cols-[140px_1fr_1fr_auto]">
+                        <div key={`${formData.platform_type}-btn-${index}`} className="grid gap-3 rounded-lg border border-border-main bg-canvas p-3 md:grid-cols-[140px_1fr_1fr_auto]">
                           <select
                             value={button.type || ""}
                             onChange={(e) =>
@@ -1363,7 +1363,7 @@ export default function NewTemplatePage() {
                                 ),
                               }))
                             }
-                            className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-xs text-[var(--text)]"
+                            className="rounded-lg border border-border-main bg-surface px-3 py-2 text-xs text-text-main"
                           >
                             {(formData.platform_type === "whatsapp"
                               ? [
@@ -1400,7 +1400,7 @@ export default function NewTemplatePage() {
                               }))
                             }
                             placeholder="Button label"
-                            className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-xs text-[var(--text)]"
+                            className="rounded-lg border border-border-main bg-surface px-3 py-2 text-xs text-text-main"
                           />
                           <input
                             value={button.value || ""}
@@ -1427,7 +1427,7 @@ export default function NewTemplatePage() {
                                         ? "Catalog id"
                                         : "Action value"
                             }
-                            className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-xs text-[var(--text)]"
+                            className="rounded-lg border border-border-main bg-surface px-3 py-2 text-xs text-text-main"
                           />
                           <button
                             type="button"
@@ -1437,7 +1437,7 @@ export default function NewTemplatePage() {
                                 buttons: (prev.buttons || []).filter((_: any, itemIndex: number) => itemIndex !== index),
                               }))
                             }
-                            className="rounded-lg border border-rose-300/45 bg-rose-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-800"
+                            className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700"
                           >
                             Remove
                           </button>
@@ -1453,7 +1453,7 @@ export default function NewTemplatePage() {
                                     ),
                                   }))
                                 }
-                                className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-xs text-[var(--text)] md:col-span-2"
+                                className="rounded-lg border border-border-main bg-surface px-3 py-2 text-xs text-text-main md:col-span-2"
                               >
                                 <option value="static">Static URL</option>
                                 <option value="dynamic">Dynamic URL</option>
@@ -1469,7 +1469,7 @@ export default function NewTemplatePage() {
                                   }))
                                 }
                                 placeholder="Sample slug for dynamic URL"
-                                className={`rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-xs text-[var(--text)] ${button.urlMode === "dynamic" ? "" : "opacity-60"}`}
+                                className={`rounded-lg border border-border-main bg-surface px-3 py-2 text-xs text-text-main ${button.urlMode === "dynamic" ? "" : "opacity-60"}`}
                               />
                             </>
                           ) : null}
@@ -1485,61 +1485,59 @@ export default function NewTemplatePage() {
                                 }))
                               }
                               placeholder="Sample text shown during Meta review"
-                              className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 text-xs text-[var(--text)] md:col-span-2"
+                              className="rounded-lg border border-border-main bg-surface px-3 py-2 text-xs text-text-main md:col-span-2"
                             />
                           ) : null}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] px-3 py-3 text-xs text-[var(--muted)]">
+                    <div className="rounded-lg border border-dashed border-border-main bg-canvas px-3 py-3 text-xs text-text-muted">
                       No buttons added yet.
                     </div>
-                  )}
-                </div>
-              </div>
-
-              {formData.platform_type === "whatsapp" ? (
-                <div className="mt-6 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-4">
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
-                    <Rocket size={12} />
-                    Runtime readiness
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {editorReadiness.blockers.length === 0 ? (
-                      <div className="rounded-lg border border-emerald-300/45 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-800">
-                        <div className="flex items-center gap-2 font-semibold">
-                          <CheckCircle2 size={16} />
-                          Builder checks are green for Meta submission.
-                        </div>
-                      </div>
-                    ) : (
-                      editorReadiness.blockers.map((item) => (
-                        <div key={item} className="rounded-lg border border-rose-300/45 bg-rose-500/10 px-3 py-3 text-sm text-rose-800">
-                          <div className="flex items-start gap-2">
-                            <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                            <span>{item}</span>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                    {editorReadiness.warnings.map((item) => (
-                      <div key={item} className="rounded-lg border border-amber-300/45 bg-amber-500/10 px-3 py-3 text-sm text-amber-800">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                          <span>{item}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={() => handleSave("draft")}
+  )}
+  </div>
+  </div>
+  {formData.platform_type === "whatsapp" ? (
+  <div className="mt-6 rounded-xl border border-border-main bg-surface p-4">
+  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-muted">
+  <Rocket size={12} />
+  Runtime readiness
+  </div>
+  <div className="mt-3 space-y-2">
+  {editorReadiness.blockers.length === 0 ? (
+  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-700">
+  <div className="flex items-center gap-2 font-semibold">
+  <CheckCircle2 size={16} />
+  Builder checks are green for Meta submission.
+  </div>
+  </div>
+  ) : (
+  editorReadiness.blockers.map((item) => (
+  <div key={item} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
+  <div className="flex items-start gap-2">
+  <AlertCircle size={16} className="mt-0.5 shrink-0" />
+  <span>{item}</span>
+  </div>
+  </div>
+  ))
+  )}
+  {editorReadiness.warnings.map((item) => (
+  <div key={item} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700">
+  <div className="flex items-start gap-2">
+  <AlertCircle size={16} className="mt-0.5 shrink-0" />
+  <span>{item}</span>
+  </div>
+  </div>
+  ))}
+  </div>
+  </div>
+  ) : null}
+  <div className="mt-6 flex gap-3">
+  <button
+  onClick={() => handleSave("draft")}
                   disabled={isSaving || !canCreateProjectTemplates}
-                  className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-100 px-5 py-3 text-xs font-black uppercase tracking-widest text-slate-800 disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-xl border border-border-main bg-canvas px-5 py-3 text-xs font-black uppercase tracking-widest text-text-main disabled:opacity-50"
                 >
                   <Eye size={16} />
                   {isSaving ? "Saving..." : editingTemplateId ? "Save Draft" : "Save as Draft"}
@@ -1547,27 +1545,27 @@ export default function NewTemplatePage() {
                 <button
                   onClick={() => handleSave("publish")}
                   disabled={isSaving || !canCreateProjectTemplates}
-                  className="flex items-center gap-2 rounded-xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-[0_18px_30px_var(--accent-glow)] disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-xl border border-primary bg-primary px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg disabled:opacity-50"
                 >
                   <Plus size={16} />
                   {isSaving ? "Saving..." : editingTemplateId ? "Save and Submit" : "Create and Submit"}
                 </button>
                 <Link
                   href="/templates"
-                  className="rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-5 py-3 text-xs font-black uppercase tracking-widest text-[var(--text)]"
+                  className="rounded-xl border border-border-main bg-surface px-5 py-3 text-xs font-black uppercase tracking-widest text-text-main"
                 >
                   Cancel
                 </Link>
               </div>
             </section>
 
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
-              <div className="mb-5 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-lg">
+              <div className="mb-5 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-muted">
                 <AlignLeft size={14} />
                 Live preview
               </div>
 
-              <div className="rounded-[1.5rem] border border-[var(--line)] bg-[linear-gradient(180deg,#e7f0ff,#eef2ff)] p-5">
+              <div className="rounded-[1.5rem] border border-border-main bg-canvas p-5">
                 <PlatformTemplatePreview
                   platform={formData.platform_type}
                   name={formData.name}
@@ -1590,3 +1588,4 @@ export default function NewTemplatePage() {
     </DashboardLayout>
   );
 }
+

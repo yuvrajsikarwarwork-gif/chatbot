@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Loader2, Send, X } from "lucide-react";
 
 import apiClient from "../../services/apiClient";
@@ -96,6 +96,51 @@ function getVariableDescriptor(template: any, token: string): VariableDescriptor
   };
 }
 
+const sendTemplateThemes: Record<string, any> = {
+  whatsapp: {
+    label: "WhatsApp",
+    shell: "bg-emerald-50 border-emerald-200 text-emerald-950",
+    message: "bg-emerald-100 text-emerald-950",
+    note: "bg-emerald-100/80 text-emerald-900",
+  },
+  telegram: {
+    label: "Telegram",
+    shell: "bg-sky-50 border-sky-200 text-sky-950",
+    message: "bg-sky-100 text-sky-950",
+    note: "bg-sky-100/80 text-sky-900",
+  },
+  email: {
+    label: "Email",
+    shell: "bg-violet-50 border-violet-200 text-violet-950",
+    message: "bg-violet-100 text-violet-950",
+    note: "bg-violet-100/80 text-violet-900",
+  },
+  sms: {
+    label: "SMS",
+    shell: "bg-indigo-50 border-indigo-200 text-indigo-950",
+    message: "bg-indigo-100 text-indigo-950",
+    note: "bg-indigo-100/80 text-indigo-900",
+  },
+  instagram: {
+    label: "Instagram",
+    shell: "bg-pink-50 border-pink-200 text-pink-950",
+    message: "bg-pink-100 text-pink-950",
+    note: "bg-pink-100/80 text-pink-900",
+  },
+  facebook: {
+    label: "Facebook",
+    shell: "bg-blue-50 border-blue-200 text-blue-950",
+    message: "bg-blue-100 text-blue-950",
+    note: "bg-blue-100/80 text-blue-900",
+  },
+  website: {
+    label: "Web",
+    shell: "bg-canvas border-border-main text-text-main",
+    message: "bg-canvas text-text-main",
+    note: "bg-canvas/80 text-text-main",
+  },
+};
+
 function getRecipientLabel(platformType: string) {
   const platform = String(platformType || "").trim().toLowerCase();
   if (platform === "email") return "Recipient email";
@@ -110,6 +155,7 @@ export default function SingleSendTemplateModal({ isOpen, onClose, template }: P
   const [isSending, setIsSending] = useState(false);
 
   const platform = String(template?.platform_type || "").trim().toLowerCase();
+  const theme = sendTemplateThemes[platform] || sendTemplateThemes.whatsapp;
   const tokens = useMemo(() => extractVariableTokens(template), [template]);
   const content = useMemo(() => parseTemplateContent(template), [template]);
   const headerType = String(content?.header?.type || "").trim().toLowerCase();
@@ -211,16 +257,16 @@ export default function SingleSendTemplateModal({ isOpen, onClose, template }: P
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-md sm:p-4">
       <div className="flex h-[min(80vh,720px)] w-full max-w-[880px] flex-col overflow-hidden rounded-[1.75rem] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] shadow-[var(--shadow-glass)] backdrop-blur-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--glass-border)] p-4 sm:p-5">
+        <div className={`flex items-center justify-between border-b border-[var(--glass-border)] p-4 sm:p-5 bg-surface/80 ${theme.shell}`}>
           <div>
-            <h2 className="text-lg font-black uppercase tracking-tight text-[var(--text)]">Single Send</h2>
-            <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted)]">
-              {template.name}
+            <h2 className="text-lg font-black uppercase tracking-tight text-text-main">Single Send</h2>
+            <p className="text-xs font-bold uppercase tracking-widest text-text-main">
+              {theme.label} template Â· {template.name}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-full border border-[var(--glass-border)] p-2 text-[var(--muted)] transition-all hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:text-[var(--text)]"
+            className="rounded-full border border-[var(--glass-border)] p-2 text-text-muted transition-all hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:text-text-main"
           >
             <X size={20} />
           </button>
@@ -317,24 +363,24 @@ export default function SingleSendTemplateModal({ isOpen, onClose, template }: P
             )}
           </div>
 
-          <div className="rounded-[1.35rem] border border-[var(--line)] bg-[var(--surface)] p-4 shadow-[var(--shadow-soft)]">
-            <div className="mb-3 text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+          <div className={`rounded-[1.35rem] border ${theme.shell} p-4 shadow-[var(--shadow-soft)]`}>
+            <div className="mb-3 text-[10px] font-black uppercase tracking-widest text-text-muted">
               Preview
             </div>
-            <div className="rounded-[1.1rem] border border-slate-200 bg-white">
-              <div className="border-b border-slate-100 px-4 py-3 text-sm font-bold text-slate-900">
-                {String(template.platform_type || "message")} template
+            <div className={`rounded-[1.1rem] border ${theme.shell} bg-surface`}>
+              <div className="border-b px-4 py-3 text-sm font-bold text-text-main">
+                {theme.label} template
               </div>
-              <div className="space-y-3 bg-[#efeae2] px-3.5 py-3.5">
+              <div className="space-y-3 bg-surface px-3.5 py-3.5">
                 {content?.header ? (
-                  <div className="rounded-xl bg-slate-100 p-2.5 text-sm text-slate-700">
+                  <div className={`rounded-xl ${theme.note} p-2.5 text-sm`}>
                     {content.header.type === "text" ? content.header.text : `${content.header.type} header`}
                   </div>
                 ) : null}
-                <div className="rounded-2xl bg-[#dcf8c6] px-3.5 py-3 text-sm leading-6 text-slate-900">
+                <div className={`rounded-2xl ${theme.message} px-3.5 py-3 text-sm leading-6`}>
                   {content?.body || "No body"}
                   {content?.footer ? (
-                    <div className="mt-3 border-t border-black/5 pt-2 text-[11px] text-slate-500">
+                    <div className="mt-3 border-t border-border-main pt-2 text-[11px] text-text-muted">
                       {content.footer}
                     </div>
                   ) : null}
@@ -365,3 +411,4 @@ export default function SingleSendTemplateModal({ isOpen, onClose, template }: P
     </div>
   );
 }
+

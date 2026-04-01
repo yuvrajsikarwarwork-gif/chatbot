@@ -108,22 +108,22 @@ export default function SupportTicketsConsole() {
         />
       ) : !isPlatformOperator && !activeWorkspace?.workspace_id ? (
         <div className="mx-auto max-w-4xl space-y-6">
-          <section className="rounded-[1.9rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-6 shadow-[var(--shadow-glass)] backdrop-blur-2xl">
-            <h1 className="bg-[linear-gradient(180deg,var(--text),color-mix(in_srgb,var(--text)_72%,var(--accent)_28%))] bg-clip-text text-[1.7rem] font-black tracking-[-0.03em] text-transparent">
+          <section className="rounded-[1.9rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-6 shadow-[var(--shadow-soft)] backdrop-blur-2xl">
+            <h1 className="text-[1.7rem] font-black tracking-[-0.03em] text-text-main">
               Support Requests
             </h1>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+            <p className="mt-2 text-sm leading-6 text-text-muted">
               Select a workspace first to review support requests and temporary access history.
             </p>
           </section>
         </div>
       ) : (
         <div className="mx-auto max-w-6xl space-y-6">
-          <section className="rounded-[1.9rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-6 shadow-[var(--shadow-glass)] backdrop-blur-2xl">
-            <h1 className="bg-[linear-gradient(180deg,var(--text),color-mix(in_srgb,var(--text)_72%,var(--accent)_28%))] bg-clip-text text-[1.7rem] font-black tracking-[-0.03em] text-transparent">
+          <section className="rounded-[1.9rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-6 shadow-[var(--shadow-soft)] backdrop-blur-2xl">
+            <h1 className="text-[1.7rem] font-black tracking-[-0.03em] text-text-main">
               Support Requests
             </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
               {isPlatformOperator
                 ? "Review support requests, approval history, and temporary support-access grants across all workspaces."
                 : "Review support requests, approval history, and temporary support-access grants for the active workspace."}
@@ -141,15 +141,15 @@ export default function SupportTicketsConsole() {
                 return (
                   <div
                     key={item.label}
-                    className="rounded-[1.3rem] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-[var(--line-strong)]"
+                    className="rounded-[1.3rem] border border-border-main bg-canvas px-4 py-4 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-primary/30 hover:bg-primary-fade"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
                         {item.label}
                       </div>
-                      <Icon size={16} className="shrink-0 text-[var(--muted)]" />
+                      <Icon size={16} className="shrink-0 text-text-muted" />
                     </div>
-                    <div className="mt-3 text-2xl font-semibold text-[var(--text)]">{item.value}</div>
+                    <div className="mt-3 text-2xl font-semibold text-text-main">{item.value}</div>
                   </div>
                 );
               })}
@@ -162,27 +162,27 @@ export default function SupportTicketsConsole() {
             </section>
           ) : null}
 
-          <section className="rounded-[1.65rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-6 shadow-[var(--shadow-soft)] backdrop-blur-xl">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+          <section className="rounded-[1.65rem] border border-border-main bg-surface p-6 shadow-sm">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
               Request History
             </div>
             <div className="mt-4 space-y-3">
               {loading ? (
-                <div className="rounded-xl border border-dashed border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                   Loading support requests...
                 </div>
               ) : requests.length ? (
                 requests.map((request) => (
                   <div
                     key={request.id}
-                    className="rounded-[1.2rem] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--line-strong)]"
+                    className="rounded-[1.2rem] border border-border-main bg-canvas p-4 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary-fade"
                   >
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="min-w-0">
-                        <div className="break-words text-sm font-semibold text-[var(--text)]">
+                        <div className="break-words text-sm font-semibold text-text-main">
                           {request.requested_by_name || request.requested_by_email || request.requested_by}
                         </div>
-                        <div className="mt-1 break-words text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">
+                        <div className="mt-1 break-words text-[11px] uppercase tracking-[0.16em] text-text-muted">
                           {[
                             request.status,
                             request.workspace_name,
@@ -193,9 +193,9 @@ export default function SupportTicketsConsole() {
                             .filter(Boolean)
                             .join(" | ")}
                         </div>
-                        <div className="mt-3 break-words text-sm text-[var(--text)]">{request.reason}</div>
+                        <div className="mt-3 break-words text-sm text-text-main">{request.reason}</div>
                         {request.resolution_notes ? (
-                          <div className="mt-2 break-words text-xs text-[var(--muted)]">
+                          <div className="mt-2 break-words text-xs text-text-muted">
                             Resolution: {request.resolution_notes}
                           </div>
                         ) : null}
@@ -211,7 +211,7 @@ export default function SupportTicketsConsole() {
                                 );
                                 await reload();
                               }}
-                              className="rounded-xl bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-[0_14px_24px_var(--accent-glow)] transition duration-300 hover:-translate-y-0.5"
+                               className="rounded-xl bg-primary px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm transition duration-300 hover:-translate-y-0.5 hover:opacity-90"
                             >
                               Approve
                             </button>
@@ -224,21 +224,21 @@ export default function SupportTicketsConsole() {
                                 );
                                 await reload();
                               }}
-                              className="rounded-xl border border-rose-300/40 bg-rose-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-200 transition duration-300 hover:-translate-y-0.5"
+                               className="rounded-xl border border-rose-300/40 bg-rose-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700 transition duration-300 hover:-translate-y-0.5 hover:bg-rose-100"
                             >
                               Deny
                             </button>
                           </div>
                         ) : null}
                       </div>
-                      <div className="shrink-0 text-xs text-[var(--muted)]">
+                      <div className="shrink-0 text-xs text-text-muted">
                         {new Date(request.created_at).toLocaleString()}
                       </div>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="rounded-xl border border-dashed border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                   {isPlatformOperator
                     ? "No support requests across workspaces yet."
                     : "No support requests for the active workspace yet."}
@@ -247,8 +247,8 @@ export default function SupportTicketsConsole() {
             </div>
           </section>
 
-          <section className="rounded-[1.65rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-6 shadow-[var(--shadow-soft)] backdrop-blur-xl">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+          <section className="rounded-[1.65rem] border border-border-main bg-surface p-6 shadow-sm">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
               Active Support Grants
             </div>
             <div className="mt-4 space-y-3">
@@ -256,26 +256,26 @@ export default function SupportTicketsConsole() {
                 accessRows.map((row) => (
                   <div
                     key={`${row.workspace_id}-${row.user_id}`}
-                    className="rounded-[1.2rem] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--line-strong)]"
+                    className="rounded-[1.2rem] border border-border-main bg-canvas p-4 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary-fade"
                   >
-                    <div className="break-words text-sm font-semibold text-[var(--text)]">
+                    <div className="break-words text-sm font-semibold text-text-main">
                       {row.user_name || row.user_email || row.user_id}
                     </div>
                     {row.workspace_name ? (
-                      <div className="mt-1 break-words text-xs text-[var(--muted)]">
+                      <div className="mt-1 break-words text-xs text-text-muted">
                         Workspace: {row.workspace_name}
                       </div>
                     ) : null}
-                    <div className="mt-1 break-words text-xs text-[var(--muted)]">
+                    <div className="mt-1 break-words text-xs text-text-muted">
                       Granted by {row.granted_by_name || row.granted_by_email || row.granted_by || "unknown"}
                     </div>
-                    <div className="mt-2 text-xs text-[var(--muted)]">
+                    <div className="mt-2 text-xs text-text-muted">
                       Expires {row.expires_at ? new Date(row.expires_at).toLocaleString() : "n/a"}
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="rounded-xl border border-dashed border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                   {isPlatformOperator
                     ? "No active support grants across workspaces."
                     : "No active support grants for the active workspace."}

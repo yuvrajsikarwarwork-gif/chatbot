@@ -19,6 +19,23 @@ export interface LeadFormRecord {
   fields: LeadFormField[];
 }
 
+function extractLeadFormArray(payload: unknown): LeadFormRecord[] {
+  if (Array.isArray(payload)) {
+    return payload as LeadFormRecord[];
+  }
+
+  const wrapped = payload as { data?: unknown; items?: unknown } | null | undefined;
+  if (Array.isArray(wrapped?.data)) {
+    return wrapped.data as LeadFormRecord[];
+  }
+
+  if (Array.isArray(wrapped?.items)) {
+    return wrapped.items as LeadFormRecord[];
+  }
+
+  return [];
+}
+
 export const leadFormService = {
   list: async (workspaceId?: string, projectId?: string) => {
     const res = await apiClient.get("/lead-forms", {
@@ -27,7 +44,7 @@ export const leadFormService = {
         ...(projectId ? { projectId } : {}),
       },
     });
-    return res.data as LeadFormRecord[];
+    return extractLeadFormArray(res.data);
   },
 
   get: async (id: string, projectId?: string) => {

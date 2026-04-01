@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
+import { randomUUID } from "crypto";
 
 import routes from "./routes";
 import webhookRoutes from "./routes/webhookRoutes"; // ✅ IMPORT ADDED
@@ -13,6 +14,7 @@ declare global {
     interface Request {
       user?: JwtPayload & { user_id?: string; role?: string };
       rawBody?: Buffer;
+      requestId?: string;
     }
   }
 }
@@ -25,7 +27,7 @@ export const app = express();
 const corsOptions = {
   origin: true,
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
@@ -54,6 +56,38 @@ app.use(
     },
   })
 );
+
+app.use((req, res, next) => {
+  const requestId = randomUUID();
+  req.requestId = requestId;
+  res.setHeader("x-request-id", requestId);
+  next();
+});
+
+app.use((req, _res, next) => {
+  const path = String(req.path || req.originalUrl || "");
+  if (req.method === "PATCH" && path.includes("/api/flows/") && path.includes("/node/")) {
+    console.info("[RequestBoundary][FlowPatch]", {
+      requestId: req.requestId || "unknown",
+      method: req.method,
+      path,
+      botId: req.headers["x-bot-id"] || null,
+      workspaceId: req.headers["x-workspace-id"] || null,
+      projectId: req.headers["x-project-id"] || null,
+    });
+  }
+  if (req.method === "POST" && path === "/api/debug/flow-save") {
+    console.info("[RequestBoundary][FlowSaveDebug]", {
+      requestId: req.requestId || "unknown",
+      method: req.method,
+      path,
+      botId: req.headers["x-bot-id"] || null,
+      workspaceId: req.headers["x-workspace-id"] || null,
+      projectId: req.headers["x-project-id"] || null,
+    });
+  }
+  next();
+});
 
 app.use(
   "/uploads",

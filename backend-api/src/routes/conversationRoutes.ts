@@ -16,6 +16,7 @@ import {
   getAssignmentCapacity,
   getConversations,
   getConversation,
+  getConversationTimeline,
   getConversationAssignments,
   getMessages,
   removeConversationTag,
@@ -45,6 +46,7 @@ router.get("/bot/:botId", getConversations);
 
 // Get specific conversation details
 router.get("/:id", getConversation);
+router.get("/:id/timeline", getConversationTimeline);
 
 // Get message history for a conversation
 router.get("/:id/messages", getMessages);

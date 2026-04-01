@@ -4,8 +4,19 @@ type ToastTone = "success" | "error" | "info";
 
 type ToastItem = {
   id: string;
+  title?: string;
   message: string;
+  details?: string[];
   tone: ToastTone;
+  durationMs?: number;
+};
+
+type ToastPayload = {
+  title?: string;
+  message: string;
+  details?: string[];
+  tone?: ToastTone;
+  durationMs?: number;
 };
 
 type ConfirmState = {
@@ -20,7 +31,7 @@ type ConfirmState = {
 interface UiState {
   toasts: ToastItem[];
   confirm: ConfirmState | null;
-  pushToast: (message: string, tone?: ToastTone) => void;
+  pushToast: (payload: string | ToastPayload, tone?: ToastTone) => void;
   dismissToast: (id: string) => void;
   openConfirm: (
     title: string,
@@ -38,15 +49,27 @@ function uid() {
 export const useUiStore = create<UiState>((set, get) => ({
   toasts: [],
   confirm: null,
-  pushToast: (message, tone = "info") => {
+  pushToast: (payload, tone = "info") => {
     const id = uid();
+    const nextToast =
+      typeof payload === "string"
+        ? { id, message: payload, tone, details: [] as string[], durationMs: 3200 }
+        : {
+            id,
+            title: payload.title,
+            message: payload.message,
+            details: Array.isArray(payload.details) ? payload.details : [],
+            tone: payload.tone || tone,
+            durationMs: payload.durationMs || (Array.isArray(payload.details) && payload.details.length > 0 ? 9000 : 3200),
+          };
+
     set((state) => ({
-      toasts: [...state.toasts, { id, message, tone }],
+      toasts: [...state.toasts, nextToast],
     }));
 
     setTimeout(() => {
       get().dismissToast(id);
-    }, 3200);
+    }, nextToast.durationMs || 3200);
   },
   dismissToast: (id) =>
     set((state) => ({
@@ -72,8 +95,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   },
 }));
 
-export function notify(message: string, tone: ToastTone = "info") {
-  useUiStore.getState().pushToast(message, tone);
+export function notify(payload: string | ToastPayload, tone: ToastTone = "info") {
+  useUiStore.getState().pushToast(payload, tone);
 }
 
 export function confirmAction(

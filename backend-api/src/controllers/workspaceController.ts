@@ -12,6 +12,8 @@ import {
   downloadWorkspaceExportForUserService,
   denyWorkspaceSupportRequestService,
   emergencyResetWorkspaceOwnerPasswordService,
+  listWorkspaceHistoryService,
+  resendWorkspaceOwnerInviteService,
   getWorkspaceBillingContextService,
   getWorkspaceByIdService,
   getWorkspaceOverviewService,
@@ -28,13 +30,20 @@ import {
   repairWorkspaceWhatsAppContactsService,
   restoreWorkspaceService,
   selfRestoreWorkspaceService,
+  resendWorkspaceMemberInviteService,
   revokeWorkspaceSupportAccessService,
   searchWorkspaceKnowledgeService,
   listWorkspacesService,
   unlockWorkspaceService,
   updateWorkspaceBillingService,
+  updateWorkspaceOwnerEmailAndResendInviteService,
   updateWorkspaceService,
 } from "../services/workspaceService";
+import {
+  getWorkspaceMailSettingsService,
+  testWorkspaceMailSettingsService,
+  updateWorkspaceMailSettingsService,
+} from "../services/workspaceMailSettingsService";
 
 function getUserId(req: AuthRequest) {
   return req.user?.id || req.user?.user_id || null;
@@ -52,6 +61,24 @@ export async function listWorkspacesCtrl(
     }
 
     const data = await listWorkspacesService(userId);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listWorkspaceHistoryCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const data = await listWorkspaceHistoryService(userId);
     res.json(data);
   } catch (err) {
     next(err);
@@ -164,6 +191,28 @@ export async function getWorkspaceBillingContextCtrl(
   }
 }
 
+export async function getWorkspaceMailSettingsCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    const id = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!id) {
+      return res.status(400).json({ error: "Workspace id is required" });
+    }
+
+    const data = await getWorkspaceMailSettingsService(id, userId);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function createWorkspaceWalletAdjustmentCtrl(
   req: AuthRequest,
   res: Response,
@@ -181,6 +230,50 @@ export async function createWorkspaceWalletAdjustmentCtrl(
 
     const data = await createWorkspaceWalletAdjustmentService(id, userId, req.body || {});
     res.status(201).json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateWorkspaceMailSettingsCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    const id = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!id) {
+      return res.status(400).json({ error: "Workspace id is required" });
+    }
+
+    const data = await updateWorkspaceMailSettingsService(id, userId, req.body || {});
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function testWorkspaceMailSettingsCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    const id = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!id) {
+      return res.status(400).json({ error: "Workspace id is required" });
+    }
+
+    const data = await testWorkspaceMailSettingsService(id, userId, req.body || {});
+    res.json(data);
   } catch (err) {
     next(err);
   }
@@ -399,6 +492,30 @@ export async function listWorkspaceMembersCtrl(
   }
 }
 
+export async function resendWorkspaceMemberInviteCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    const id = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!id) {
+      return res.status(400).json({ error: "Workspace id is required" });
+    }
+
+    const data = await resendWorkspaceMemberInviteService(id, userId, {
+      userId: String(req.body?.userId || req.body?.targetUserId || "").trim() || null,
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function emergencyResetWorkspaceOwnerPasswordCtrl(
   req: AuthRequest,
   res: Response,
@@ -415,6 +532,50 @@ export async function emergencyResetWorkspaceOwnerPasswordCtrl(
     }
 
     const data = await emergencyResetWorkspaceOwnerPasswordService(id, userId);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resendWorkspaceOwnerInviteCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    const id = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!id) {
+      return res.status(400).json({ error: "Workspace id is required" });
+    }
+
+    const data = await resendWorkspaceOwnerInviteService(id, userId);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateWorkspaceOwnerEmailAndResendInviteCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    const id = req.params.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!id) {
+      return res.status(400).json({ error: "Workspace id is required" });
+    }
+
+    const data = await updateWorkspaceOwnerEmailAndResendInviteService(id, userId, req.body || {});
     res.json(data);
   } catch (err) {
     next(err);
@@ -505,6 +666,9 @@ export async function removeWorkspaceUserCtrl(
     }
     if (!targetUserId) {
       return res.status(400).json({ error: "User id is required" });
+    }
+    if (String(userId) === String(targetUserId)) {
+      return res.status(403).json({ error: "You cannot remove your own account from the workspace." });
     }
 
     const data = await removeUserWorkspaceService(id, userId, targetUserId);

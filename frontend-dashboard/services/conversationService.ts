@@ -27,6 +27,19 @@ export interface ConversationNote {
   updated_at?: string;
 }
 
+export interface ConversationTimelineEvent {
+  event_type: "conversation" | "lead" | "message" | "identity" | string;
+  event_id: string;
+  source_id?: string | null;
+  source_type?: string | null;
+  title?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  happened_at?: string | null;
+  payload?: Record<string, unknown> | null;
+}
+
 export interface ConversationTag {
   tag: string;
   created_at?: string;
@@ -86,6 +99,11 @@ export const conversationService = {
 
   getMessages: async (conversationId: string) => {
     const res = await apiClient.get(`/conversations/${conversationId}/messages`);
+    return res.data;
+  },
+
+  getTimeline: async (conversationId: string) => {
+    const res = await apiClient.get(`/conversations/${conversationId}/timeline`);
     return res.data;
   },
 

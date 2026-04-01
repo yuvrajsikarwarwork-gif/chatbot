@@ -36,4 +36,9 @@ export const leadService = {
     const res = await apiClient.delete(`/leads/${id}`);
     return res.data;
   },
+
+  updateStatus: async (id: string, status: string) => {
+    const res = await apiClient.put(`/leads/${id}/status`, { status });
+    return res.data;
+  },
 };

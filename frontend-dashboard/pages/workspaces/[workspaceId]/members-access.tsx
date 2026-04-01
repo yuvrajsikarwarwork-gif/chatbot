@@ -14,7 +14,7 @@ import { confirmAction, notify } from "../../../store/uiStore";
 export default function WorkspaceMembersAccessPage() {
   const router = useRouter();
   const { workspaceId } = router.query;
-  const { canManagePermissions, canManageUsers, isPlatformOperator } = useVisibility();
+  const { canManagePermissions, canManageUsers, isPlatformOperator, isReadOnly } = useVisibility();
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -26,6 +26,7 @@ export default function WorkspaceMembersAccessPage() {
     isPlatformOperator ||
     (activeWorkspace?.workspace_id === normalizedWorkspaceId &&
       (canManageUsers || canManagePermissions));
+  const canMutateMembers = isPlatformOperator && !isReadOnly;
 
   useEffect(() => {
     if (!normalizedWorkspaceId || !canViewPageAccess) {
@@ -151,6 +152,7 @@ export default function WorkspaceMembersAccessPage() {
                 <button
                   type="button"
                   onClick={handleOwnerReset}
+                  disabled={!canMutateMembers}
                   className="rounded-[1rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 transition duration-200 hover:bg-sky-100"
                 >
                   Send owner password reset

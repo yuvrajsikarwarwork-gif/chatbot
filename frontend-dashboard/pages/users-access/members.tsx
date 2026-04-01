@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, UserCog, Users } from "lucide-react";
 
 import PageAccessNotice from "../../components/access/PageAccessNotice";
@@ -18,10 +18,41 @@ const EMPTY_FORM = {
   status: "active",
 };
 
+const ROLE_LABELS: Record<string, string> = {
+  workspace_admin: "Workspace Admin",
+  workspace_owner: "Workspace Owner",
+  project_admin: "Project Admin",
+  super_admin: "Super Admin",
+  editor: "Editor",
+  agent: "Agent",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  active: "Active",
+  online: "Online",
+  invited: "Invited",
+  inactive: "Inactive",
+};
+
+function formatRoleLabel(role: string) {
+  if (!role) return "Member";
+  return ROLE_LABELS[role] || role.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatStatusLabel(status: string) {
+  if (!status) return "Inactive";
+  return STATUS_LABELS[status] || status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function isOnlineStatus(status: string) {
+  return status === "active" || status === "online";
+}
+
 export default function UsersAccessMembersPage() {
+  const currentUserId = useAuthStore((state) => state.user?.id || "");
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingMemberId, setEditingMemberId] = useState("");
@@ -36,6 +67,7 @@ export default function UsersAccessMembersPage() {
     ? hasWorkspacePermission(activeWorkspaceId, "manage_users") ||
       hasWorkspacePermission(activeWorkspaceId, "manage_permissions")
     : false;
+  const canEditMembers = canManageMembers && !isReadOnly;
 
   const loadMembers = async () => {
     if (!activeWorkspaceId || !canManageMembers) {
@@ -71,7 +103,7 @@ export default function UsersAccessMembersPage() {
   );
 
   const handleSave = async () => {
-    if (!activeWorkspaceId) {
+    if (!activeWorkspaceId || !canEditMembers) {
       setError("Select a workspace before managing members.");
       return;
     }
@@ -104,6 +136,10 @@ export default function UsersAccessMembersPage() {
   };
 
   const handleEdit = (member: WorkspaceMember) => {
+    if (member.user_id === currentUserId) {
+      setError("You cannot remove or alter your own admin account.");
+      return;
+    }
     setEditingMemberId(member.user_id);
     setError("");
     setSuccess("");
@@ -116,6 +152,10 @@ export default function UsersAccessMembersPage() {
   };
 
   const handleRemove = async (member: WorkspaceMember) => {
+    if (member.user_id === currentUserId) {
+      setError("You cannot remove your own account from the workspace.");
+      return;
+    }
     if (
       !(await confirmAction(
         "Remove workspace member",
@@ -159,15 +199,15 @@ export default function UsersAccessMembersPage() {
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
           <UsersAccessTabs activeHref="/users-access/members" />
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <section className="rounded-[1.9rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="max-w-3xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 Members
               </div>
-              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-text-main">
                 Workspace members and invitations
               </h1>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+              <p className="mt-2 text-sm leading-6 text-text-muted">
                 Add team members, update membership state, and keep workspace roles clean without opening the full workspace admin page.
               </p>
             </div>
@@ -183,76 +223,80 @@ export default function UsersAccessMembersPage() {
               return (
                 <div
                   key={card.label}
-                  className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface)] px-4 py-4 shadow-sm"
+                  className="rounded-[1.2rem] border border-border-main bg-surface px-4 py-4 shadow-sm"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                       {card.label}
                     </div>
-                    <Icon size={16} className="text-[var(--muted)]" />
+                    <Icon size={16} className="text-text-muted" />
                   </div>
-                  <div className="mt-3 text-2xl font-semibold text-[var(--text)]">{card.value}</div>
+                  <div className="mt-3 text-2xl font-semibold text-text-main">{card.value}</div>
                 </div>
               );
             })}
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+            <section className="rounded-[1.9rem] border border-border-main bg-surface p-6 shadow-sm">
               <div className="mb-5 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white">
                   <Plus size={18} />
                 </div>
                 <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                     Member Editor
                   </div>
-                  <div className="text-lg font-semibold tracking-tight text-[var(--text)]">
+                  <div className="text-lg font-semibold tracking-tight text-text-main">
                     {editingMemberId ? "Update workspace member" : "Add or invite member"}
                   </div>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <input
-                  className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder="Existing user id"
-                  value={form.userId}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, userId: event.target.value }))
-                  }
+                  <input
+                    className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    placeholder="Existing user id"
+                    value={form.userId}
+                    disabled={!canEditMembers}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, userId: event.target.value }))
+                    }
                 />
-                <input
-                  className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  placeholder="Invite email"
-                  value={form.email}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, email: event.target.value }))
-                  }
+                  <input
+                    className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    placeholder="Invite email"
+                    value={form.email}
+                    disabled={!canEditMembers}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, email: event.target.value }))
+                    }
                 />
-                <select
-                  className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  value={form.role}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, role: event.target.value }))
-                  }
+                  <select
+                    className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    value={form.role}
+                    disabled={!canEditMembers}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, role: event.target.value }))
+                    }
                 >
                   {WORKSPACE_ROLES.map((role) => (
                     <option key={role} value={role}>
-                      {role.replace("_", " ")}
+                      {formatRoleLabel(role)}
                     </option>
                   ))}
                 </select>
-                <select
-                  className="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  value={form.status}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, status: event.target.value }))
-                  }
+                  <select
+                    className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    value={form.status}
+                    disabled={!canEditMembers}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, status: event.target.value }))
+                    }
                 >
-                  <option value="active">active</option>
-                  <option value="invited">invited</option>
-                  <option value="inactive">inactive</option>
+                  <option value="active">Active</option>
+                  <option value="invited">Invited</option>
+                  <option value="inactive">Inactive</option>
                 </select>
 
                 {error ? (
@@ -271,7 +315,7 @@ export default function UsersAccessMembersPage() {
                   <button
                     type="button"
                     onClick={handleSave}
-                    disabled={saving}
+                    disabled={saving || !canEditMembers}
                     className="flex-1 rounded-2xl bg-primary px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white disabled:opacity-60"
                   >
                     {saving ? "Saving..." : editingMemberId ? "Save member" : "Add member"}
@@ -285,7 +329,7 @@ export default function UsersAccessMembersPage() {
                         setError("");
                         setSuccess("");
                       }}
-                      className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[var(--text)]"
+                      className="rounded-2xl border border-border-main bg-surface px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-text-main"
                     >
                       Cancel
                     </button>
@@ -294,57 +338,92 @@ export default function UsersAccessMembersPage() {
               </div>
             </section>
 
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Workspace directory
               </div>
               <div className="mt-4 space-y-3">
                 {loading ? (
-                  <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                     Loading members...
                   </div>
                 ) : members.length ? (
-                  members.map((member) => (
-                    <div
-                      key={`${member.workspace_id}-${member.user_id}`}
-                      className="rounded-[1.15rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4"
-                    >
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                          <div className="text-sm font-semibold text-[var(--text)]">
-                            {member.name || member.email || member.user_id}
+                  members.map((member) => {
+                    const isSelf = member.user_id === currentUserId;
+
+                    return (
+                      <div
+                        key={`${member.workspace_id}-${member.user_id}`}
+                        className="rounded-[1.15rem] border border-border-main bg-canvas p-4"
+                      >
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-text-main">
+                              {member.name || member.email || member.user_id}
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-border-main bg-canvas px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
+                                {formatRoleLabel(member.role)}
+                              </span>
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                                  isOnlineStatus(member.status)
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : "border-border-main bg-canvas text-text-muted"
+                                }`}
+                              >
+                                <span
+                                  className={`h-2 w-2 rounded-full ${
+                                    isOnlineStatus(member.status) ? "bg-emerald-500" : "bg-text-muted"
+                                  }`}
+                                />
+                                {formatStatusLabel(member.status)}
+                              </span>
+                            </div>
+                            <div className="mt-2 text-sm text-text-muted">
+                              {member.email || member.provisioned_user_email || member.user_id}
+                            </div>
                           </div>
-                          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                            {member.role} • {member.status}
+                          <div className="flex flex-wrap gap-2">
+                            {isSelf ? (
+                              <span
+                                className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700"
+                                title="You cannot remove or alter your own admin account."
+                              >
+                                Self protected
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEdit(member)}
+                                  disabled={!canEditMembers}
+                                  title="You cannot remove or alter your own admin account."
+                                  className="rounded-xl border border-border-main bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main disabled:opacity-50"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemove(member)}
+                                  disabled={!canEditMembers}
+                                  title="You cannot remove or alter your own admin account."
+                                  className="rounded-xl border border-red-500/30 bg-transparent px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-red-500 hover:bg-red-500/10 hover:border-red-500/50 disabled:opacity-50"
+                                >
+                                  <span className="inline-flex items-center gap-2">
+                                    <Trash2 size={12} />
+                                    Remove
+                                  </span>
+                                </button>
+                              </>
+                            )}
                           </div>
-                          <div className="mt-2 text-sm text-[var(--muted)]">
-                            {member.email || member.provisioned_user_email || member.user_id}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(member)}
-                            className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text)]"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemove(member)}
-                            className="rounded-xl border border-red-500/30 bg-transparent px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-red-500 hover:bg-red-500/10 hover:border-red-500/50"
-                          >
-                            <span className="inline-flex items-center gap-2">
-                              <Trash2 size={12} />
-                              Remove
-                            </span>
-                          </button>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
-                  <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                     No workspace members found for the active workspace.
                   </div>
                 )}
@@ -356,3 +435,4 @@ export default function UsersAccessMembersPage() {
     </DashboardLayout>
   );
 }
+

@@ -9,6 +9,7 @@ import {
   getFlow,
   createFlowCtrl,
   updateFlowCtrl,
+  patchFlowNodeCtrl,
   deleteFlowCtrl,
   saveFlowCtrl
 } from "../controllers/flowController";
@@ -16,6 +17,7 @@ import {
 import { authMiddleware } from "../middleware/authMiddleware";
 import {
   requireAuthenticatedUser,
+  requireActiveWorkspaceEditAccess,
   requireBotPermission,
 } from "../middleware/policyMiddleware";
 import { WORKSPACE_PERMISSIONS } from "../services/workspaceAccessService";
@@ -47,16 +49,20 @@ router.get("/:id", getFlow);
 
 router.post(
   "/",
+  requireActiveWorkspaceEditAccess(),
   createFlowCtrl
 );
 
 router.post(
   "/save",
+  requireActiveWorkspaceEditAccess(),
   saveFlowCtrl
 );
 
-router.put("/:id", updateFlowCtrl);
+router.put("/:id", requireActiveWorkspaceEditAccess(), updateFlowCtrl);
 
-router.delete("/:id", deleteFlowCtrl);
+router.patch("/:id/node/:nodeId", requireActiveWorkspaceEditAccess(), patchFlowNodeCtrl);
+
+router.delete("/:id", requireActiveWorkspaceEditAccess(), deleteFlowCtrl);
 
 export default router;

@@ -13,7 +13,7 @@ import { useAuthStore } from "../../store/authStore";
 export default function UsersAccessOverridesPage() {
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [roleMatrices, setRoleMatrices] = useState<Record<string, Record<string, boolean>>>({});
   const [selectedMemberId, setSelectedMemberId] = useState("");
@@ -28,6 +28,7 @@ export default function UsersAccessOverridesPage() {
   const canManagePermissions = activeWorkspaceId
     ? hasWorkspacePermission(activeWorkspaceId, "manage_permissions")
     : false;
+  const canEditPermissionOverrides = canManagePermissions && !isReadOnly;
 
   useEffect(() => {
     if (!activeWorkspaceId || !canManagePermissions) {
@@ -90,7 +91,7 @@ export default function UsersAccessOverridesPage() {
   const baselineMatrix = roleMatrices[baselineRole] || {};
 
   const handleSave = async () => {
-    if (!activeWorkspaceId || !selectedMember) {
+    if (!activeWorkspaceId || !selectedMember || !canEditPermissionOverrides) {
       return;
     }
 
@@ -170,7 +171,7 @@ export default function UsersAccessOverridesPage() {
                   Workspace member
                 </label>
                 <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                  className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
                   value={selectedMemberId}
                   onChange={(event) => setSelectedMemberId(event.target.value)}
                 >
@@ -190,12 +191,12 @@ export default function UsersAccessOverridesPage() {
                 {PERMISSION_OPTIONS.map((option) => (
                   <label
                     key={option.key}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                    className="flex items-center gap-3 rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-muted"
                   >
                     <input
                       type="checkbox"
                       checked={Boolean(memberPermissions[option.key])}
-                      disabled={!selectedMember || loading}
+                      disabled={!selectedMember || loading || !canEditPermissionOverrides}
                       onChange={(event) =>
                         setMemberPermissions((current) => ({
                           ...current,
@@ -211,7 +212,7 @@ export default function UsersAccessOverridesPage() {
 
             <button
               type="button"
-              disabled={!selectedMember || saving}
+              disabled={!selectedMember || saving || !canEditPermissionOverrides}
               onClick={handleSave}
               className="mt-5 rounded-2xl bg-slate-900 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white disabled:cursor-not-allowed disabled:opacity-50"
             >

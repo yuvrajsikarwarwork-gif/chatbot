@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Loader2, Send, X } from "lucide-react";
 
 import apiClient from "../../services/apiClient";
@@ -53,6 +53,51 @@ function getTemplatePreview(template: any) {
   return content?.body || template?.body || "No preview available";
 }
 
+const platformPreviewThemes: Record<string, any> = {
+  whatsapp: {
+    label: "WhatsApp",
+    shell: "bg-emerald-50 border-emerald-200 text-emerald-950",
+    message: "bg-emerald-100 text-emerald-950",
+    note: "bg-emerald-100/70 text-emerald-900",
+  },
+  telegram: {
+    label: "Telegram",
+    shell: "bg-sky-50 border-sky-200 text-sky-950",
+    message: "bg-sky-100 text-sky-950",
+    note: "bg-sky-100/70 text-sky-900",
+  },
+  email: {
+    label: "Email",
+    shell: "bg-violet-50 border-violet-200 text-violet-950",
+    message: "bg-violet-100 text-violet-950",
+    note: "bg-violet-100/70 text-violet-900",
+  },
+  sms: {
+    label: "SMS",
+    shell: "bg-indigo-50 border-indigo-200 text-indigo-950",
+    message: "bg-indigo-100 text-indigo-950",
+    note: "bg-indigo-100/70 text-indigo-900",
+  },
+  instagram: {
+    label: "Instagram",
+    shell: "bg-pink-50 border-pink-200 text-pink-950",
+    message: "bg-pink-100 text-pink-950",
+    note: "bg-pink-100/70 text-pink-900",
+  },
+  facebook: {
+    label: "Facebook",
+    shell: "bg-blue-50 border-blue-200 text-blue-950",
+    message: "bg-blue-100 text-blue-950",
+    note: "bg-blue-100/70 text-blue-900",
+  },
+  website: {
+    label: "Website",
+    shell: "bg-canvas border-border-main text-text-main",
+    message: "bg-canvas text-text-main",
+    note: "bg-canvas/70 text-text-main",
+  },
+};
+
 function getVariableLabel(template: any, token: string) {
   const mappedField = String(template?.variables?.[token] || "").trim();
   if (!mappedField) {
@@ -62,7 +107,7 @@ function getVariableLabel(template: any, token: string) {
   const friendly = mappedField
     .replace(/_/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-  return `Variable {{${token}}} · ${friendly}`;
+  return `Variable {{${token}}} Â· ${friendly}`;
 }
 
 export default function TemplateSelectModal({
@@ -118,6 +163,8 @@ export default function TemplateSelectModal({
     [templates, selectedTemplateId]
   );
   const tokens = useMemo(() => extractTemplateTokens(selectedTemplate), [selectedTemplate]);
+  const platform = String(activeConversation?.platform || activeConversation?.channel || "whatsapp").toLowerCase();
+  const previewTheme = platformPreviewThemes[platform] || platformPreviewThemes.whatsapp;
 
   useEffect(() => {
     setVariableValues(Object.fromEntries(tokens.map((token) => [token, ""])));
@@ -158,22 +205,22 @@ export default function TemplateSelectModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
       <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] shadow-[var(--shadow-glass)] backdrop-blur-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--glass-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04))] p-4">
+        <div className="flex items-center justify-between border-b border-[var(--glass-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.06))] p-4">
           <div>
-            <h3 className="bg-[linear-gradient(180deg,var(--text),color-mix(in_srgb,var(--text)_72%,var(--accent)_28%))] bg-clip-text font-bold text-transparent">
-              Send Approved Template
+            <h3 className="text-xl font-black text-text-main">
+              Send {previewTheme.label} Template
             </h3>
-            <p className="mt-1 text-xs text-[var(--muted)]">
+            <p className="mt-1 text-xs text-text-muted">
               Choose a template, fill variables, and send it from the inbox.
             </p>
           </div>
-          <button onClick={onClose} className="rounded-full border border-[var(--glass-border)] p-2 text-[var(--muted)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:text-[var(--text)]">
+          <button onClick={onClose} className="rounded-full border border-[var(--glass-border)] p-2 text-text-muted transition duration-300 hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:text-text-main">
             <X size={20} />
           </button>
         </div>
 
         <div className="grid max-h-[70vh] gap-0 overflow-hidden lg:grid-cols-[320px_1fr]">
-          <div className="max-h-[70vh] overflow-y-auto border-r border-[var(--glass-border)] bg-[rgba(15,23,42,0.04)] p-4">
+          <div className="max-h-[70vh] overflow-y-auto border-r border-border-main bg-canvas/90 p-4">
             {isLoading ? (
               <div className="flex items-center gap-2 py-4 text-sm text-[var(--muted)]">
                 <Loader2 size={16} className="animate-spin" />
@@ -214,12 +261,12 @@ export default function TemplateSelectModal({
           <div className="max-h-[70vh] overflow-y-auto p-5">
             {selectedTemplate ? (
               <div className="space-y-5">
-                <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                <div className={`rounded-2xl border ${previewTheme.shell} p-4`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">
                     Preview
                   </div>
-                  <div className="mt-3 rounded-2xl bg-[#efeae2] px-4 py-3">
-                    <div className="rounded-2xl bg-[#dcf8c6] px-4 py-3 text-sm leading-6 text-slate-900">
+                  <div className="mt-3 rounded-2xl bg-surface px-4 py-3 shadow-sm">
+                    <div className={`rounded-2xl ${previewTheme.message} px-4 py-3 text-sm leading-6`}>
                       {getTemplatePreview(selectedTemplate)}
                     </div>
                   </div>
@@ -286,3 +333,4 @@ export default function TemplateSelectModal({
     </div>
   );
 }
+

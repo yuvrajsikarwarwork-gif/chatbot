@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Database, Plus, Save, Trash2 } from "lucide-react";
 
 import PageAccessNotice from "../../components/access/PageAccessNotice";
@@ -218,7 +218,7 @@ export default function LeadFormsPage() {
   };
 
   return (
-    <DashboardLayout>
+    <DashboardLayout fullBleed>
       {!canViewLeadForms ? (
         <PageAccessNotice
           title="Lead forms are restricted for this role"
@@ -227,9 +227,9 @@ export default function LeadFormsPage() {
           ctaLabel="Open dashboard"
         />
       ) : (
-        <div className="space-y-5">
+        <div className="flex min-h-full flex-col gap-5 text-text-main">
           {!activeWorkspace?.workspace_id || !activeProject?.id ? (
-            <div className="rounded-[1.5rem] border border-dashed border-[var(--line)] bg-[var(--surface)] p-8 text-sm text-[var(--muted)]">
+            <div className="rounded-[1.5rem] border border-dashed border-border-main bg-canvas p-8 text-sm text-text-muted">
               Select a workspace and project first. Lead forms are managed inside the active project context.
             </div>
           ) : null}
@@ -246,32 +246,32 @@ export default function LeadFormsPage() {
             </div>
           ) : null}
 
-          <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
-            <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] shadow-sm">
-              <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
+          <div className="grid min-h-0 gap-5 xl:grid-cols-[340px_1fr] xl:items-stretch">
+            <div className="flex min-h-0 flex-col rounded-[1.9rem] border border-border-main bg-surface shadow-sm">
+              <div className="flex items-center justify-between border-b border-border-main px-5 py-4">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--muted)]">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
                     Lead Forms
                   </div>
-                  <div className="mt-1 text-sm text-[var(--muted)]">
+                  <div className="mt-1 text-sm text-text-muted">
                     Reusable schemas for flow capture.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={resetDraft}
-                  className="inline-flex items-center gap-2 rounded-xl border border-border bg-transparent px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-foreground transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                  className="inline-flex items-center gap-2 rounded-xl border border-border-main bg-transparent px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-text-main transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
                 >
                   <Plus size={14} />
                   New
                 </button>
               </div>
 
-              <div className="max-h-[620px] overflow-y-auto p-3">
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
                 {loading ? (
-                  <div className="p-4 text-sm text-slate-500">Loading lead forms...</div>
+                  <div className="p-4 text-sm text-text-muted">Loading lead forms...</div>
                 ) : forms.length === 0 ? (
-                  <div className="p-4 text-sm text-slate-500">
+                  <div className="p-4 text-sm text-text-muted">
                     No lead forms exist yet. Create one to start mapping input nodes.
                   </div>
                 ) : (
@@ -284,13 +284,13 @@ export default function LeadFormsPage() {
                         className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
                           selectedFormId === form.id
                             ? "border-primary bg-primary text-white"
-                            : "border-border bg-card text-foreground hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                            : "border-border-main bg-surface text-text-main hover:bg-primary-fade hover:text-primary hover:border-primary/30"
                         }`}
                       >
                         <div className="text-sm font-bold">{form.name}</div>
                         <div
                           className={`mt-1 text-xs ${
-                            selectedFormId === form.id ? "text-slate-300" : "text-slate-500"
+                            selectedFormId === form.id ? "text-text-muted" : "text-text-muted"
                           }`}
                         >
                           {Array.isArray(form.fields) ? form.fields.length : 0} field(s)
@@ -302,14 +302,14 @@ export default function LeadFormsPage() {
               </div>
             </div>
 
-            <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+            <div className="flex min-h-0 flex-col rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--muted)]">
+                  <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
                     <Database size={12} />
                     {selectedFormId ? "Edit Lead Form" : "Create Lead Form"}
                   </div>
-                  <div className="mt-2 text-sm text-[var(--muted)]">
+                  <div className="mt-2 text-sm text-text-muted">
                     Define reusable fields once, then link input nodes to them in the flow builder.
                   </div>
                 </div>
@@ -329,7 +329,7 @@ export default function LeadFormsPage() {
                     type="button"
                     onClick={handleSave}
                     disabled={saving || !canManageLeadForms}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-xl border border-primary bg-primary px-4 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Save size={14} />
                     {saving ? "Saving..." : "Save Form"}
@@ -337,36 +337,36 @@ export default function LeadFormsPage() {
                 </div>
               </div>
 
-              <div className="mt-6 space-y-5">
+              <div className="mt-6 min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
                 <div>
-                  <label className="mb-1 block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                  <label className="mb-1 block text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
                     Form Name
                   </label>
                   <input
                     value={draftName}
                     onChange={(event) => setDraftName(event.target.value)}
                     placeholder="e.g. Real Estate Inquiry"
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 outline-none"
+                    className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm font-semibold text-text-muted outline-none"
                   />
                 </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
                       Fields
                     </div>
                     <button
                       type="button"
                       onClick={addField}
-                      className="inline-flex items-center gap-2 rounded-xl border border-border bg-transparent px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-foreground transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                      className="inline-flex items-center gap-2 rounded-xl border border-border-main bg-transparent px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-text-main transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
                     >
                       <Plus size={14} />
                       Add Field
                     </button>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                  <div className="rounded-2xl border border-border-main bg-canvas p-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
                       Standard Fields
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -375,7 +375,7 @@ export default function LeadFormsPage() {
                           key={preset.fieldKey}
                           type="button"
                           onClick={() => addStandardField(preset)}
-                          className="rounded-full border border-border bg-transparent px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-foreground transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
+                          className="rounded-full border border-border-main bg-transparent px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-text-main transition hover:bg-primary-fade hover:text-primary hover:border-primary/30"
                         >
                           {preset.label}
                         </button>
@@ -384,18 +384,18 @@ export default function LeadFormsPage() {
                   </div>
 
                   {draftFields.map((field, index) => (
-                    <div key={`${field.fieldKey}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div key={`${field.fieldKey}-${index}`} className="rounded-2xl border border-border-main bg-canvas p-4">
                       <div className="grid gap-3 md:grid-cols-[1fr_180px_1.3fr_auto_auto]">
                         <input
                           value={field.fieldKey}
                           onChange={(event) => updateField(index, "fieldKey", event.target.value)}
                           placeholder="field_key"
-                          className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-mono text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          className="rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm font-mono text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         />
                         <select
                           value={field.fieldType}
                           onChange={(event) => updateField(index, "fieldType", event.target.value)}
-                          className="rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          className="rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         >
                           {[...STANDARD_FIELD_PRESETS.map((item) => ({ label: item.label, value: item.fieldType })), ...CUSTOM_FIELD_TYPES]
                             .filter((item, itemIndex, arr) => arr.findIndex((candidate) => candidate.value === item.value) === itemIndex)
@@ -409,9 +409,9 @@ export default function LeadFormsPage() {
                           value={field.questionLabel}
                           onChange={(event) => updateField(index, "questionLabel", event.target.value)}
                           placeholder="Question label"
-                          className="rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          className="rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         />
-                        <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-transparent px-4 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-foreground">
+                        <label className="inline-flex items-center justify-center gap-2 rounded-xl border border-border-main bg-transparent px-4 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-text-main">
                           <input
                             type="checkbox"
                             checked={Boolean(field.isRequired)}
@@ -442,7 +442,7 @@ export default function LeadFormsPage() {
                             )
                           }
                           placeholder="Dropdown options separated by commas"
-                          className="mt-3 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          className="mt-3 w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                         />
                       ) : null}
                     </div>
@@ -456,3 +456,4 @@ export default function LeadFormsPage() {
     </DashboardLayout>
   );
 }
+

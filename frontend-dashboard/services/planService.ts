@@ -31,6 +31,11 @@ export interface Plan {
 }
 
 export const planService = {
+  publicList: async (): Promise<Plan[]> => {
+    const res = await apiClient.get("/auth/public-plans");
+    return res.data;
+  },
+
   list: async (): Promise<Plan[]> => {
     const res = await apiClient.get("/plans");
     return res.data;

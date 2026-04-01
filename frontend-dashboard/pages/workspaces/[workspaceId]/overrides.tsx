@@ -114,7 +114,7 @@ function getOverrideChanges(event: any) {
 export default function WorkspaceOverridesPage() {
   const router = useRouter();
   const { workspaceId } = router.query;
-  const { canViewBilling, isPlatformOperator } = useVisibility();
+  const { canViewBilling, isPlatformOperator, isReadOnly } = useVisibility();
   const [overview, setOverview] = useState<WorkspaceOverview | null>(null);
   const [form, setForm] = useState<OverrideForm | null>(null);
   const [auditRows, setAuditRows] = useState<any[]>([]);
@@ -123,6 +123,7 @@ export default function WorkspaceOverridesPage() {
   const [error, setError] = useState("");
 
   const canViewOverridesPage = canViewBilling || isPlatformOperator;
+  const canMutateOverrides = isPlatformOperator && !isReadOnly;
   const normalizedWorkspaceId = String(workspaceId || "").trim();
 
   const load = async () => {
@@ -357,7 +358,7 @@ export default function WorkspaceOverridesPage() {
           ctaLabel="Open workspaces"
         />
       ) : loading || !workspace || !overview || !form ? (
-        <div className="mx-auto max-w-7xl rounded-[1.5rem] border border-dashed border-[var(--line)] bg-[var(--surface)] px-5 py-8 text-sm text-[var(--muted)]">
+        <div className="mx-auto max-w-7xl rounded-[1.5rem] border border-dashed border-border-main bg-surface px-5 py-8 text-sm text-text-muted">
           {error || "Loading limits and overrides..."}
         </div>
       ) : (
@@ -365,15 +366,15 @@ export default function WorkspaceOverridesPage() {
           <WorkspaceStatusBanner workspace={workspace} />
           <WorkspaceConsoleTabs workspaceId={workspace.id} activeSlug="overrides" />
 
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="max-w-3xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 Limits & Overrides
               </div>
-              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-text-main">
                 Plan baseline vs workspace override
               </h1>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+              <p className="mt-2 text-sm leading-6 text-text-muted">
                 Compare the shared plan allowance against this workspace-specific override before saving. Blank values inherit the plan baseline immediately.
               </p>
             </div>
@@ -397,42 +398,42 @@ export default function WorkspaceOverridesPage() {
               return (
                 <section
                   key={card.label}
-                  className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm"
+                  className="rounded-[1.25rem] border border-border-main bg-surface p-5 shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                       {card.label}
                     </div>
-                    <div className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                    <div className="rounded-full border border-border-main bg-primary-fade px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
                       {change === null ? "inherit" : change === 0 ? "no diff" : change > 0 ? `+${change}` : String(change)}
                     </div>
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-3">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">Plan baseline</div>
-                      <div className="mt-2 text-lg font-semibold text-[var(--text)]">{formatLimit(card.baseline)}</div>
+                    <div className="rounded-[1rem] border border-border-main bg-canvas px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Plan baseline</div>
+                      <div className="mt-2 text-lg font-semibold text-text-main">{formatLimit(card.baseline)}</div>
                     </div>
-                    <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-3">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">Current override</div>
-                      <div className="mt-2 text-lg font-semibold text-[var(--text)]">{formatLimit(card.override)}</div>
+                    <div className="rounded-[1rem] border border-border-main bg-canvas px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Current override</div>
+                      <div className="mt-2 text-lg font-semibold text-text-main">{formatLimit(card.override)}</div>
                     </div>
-                    <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-3">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">Effective limit</div>
-                      <div className="mt-2 text-lg font-semibold text-[var(--text)]">{formatLimit(card.effective)}</div>
+                    <div className="rounded-[1rem] border border-border-main bg-canvas px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Effective limit</div>
+                      <div className="mt-2 text-lg font-semibold text-text-main">{formatLimit(card.effective)}</div>
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--muted)]">
+                  <div className="mt-4 rounded-[1rem] border border-border-main bg-canvas px-4 py-3 text-sm text-text-muted">
                     {card.usage !== null ? (
-                      <>Current usage: <span className="font-semibold text-[var(--text)]">{card.usage}</span> {card.usageLabel}</>
+                      <>Current usage: <span className="font-semibold text-text-main">{card.usage}</span> {card.usageLabel}</>
                     ) : (
-                      <>Current usage: <span className="font-semibold text-[var(--text)]">Not surfaced yet</span></>
+                      <>Current usage: <span className="font-semibold text-text-main">Not surfaced yet</span></>
                     )}
                   </div>
 
                   <div className="mt-4">
-                    <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+                    <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted">
                       Override value
                     </label>
                     <input
@@ -449,12 +450,12 @@ export default function WorkspaceOverridesPage() {
                             : current
                         )
                       }
-                      className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)]"
+                      className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder="Leave blank to inherit the plan baseline"
                     />
                   </div>
 
-                  <div className={`mt-3 text-sm leading-6 ${cardValidation[card.formKey] ? "text-amber-700" : "text-[var(--muted)]"}`}>
+                  <div className={`mt-3 text-sm leading-6 ${cardValidation[card.formKey] ? "text-amber-700" : "text-text-muted"}`}>
                     {cardValidation[card.formKey] || card.helper}
                   </div>
                 </section>
@@ -462,13 +463,13 @@ export default function WorkspaceOverridesPage() {
             })}
           </div>
 
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+          <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                   Save overrides
                 </div>
-                <div className="mt-2 text-sm text-[var(--muted)]">
+                <div className="mt-2 text-sm text-text-muted">
                   These changes affect quota enforcement across users, projects, bots, campaigns, integrations, and AI replies.
                 </div>
               </div>
@@ -476,15 +477,15 @@ export default function WorkspaceOverridesPage() {
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)]"
+                  className="rounded-[1rem] border border-border-main bg-canvas px-4 py-3 text-sm text-text-main"
                 >
                   Reset form
                 </button>
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={saving}
-                  className="rounded-[1rem] border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                  disabled={saving || !canMutateOverrides}
+                  className="rounded-[1rem] border border-primary bg-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {saving ? "Saving..." : "Save overrides"}
                 </button>
@@ -492,20 +493,20 @@ export default function WorkspaceOverridesPage() {
             </div>
           </section>
 
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+          <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                   Override audit history
                 </div>
-                <div className="mt-2 text-sm text-[var(--muted)]">
+                <div className="mt-2 text-sm text-text-muted">
                   Showing only workspace audit events that changed a limit override.
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => load().catch(console.error)}
-                className="rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)]"
+                className="rounded-[1rem] border border-border-main bg-canvas px-4 py-3 text-sm text-text-main"
               >
                 Refresh history
               </button>
@@ -525,21 +526,21 @@ export default function WorkspaceOverridesPage() {
                   return (
                     <div
                       key={event.id}
-                      className="rounded-[1.1rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4"
+                      className="rounded-[1.1rem] border border-border-main bg-canvas p-4"
                     >
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-2">
-                          <div className="text-sm font-semibold text-[var(--text)]">
+                          <div className="text-sm font-semibold text-text-main">
                             {event.action === "archive" ? "Workspace archived" : "Override update"}
                           </div>
-                          <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                          <div className="text-xs uppercase tracking-[0.16em] text-text-muted">
                             {actor}
                           </div>
                           <div className="flex flex-wrap gap-2">
                             {changes.map((change) => (
                               <div
                                 key={`${event.id}-${change.key}`}
-                                className="rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-1 text-[11px] text-[var(--text)]"
+                                className="rounded-full border border-border-main bg-surface px-3 py-1 text-[11px] text-text-main"
                               >
                                 {change.label}: {formatLimit(change.oldValue)} to {formatLimit(change.newValue)}
                               </div>
@@ -547,14 +548,14 @@ export default function WorkspaceOverridesPage() {
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-3">
-                          <div className="text-xs text-[var(--muted)]">
+                          <div className="text-xs text-text-muted">
                             {event.created_at ? new Date(event.created_at).toLocaleString() : "Unknown time"}
                           </div>
                           <button
                             type="button"
                             onClick={() => handleRollback(event)}
-                            disabled={saving}
-                            className="rounded-[0.9rem] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)] disabled:opacity-50"
+                            disabled={saving || !canMutateOverrides}
+                            className="rounded-[0.9rem] border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 disabled:opacity-50"
                           >
                             Roll back to previous values
                           </button>
@@ -564,7 +565,7 @@ export default function WorkspaceOverridesPage() {
                   );
                 })
               ) : (
-                <div className="rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                <div className="rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                   No override-specific audit history yet.
                 </div>
               )}

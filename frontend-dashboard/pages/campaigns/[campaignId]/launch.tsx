@@ -1,4 +1,4 @@
-import { useRouter } from "next/router";
+﻿import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 
 import CampaignSenderModal from "../../../components/campaign/CampaignSenderModal";
@@ -41,6 +41,7 @@ export default function CampaignLaunchPage() {
       { label: "Channels", href: `/campaigns/${campaignId}/channels` },
       { label: "Entries", href: `/campaigns/${campaignId}/entries` },
       { label: "Audience", href: `/campaigns/${campaignId}/audience` },
+      { label: "Automation", href: `/campaigns/${campaignId}/automation` },
       { label: "Launch", href: `/campaigns/${campaignId}/launch` },
       { label: "Activity", href: `/campaigns/${campaignId}/activity` },
     ],
@@ -208,7 +209,7 @@ export default function CampaignLaunchPage() {
                 type="button"
                 onClick={() => setIsLaunchOpen(true)}
                 disabled={!isLaunchReady || loading}
-                className="rounded-2xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_30px_var(--accent-glow)] disabled:cursor-not-allowed disabled:border-slate-300/60 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:opacity-100"
+                className="rounded-2xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_30px_var(--accent-glow)] disabled:cursor-not-allowed disabled:border-border-main/60 disabled:bg-canvas disabled:text-text-muted disabled:shadow-none disabled:opacity-100"
               >
                 Launch campaign
               </button>
@@ -226,3 +227,4 @@ export default function CampaignLaunchPage() {
     </DashboardLayout>
   );
 }
+

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 
 import PageAccessNotice from "../components/access/PageAccessNotice";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import { useVisibility } from "../hooks/useVisibility";
+import { notify } from "../store/uiStore";
 import {
   type AiProvidersSettings,
   type BillingWalletSettings,
@@ -34,8 +35,9 @@ const SYSTEM_AREAS = [
 ];
 
 export default function SystemSettingsPage() {
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
   const canViewSystemSettingsPage = canViewPage("system_settings");
+  const canEditSystemSettings = canViewSystemSettingsPage && !isReadOnly;
   const [globalIntegrations, setGlobalIntegrations] =
     useState<GlobalIntegrationsSettings | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,6 +60,8 @@ export default function SystemSettingsPage() {
     smtpFrom: "",
     smtpReplyTo: "",
     testRecipient: "",
+    smtpEncryption: "tls",
+    smtpSenderName: "BOT.OS",
     smtpPass: "",
   });
   const [aiProviders, setAiProviders] = useState<AiProvidersSettings | null>(null);
@@ -106,7 +110,7 @@ export default function SystemSettingsPage() {
     metaAppId: "",
     embeddedSignupConfigId: "",
     metaAppSecret: "",
-    legacyVerifyToken: "",
+    metaWebhookVerifyToken: "",
   });
 
   useEffect(() => {
@@ -137,7 +141,7 @@ export default function SystemSettingsPage() {
           metaAppId: data.editable.metaAppId || "",
           embeddedSignupConfigId: data.editable.embeddedSignupConfigId || "",
           metaAppSecret: "",
-          legacyVerifyToken: "",
+          metaWebhookVerifyToken: "",
         });
         setGlobalIntegrationsTestResult(null);
       })
@@ -158,6 +162,8 @@ export default function SystemSettingsPage() {
         smtpFrom: data.editable.smtpFrom || "",
         smtpReplyTo: data.editable.smtpReplyTo || "",
         testRecipient: data.editable.testRecipient || "",
+        smtpEncryption: data.editable.smtpEncryption || "tls",
+        smtpSenderName: data.editable.smtpSenderName || "BOT.OS",
         smtpPass: "",
       });
     }).catch((err) => {
@@ -216,7 +222,7 @@ export default function SystemSettingsPage() {
       metaAppId: globalIntegrations?.editable.metaAppId || "",
       embeddedSignupConfigId: globalIntegrations?.editable.embeddedSignupConfigId || "",
       metaAppSecret: "",
-      legacyVerifyToken: "",
+      metaWebhookVerifyToken: "",
     });
   };
 
@@ -234,7 +240,7 @@ export default function SystemSettingsPage() {
         metaAppId: next.editable.metaAppId || "",
         embeddedSignupConfigId: next.editable.embeddedSignupConfigId || "",
         metaAppSecret: "",
-        legacyVerifyToken: "",
+        metaWebhookVerifyToken: "",
       });
       setFeedback("Global integrations updated.");
     } catch (err: any) {
@@ -275,7 +281,7 @@ export default function SystemSettingsPage() {
       setFeedback("");
       const result = await platformSettingsService.regenerateGlobalVerifyToken();
       setGlobalIntegrations(result.settings);
-      setFeedback(`Legacy verify token regenerated: ${result.regeneratedToken}`);
+      setFeedback(`Meta webhook verify token regenerated: ${result.regeneratedToken}`);
     } catch (err: any) {
       console.error("Failed to regenerate verify token", err);
       setError(err?.response?.data?.error || "Failed to regenerate verify token");
@@ -305,6 +311,7 @@ export default function SystemSettingsPage() {
   const handleEmailSave = async () => {
     try {
       setSavingEmail(true);
+      setEmailTestResult(null);
       const next = await platformSettingsService.updateEmailServices({
         ...emailForm,
         smtpPort: Number(emailForm.smtpPort || 587),
@@ -319,6 +326,8 @@ export default function SystemSettingsPage() {
         smtpFrom: next.editable.smtpFrom || "",
         smtpReplyTo: next.editable.smtpReplyTo || "",
         testRecipient: next.editable.testRecipient || "",
+        smtpEncryption: next.editable.smtpEncryption || "tls",
+        smtpSenderName: next.editable.smtpSenderName || "BOT.OS",
         smtpPass: "",
       });
       setFeedback("Email services updated.");
@@ -332,9 +341,29 @@ export default function SystemSettingsPage() {
   const handleEmailTest = async () => {
     try {
       setTestingEmail(true);
-      setEmailTestResult(await platformSettingsService.testEmailServices());
+      const result = await platformSettingsService.testEmailServices({
+        ...emailForm,
+        smtpPort: Number(emailForm.smtpPort || 587),
+      });
+      setEmailTestResult(result);
+      notify(
+        {
+          title: "SMTP test successful",
+          message: result.detail,
+          details: [emailForm.testRecipient || "Test recipient not set"],
+        },
+        "success"
+      );
     } catch (err: any) {
-      setError(err?.response?.data?.error || "Failed to test email settings");
+      const message = err?.response?.data?.error || err?.response?.data?.message || "Failed to test email settings";
+      setError(message);
+      notify(
+        {
+          title: "SMTP test failed",
+          message,
+        },
+        "error"
+      );
     } finally {
       setTestingEmail(false);
     }
@@ -409,16 +438,16 @@ export default function SystemSettingsPage() {
         />
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="max-w-3xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 System Settings
               </div>
-              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+              <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-text-main">
                 Platform configuration map
               </h1>
-              <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                This is the platform-only boundary for global configuration. The secure backend endpoints for editing these settings are not wired yet, so this page now acts as the explicit super-admin control map instead of redirecting into workspace settings.
+              <p className="mt-2 text-sm leading-6 text-text-muted">
+                This is the platform-only boundary for global configuration. These settings are backed by live platform endpoints and act as the explicit super-admin control map instead of redirecting into workspace settings.
               </p>
             </div>
           </section>
@@ -427,19 +456,19 @@ export default function SystemSettingsPage() {
             {SYSTEM_AREAS.map((area) => (
               <section
                 key={area.title}
-                className="rounded-[1.4rem] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm"
+                className="rounded-[1.4rem] border border-border-main bg-surface p-5 shadow-sm"
               >
                 {area.title === "Global Integrations" ? (
                   <>
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-base font-semibold tracking-tight text-[var(--text)]">
+                      <div className="text-base font-semibold tracking-tight text-text-main">
                         {area.title}
                       </div>
                       <div className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">
                         Live status
                       </div>
                     </div>
-                    <div className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                    <div className="mt-2 text-sm leading-6 text-text-muted">
                       {area.description}
                     </div>
                     {feedback ? (
@@ -452,7 +481,7 @@ export default function SystemSettingsPage() {
                         {globalIntegrationsLoadError}
                       </div>
                     ) : loading ? (
-                      <div className="mt-4 rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-xs leading-5 text-[var(--muted)]">
+                      <div className="mt-4 rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-3 text-xs leading-5 text-text-muted">
                         Loading live platform integration settings...
                       </div>
                     ) : globalIntegrations ? (
@@ -463,11 +492,15 @@ export default function SystemSettingsPage() {
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (!canEditSystemSettings) {
+                                    return;
+                                  }
                                   resetGlobalIntegrationsForm();
                                   setEditingGlobalIntegrations(true);
                                   setFeedback("");
                                 }}
-                                className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]"
+                                disabled={!canEditSystemSettings}
+                                className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main"
                               >
                                 Edit
                               </button>
@@ -479,28 +512,31 @@ export default function SystemSettingsPage() {
                                     "Global webhook URL copied."
                                   )
                                 }
-                                className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]"
+                                className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main"
                               >
                                 Copy Webhook URL
                               </button>
                               <button
                                 type="button"
                                 onClick={handleGlobalIntegrationsTest}
-                                className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]"
+                                disabled={!canEditSystemSettings}
+                                className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main"
                               >
                                 {testingGlobalIntegrations ? "Testing..." : "Test Connection"}
                               </button>
                               <button
                                 type="button"
                                 onClick={handleGlobalVerifyTokenRotate}
-                                className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]"
+                                disabled={!canEditSystemSettings}
+                                className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main"
                               >
                                 Regenerate Verify Token
                               </button>
                               <button
                                 type="button"
                                 onClick={handleGlobalIntegrationsHistoryToggle}
-                                className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]"
+                                disabled={!canEditSystemSettings}
+                                className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main"
                               >
                                 {showGlobalIntegrationsHistory ? "Hide Audit History" : "View Audit History"}
                               </button>
@@ -510,18 +546,22 @@ export default function SystemSettingsPage() {
                               <button
                                 type="button"
                                 onClick={handleGlobalIntegrationsSave}
-                                disabled={savingGlobalIntegrations}
-                                className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60"
+                                disabled={savingGlobalIntegrations || !canEditSystemSettings}
+                                className="rounded-full bg-primary px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60"
                               >
                                 {savingGlobalIntegrations ? "Saving..." : "Save"}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (!canEditSystemSettings) {
+                                    return;
+                                  }
                                   resetGlobalIntegrationsForm();
                                   setEditingGlobalIntegrations(false);
                                 }}
-                                className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]"
+                                disabled={!canEditSystemSettings}
+                                className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main"
                               >
                                 Cancel
                               </button>
@@ -548,16 +588,16 @@ export default function SystemSettingsPage() {
                               globalIntegrations.meta.signatureVerificationEnabled,
                             ],
                             [
-                              "Legacy verify token",
-                              globalIntegrations.meta.legacyVerifyTokenConfigured ? "Configured" : "Missing",
-                              globalIntegrations.meta.legacyVerifyTokenConfigured,
+                              "Meta webhook verify token",
+                              globalIntegrations.meta.metaWebhookVerifyTokenConfigured ? "Configured" : "Missing",
+                              globalIntegrations.meta.metaWebhookVerifyTokenConfigured,
                             ],
                           ].map(([label, value, ok]) => (
                             <div
                               key={String(label)}
-                              className="rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3"
+                              className="rounded-[1rem] border border-border-main bg-canvas px-4 py-3"
                             >
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                                 {label}
                               </div>
                               <div
@@ -571,8 +611,8 @@ export default function SystemSettingsPage() {
                           ))}
                         </div>
                         {globalIntegrationsTestResult ? (
-                          <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4">
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                          <div className="rounded-[1rem] border border-border-main bg-canvas px-4 py-4">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                               Connection Test
                             </div>
                             <div
@@ -582,16 +622,16 @@ export default function SystemSettingsPage() {
                             >
                               {globalIntegrationsTestResult.ok ? "All checks passed" : "Some checks need attention"}
                             </div>
-                            <div className="mt-1 text-xs text-[var(--muted)]">
+                            <div className="mt-1 text-xs text-text-muted">
                               Checked at {new Date(globalIntegrationsTestResult.checkedAt).toLocaleString()}
                             </div>
                             <div className="mt-3 space-y-2">
                               {globalIntegrationsTestResult.checks.map((check) => (
-                                <div key={check.key} className="rounded-xl border border-[var(--line)] px-3 py-3 text-xs">
+                                <div key={check.key} className="rounded-xl border border-border-main px-3 py-3 text-xs">
                                   <div className={`font-semibold ${check.ok ? "text-emerald-300" : "text-amber-200"}`}>
                                     {check.label}
                                   </div>
-                                  <div className="mt-1 text-[var(--muted)]">{check.detail}</div>
+                                  <div className="mt-1 text-text-muted">{check.detail}</div>
                                 </div>
                               ))}
                             </div>
@@ -599,17 +639,17 @@ export default function SystemSettingsPage() {
                         ) : null}
 
                         {editingGlobalIntegrations ? (
-                          <div className="grid gap-3 rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4 sm:grid-cols-2">
+                          <div className="grid gap-3 rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-4 sm:grid-cols-2">
                             {[
                               ["Public API Base URL", "publicApiBaseUrl", "https://api.example.com"],
                               ["Public App Base URL", "publicAppBaseUrl", "https://app.example.com"],
                               ["Meta App ID", "metaAppId", "Meta app id"],
                               ["Embedded Signup Config ID", "embeddedSignupConfigId", "Embedded signup config id"],
                               ["Meta App Secret", "metaAppSecret", "Leave blank to keep current secret"],
-                              ["Legacy Verify Token", "legacyVerifyToken", "Leave blank to keep current token"],
+                              ["Meta Webhook Verify Token", "metaWebhookVerifyToken", "Leave blank to keep current token"],
                             ].map(([label, key, placeholder]) => (
                               <label key={String(key)} className="space-y-2">
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                                   {label}
                                 </div>
                                 <input
@@ -622,76 +662,76 @@ export default function SystemSettingsPage() {
                                     }))
                                   }
                                   placeholder={String(placeholder)}
-                                  className="w-full rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent-strong)]"
+                                  className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
                                 />
                               </label>
                             ))}
                           </div>
                         ) : (
-                          <div className="space-y-3 rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4 text-xs leading-5 text-[var(--muted)]">
+                          <div className="space-y-3 rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-4 text-xs leading-5 text-text-muted">
                             <div>
-                              <span className="font-semibold text-[var(--text)]">Public API base:</span>{" "}
+                              <span className="font-semibold text-text-main">Public API base:</span>{" "}
                               {globalIntegrations.urls.publicApiBaseUrl}
                             </div>
                             <div>
-                              <span className="font-semibold text-[var(--text)]">Global webhook URL:</span>{" "}
+                              <span className="font-semibold text-text-main">Global webhook URL:</span>{" "}
                               {globalIntegrations.urls.globalWebhookUrl}
                             </div>
                             <div>
-                              <span className="font-semibold text-[var(--text)]">Meta OAuth callback:</span>{" "}
+                              <span className="font-semibold text-text-main">Meta OAuth callback:</span>{" "}
                               {globalIntegrations.urls.metaOAuthCallbackUrl}
                             </div>
                             <div>
-                              <span className="font-semibold text-[var(--text)]">App base URL:</span>{" "}
+                              <span className="font-semibold text-text-main">App base URL:</span>{" "}
                               {globalIntegrations.urls.publicAppBaseUrl}
                             </div>
                             <div>
-                              <span className="font-semibold text-[var(--text)]">Integrations app route:</span>{" "}
+                              <span className="font-semibold text-text-main">Integrations app route:</span>{" "}
                               {globalIntegrations.urls.integrationsAppUrl}
                             </div>
                             <div>
-                              <span className="font-semibold text-[var(--text)]">Meta App ID:</span>{" "}
+                              <span className="font-semibold text-text-main">Meta App ID:</span>{" "}
                               {globalIntegrations.meta.appIdPreview || "Not configured"}
                             </div>
                             <div>
-                              <span className="font-semibold text-[var(--text)]">Embedded Signup Config:</span>{" "}
+                              <span className="font-semibold text-text-main">Embedded Signup Config:</span>{" "}
                               {globalIntegrations.meta.embeddedSignupConfigIdPreview || "Not configured"}
                             </div>
                             <div>
-                              <span className="font-semibold text-[var(--text)]">Legacy Verify Token:</span>{" "}
-                              {globalIntegrations.meta.legacyVerifyTokenPreview || "Not configured"}
+                              <span className="font-semibold text-text-main">Meta Webhook Verify Token:</span>{" "}
+                              {globalIntegrations.meta.metaWebhookVerifyTokenPreview || "Not configured"}
                             </div>
                           </div>
                         )}
                         {showGlobalIntegrationsHistory ? (
-                          <div className="rounded-[1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4">
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                          <div className="rounded-[1rem] border border-border-main bg-canvas px-4 py-4">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                               Recent Audit History
                             </div>
                             <div className="mt-3 space-y-2">
                               {loadingGlobalIntegrationsHistory ? (
-                                <div className="text-xs text-[var(--muted)]">Loading history...</div>
+                                <div className="text-xs text-text-muted">Loading history...</div>
                               ) : globalIntegrationsHistory.length ? (
                                 globalIntegrationsHistory.map((row) => (
-                                  <div key={row.id} className="rounded-xl border border-[var(--line)] px-3 py-3 text-xs">
-                                    <div className="font-semibold text-[var(--text)]">
+                                  <div key={row.id} className="rounded-xl border border-border-main px-3 py-3 text-xs">
+                                    <div className="font-semibold text-text-main">
                                       {row.action} {row.entity}
                                     </div>
-                                    <div className="mt-1 text-[var(--muted)]">
-                                      {row.actor_user_name || row.actor_user_email || row.user_name || row.user_email || "Unknown actor"} •{" "}
+                                    <div className="mt-1 text-text-muted">
+                                      {row.actor_user_name || row.actor_user_email || row.user_name || row.user_email || "Unknown actor"} ·{" "}
                                       {new Date(row.created_at).toLocaleString()}
                                     </div>
                                   </div>
                                 ))
                               ) : (
-                                <div className="text-xs text-[var(--muted)]">No audit history yet.</div>
+                                <div className="text-xs text-text-muted">No audit history yet.</div>
                               )}
                             </div>
                           </div>
                         ) : null}
                       </div>
                     ) : (
-                      <div className="mt-4 rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-xs leading-5 text-[var(--muted)]">
+                      <div className="mt-4 rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-3 text-xs leading-5 text-text-muted">
                         No live global integration data is available yet.
                       </div>
                     )}
@@ -701,22 +741,63 @@ export default function SystemSettingsPage() {
                     {area.title === "Email Services" && (emailSettings || emailLoadError) ? (
                       <>
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-base font-semibold tracking-tight text-[var(--text)]">{area.title}</div>
+                          <div className="text-base font-semibold tracking-tight text-text-main">{area.title}</div>
                           <div className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">
                             {emailSettings?.status.configured ? "Configured" : "Needs setup"}
                           </div>
                         </div>
-                        <div className="mt-2 text-sm leading-6 text-[var(--muted)]">{area.description}</div>
+                        <div className="mt-2 text-sm leading-6 text-text-muted">{area.description}</div>
+                        <div className="mt-4 rounded-[1rem] border border-border-main bg-canvas px-4 py-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                                Email delivery
+                              </div>
+                              <div className="mt-1 text-sm font-semibold text-text-main">
+                                {emailSettings?.status.provider?.toUpperCase() || "UNKNOWN"}
+                              </div>
+                            </div>
+                            <div
+                              className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                emailSettings?.status.configured
+                                  ? "border-emerald-300/30 bg-emerald-500/10 text-emerald-200"
+                                  : "border-amber-300/30 bg-amber-500/10 text-amber-200"
+                              }`}
+                            >
+                              {emailSettings?.status.configured ? "Configured" : "Not configured"}
+                            </div>
+                          </div>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            <div className="rounded-[0.9rem] border border-border-main bg-surface px-3 py-3 text-xs text-text-muted">
+                              SMTP host: <span className="font-semibold text-text-main">{emailSettings?.previews.smtpHost || "Missing"}</span>
+                            </div>
+                            <div className="rounded-[0.9rem] border border-border-main bg-surface px-3 py-3 text-xs text-text-muted">
+                              From address: <span className="font-semibold text-text-main">{emailSettings?.previews.smtpFrom || "Missing"}</span>
+                            </div>
+                            <div className="rounded-[0.9rem] border border-border-main bg-surface px-3 py-3 text-xs text-text-muted">
+                              Encryption: <span className="font-semibold text-text-main">{emailSettings?.previews.smtpEncryption || "tls"}</span>
+                            </div>
+                            <div className="rounded-[0.9rem] border border-border-main bg-surface px-3 py-3 text-xs text-text-muted">
+                              Sender name: <span className="font-semibold text-text-main">{emailSettings?.previews.smtpSenderName || "BOT.OS"}</span>
+                            </div>
+                          </div>
+                          <div className="mt-3 text-xs leading-5 text-text-muted">
+                            {emailSettings?.status.configured
+                              ? "Invites, password resets, and system notifications will use this provider."
+                              : "Configure SMTP, or add SendGrid/Postmark credentials in .env, then use Test Connection to confirm delivery."}
+                          </div>
+                        </div>
                         <div className="mt-4 flex flex-wrap gap-2">
                           {!editingEmail ? (
                             <>
-                              <button type="button" onClick={() => setEditingEmail(true)} className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]">Edit</button>
-                              <button type="button" onClick={handleEmailTest} className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]">{testingEmail ? "Testing..." : "Test SMTP"}</button>
+                              <button type="button" onClick={() => setEditingEmail(true)} className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main">Edit</button>
+                              <button type="button" onClick={handleEmailTest} className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main">{testingEmail ? "Testing..." : "Test Connection"}</button>
                             </>
                           ) : (
                             <>
-                              <button type="button" onClick={handleEmailSave} disabled={savingEmail} className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white">{savingEmail ? "Saving..." : "Save"}</button>
-                              <button type="button" onClick={() => setEditingEmail(false)} className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]">Cancel</button>
+                              <button type="button" onClick={handleEmailSave} disabled={savingEmail} className="rounded-full bg-primary px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white">{savingEmail ? "Saving..." : "Save"}</button>
+                              <button type="button" onClick={handleEmailTest} disabled={testingEmail} className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main">{testingEmail ? "Testing..." : "Test Connection"}</button>
+                              <button type="button" onClick={() => setEditingEmail(false)} className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main">Cancel</button>
                             </>
                           )}
                         </div>
@@ -734,16 +815,39 @@ export default function SystemSettingsPage() {
                               ["SMTP From", "smtpFrom", "noreply@example.com"],
                               ["SMTP Reply-To", "smtpReplyTo", "support@example.com"],
                               ["Test Recipient", "testRecipient", "ops@example.com"],
+                              ["Encryption", "smtpEncryption", "tls"],
+                              ["Sender Name", "smtpSenderName", "Iterra Studio"],
                               ["SMTP Password", "smtpPass", "Leave blank to keep current password"],
                             ].map(([label, key, placeholder]) => (
                               <label key={String(key)} className="space-y-2">
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">{label}</div>
-                                <input type={String(key).includes("Pass") ? "password" : "text"} value={(emailForm as Record<string, string>)[String(key)]} onChange={(event) => setEmailForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={String(placeholder)} className="w-full rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)]" />
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">{label}</div>
+                                {String(key) === "smtpEncryption" ? (
+                                  <select
+                                    value={(emailForm as Record<string, string>)[String(key)]}
+                                    onChange={(event) =>
+                                      setEmailForm((current) => ({ ...current, [key]: event.target.value }))
+                                    }
+                                    className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main"
+                                  >
+                                    <option value="none">None</option>
+                                    <option value="ssl">SSL</option>
+                                    <option value="tls">TLS</option>
+                                  </select>
+                                ) : (
+                                  <input
+                                    type={String(key).includes("Pass") ? "password" : "text"}
+                                    value={(emailForm as Record<string, string>)[String(key)]}
+                                    onChange={(event) => setEmailForm((current) => ({ ...current, [key]: event.target.value }))}
+                                    placeholder={String(key).includes("Pass") ? "••••••••" : String(placeholder)}
+                                    className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main"
+                                    autoComplete={String(key).includes("Pass") ? "new-password" : "off"}
+                                  />
+                                )}
                               </label>
                             ))}
                           </div>
                         ) : (
-                          <div className="mt-4 rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-xs leading-5 text-[var(--muted)]">
+                          <div className="mt-4 rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-3 text-xs leading-5 text-text-muted">
                             Provider: {emailSettings?.status.provider || "smtp"}<br />
                             Host: {emailSettings?.previews.smtpHost || "Not configured"}<br />
                             Port: {emailSettings?.previews.smtpPort || 587}<br />
@@ -751,6 +855,8 @@ export default function SystemSettingsPage() {
                             From: {emailSettings?.previews.smtpFrom || "Not configured"}<br />
                             Reply-To: {emailSettings?.previews.smtpReplyTo || "Not configured"}<br />
                             Test recipient: {emailSettings?.previews.testRecipient || "Not configured"}<br />
+                            Encryption: {emailSettings?.previews.smtpEncryption || "tls"}<br />
+                            Sender name: {emailSettings?.previews.smtpSenderName || "BOT.OS"}<br />
                             Password: {emailSettings?.previews.smtpPassConfigured ? "Configured" : "Missing"}
                           </div>
                         )}
@@ -763,19 +869,19 @@ export default function SystemSettingsPage() {
                     ) : area.title === "AI Providers" && (aiProviders || aiLoadError) ? (
                       <>
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-base font-semibold tracking-tight text-[var(--text)]">{area.title}</div>
+                          <div className="text-base font-semibold tracking-tight text-text-main">{area.title}</div>
                           <div className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">
                             {aiProviders?.status.defaultProvider || "unknown"}
                           </div>
                         </div>
-                        <div className="mt-2 text-sm leading-6 text-[var(--muted)]">{area.description}</div>
+                        <div className="mt-2 text-sm leading-6 text-text-muted">{area.description}</div>
                         <div className="mt-4 flex flex-wrap gap-2">
                           {!editingAi ? (
-                            <button type="button" onClick={() => setEditingAi(true)} className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]">Edit</button>
+                            <button type="button" onClick={() => setEditingAi(true)} className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main">Edit</button>
                           ) : (
                             <>
-                              <button type="button" onClick={handleAiSave} disabled={savingAi} className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white">{savingAi ? "Saving..." : "Save"}</button>
-                              <button type="button" onClick={() => setEditingAi(false)} className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]">Cancel</button>
+                              <button type="button" onClick={handleAiSave} disabled={savingAi} className="rounded-full bg-primary px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white">{savingAi ? "Saving..." : "Save"}</button>
+                              <button type="button" onClick={() => setEditingAi(false)} className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main">Cancel</button>
                             </>
                           )}
                         </div>
@@ -798,13 +904,13 @@ export default function SystemSettingsPage() {
                               ["Gemini API Key", "geminiApiKey", "Leave blank to keep current key"],
                             ].map(([label, key, placeholder]) => (
                               <label key={String(key)} className="space-y-2">
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">{label}</div>
-                                <input type={String(key).toLowerCase().includes("apikey") ? "password" : "text"} value={(aiForm as Record<string, string>)[String(key)]} onChange={(event) => setAiForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={String(placeholder)} className="w-full rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)]" />
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">{label}</div>
+                                <input type={String(key).toLowerCase().includes("apikey") ? "password" : "text"} value={(aiForm as Record<string, string>)[String(key)]} onChange={(event) => setAiForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={String(placeholder)} className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main" />
                               </label>
                             ))}
                           </div>
                         ) : (
-                          <div className="mt-4 rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-xs leading-5 text-[var(--muted)]">
+                          <div className="mt-4 rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-3 text-xs leading-5 text-text-muted">
                             Default provider: {aiProviders?.status.defaultProvider || "unknown"}<br />
                             Default model: {aiProviders?.editable.defaultModel || "Not configured"}<br />
                             Fallback provider: {aiProviders?.editable.fallbackProvider || "Not configured"}<br />
@@ -819,19 +925,19 @@ export default function SystemSettingsPage() {
                     ) : area.title === "Billing And Wallet" && (billingWallet || billingWalletLoadError) ? (
                       <>
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-base font-semibold tracking-tight text-[var(--text)]">{area.title}</div>
+                          <div className="text-base font-semibold tracking-tight text-text-main">{area.title}</div>
                           <div className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">
                             {billingWallet?.editable.defaultCurrency || "INR"}
                           </div>
                         </div>
-                        <div className="mt-2 text-sm leading-6 text-[var(--muted)]">{area.description}</div>
+                        <div className="mt-2 text-sm leading-6 text-text-muted">{area.description}</div>
                         <div className="mt-4 flex flex-wrap gap-2">
                           {!editingBillingWallet ? (
-                            <button type="button" onClick={() => setEditingBillingWallet(true)} className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]">Edit</button>
+                            <button type="button" onClick={() => setEditingBillingWallet(true)} className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main">Edit</button>
                           ) : (
                             <>
-                              <button type="button" onClick={handleBillingWalletSave} disabled={savingBillingWallet} className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white">{savingBillingWallet ? "Saving..." : "Save"}</button>
-                              <button type="button" onClick={() => setEditingBillingWallet(false)} className="rounded-full border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text)]">Cancel</button>
+                              <button type="button" onClick={handleBillingWalletSave} disabled={savingBillingWallet} className="rounded-full bg-primary px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white">{savingBillingWallet ? "Saving..." : "Save"}</button>
+                              <button type="button" onClick={() => setEditingBillingWallet(false)} className="rounded-full border border-border-main bg-canvas px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-text-main">Cancel</button>
                             </>
                           )}
                         </div>
@@ -855,17 +961,17 @@ export default function SystemSettingsPage() {
                               ["Low Balance Threshold", "walletLowBalanceThresholdDefault", "0"],
                             ].map(([label, key, placeholder]) => (
                               <label key={String(key)} className="space-y-2">
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">{label}</div>
-                                <input type={String(key).toLowerCase().includes("secret") ? "password" : "text"} value={(billingWalletForm as Record<string, string | boolean>)[String(key)] as any} onChange={(event) => setBillingWalletForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={String(placeholder)} className="w-full rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)]" />
+                                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">{label}</div>
+                                <input type={String(key).toLowerCase().includes("secret") ? "password" : "text"} value={(billingWalletForm as Record<string, string | boolean>)[String(key)] as any} onChange={(event) => setBillingWalletForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={String(placeholder)} className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main" />
                               </label>
                             ))}
-                            <label className="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)] sm:col-span-2">
+                            <label className="flex items-center gap-3 rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main sm:col-span-2">
                               <input type="checkbox" checked={billingWalletForm.walletAutoTopupDefaultEnabled} onChange={(event) => setBillingWalletForm((current) => ({ ...current, walletAutoTopupDefaultEnabled: event.target.checked }))} />
                               Enable wallet auto top-up by default
                             </label>
                           </div>
                         ) : (
-                          <div className="mt-4 rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-xs leading-5 text-[var(--muted)]">
+                          <div className="mt-4 rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-3 text-xs leading-5 text-text-muted">
                             Stripe: {billingWallet?.status.stripeConfigured ? "Configured" : "Missing"}<br />
                             Stripe webhook secret: {billingWallet?.status.stripeWebhookSecretConfigured ? "Configured" : "Missing"}<br />
                             Razorpay: {billingWallet?.status.razorpayConfigured ? "Configured" : "Missing"}<br />
@@ -880,17 +986,17 @@ export default function SystemSettingsPage() {
                     ) : (
                       <>
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-base font-semibold tracking-tight text-[var(--text)]">
+                          <div className="text-base font-semibold tracking-tight text-text-main">
                             {area.title}
                           </div>
                           <div className="rounded-full border border-amber-300/30 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
                             Read only
                           </div>
                         </div>
-                        <div className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                        <div className="mt-2 text-sm leading-6 text-text-muted">
                           {area.description}
                         </div>
-                        <div className="mt-4 rounded-[1rem] border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-xs leading-5 text-[var(--muted)]">
+                        <div className="mt-4 rounded-[1rem] border border-dashed border-border-main bg-canvas px-4 py-3 text-xs leading-5 text-text-muted">
                           Configuration editor coming next. This card is informational for now while the secure backend settings APIs are being finalized.
                         </div>
                       </>
@@ -905,3 +1011,4 @@ export default function SystemSettingsPage() {
     </DashboardLayout>
   );
 }
+

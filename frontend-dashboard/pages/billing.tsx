@@ -8,8 +8,8 @@ import { useAuthStore } from "../store/authStore";
 export default function BillingPage() {
   const router = useRouter();
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
-  const { canViewPage, isPlatformOperator } = useVisibility();
-  const canViewBillingPage = canViewPage("billing") || isPlatformOperator;
+  const { canViewPage, isPlatformOperator, isWorkspaceAdmin } = useVisibility();
+  const canViewBillingPage = canViewPage("billing") || isPlatformOperator || isWorkspaceAdmin;
 
   useEffect(() => {
     if (!router.isReady || !canViewBillingPage) {

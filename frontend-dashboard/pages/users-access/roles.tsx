@@ -18,7 +18,7 @@ import { useAuthStore } from "../../store/authStore";
 export default function UsersAccessRolesPage() {
   const router = useRouter();
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
-  const { isPlatformOperator } = useVisibility();
+  const { isPlatformOperator, isReadOnly } = useVisibility();
   const [roleMatrices, setRoleMatrices] = useState<Record<string, Record<string, boolean>>>({});
   const [loading, setLoading] = useState(false);
   const [savingRole, setSavingRole] = useState("");
@@ -28,7 +28,15 @@ export default function UsersAccessRolesPage() {
   const activeWorkspaceId = activeWorkspace?.workspace_id || "";
   const canViewUsersAccessPage = isPlatformOperator;
   const roleApiWorkspaceId = isPlatformOperator ? undefined : activeWorkspaceId || undefined;
-  const canEditBaselines = isPlatformOperator;
+  const canEditBaselines = isPlatformOperator && !isReadOnly;
+
+  const isRecommendedAppliedForRole = (role: (typeof WORKSPACE_ROLES)[number]) =>
+    PERMISSION_OPTIONS.every((option) =>
+      Boolean(roleMatrices[role]?.[option.key]) === Boolean(RECOMMENDED_ROLE_BASELINES[role]?.[option.key])
+    );
+
+  const areAllRecommendedApplied =
+    WORKSPACE_ROLES.length > 0 && WORKSPACE_ROLES.every((role) => isRecommendedAppliedForRole(role));
 
   useEffect(() => {
     if (!canViewUsersAccessPage) {
@@ -71,6 +79,9 @@ export default function UsersAccessRolesPage() {
   };
 
   const handleSave = async (role: string) => {
+    if (!canEditBaselines) {
+      return;
+    }
     try {
       setSavingRole(role);
       setError("");
@@ -90,6 +101,9 @@ export default function UsersAccessRolesPage() {
   };
 
   const applyRecommended = (role: (typeof WORKSPACE_ROLES)[number]) => {
+    if (!canEditBaselines) {
+      return;
+    }
     setRoleMatrices((current) => ({
       ...current,
       [role]: {
@@ -101,6 +115,9 @@ export default function UsersAccessRolesPage() {
   };
 
   const applyRecommendedToAll = async () => {
+    if (!canEditBaselines) {
+      return;
+    }
     try {
       setError("");
       setSuccess("");
@@ -149,9 +166,14 @@ export default function UsersAccessRolesPage() {
                 <button
                   type="button"
                   onClick={() => applyRecommendedToAll().catch(console.error)}
-                  className="rounded-2xl border border-[rgba(129,140,248,0.35)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white"
+                  disabled={areAllRecommendedApplied}
+                  className={`min-w-[280px] rounded-2xl px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white transition disabled:cursor-not-allowed disabled:opacity-75 ${
+                    areAllRecommendedApplied
+                      ? "border border-emerald-300 bg-emerald-600 shadow-[0_0_0_1px_rgba(16,185,129,0.2)]"
+                      : "border border-emerald-300 bg-emerald-500 shadow-[0_18px_30px_rgba(16,185,129,0.22)] hover:bg-emerald-600"
+                  }`}
                 >
-                  Restore Recommended Baselines
+                  {areAllRecommendedApplied ? "Applied" : "Restore Recommended Baselines"}
                 </button>
               </div>
             ) : null}
@@ -184,30 +206,37 @@ export default function UsersAccessRolesPage() {
                       {ROLE_DESCRIPTIONS[role]}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!canEditBaselines || savingRole === role}
-                    onClick={() => handleSave(role)}
-                    className="rounded-2xl bg-slate-900 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {savingRole === role ? "Saving..." : "Save baseline"}
-                  </button>
-                  {canEditBaselines ? (
+                  <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
-                      onClick={() => applyRecommended(role)}
-                      className="rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[var(--text)]"
+                      disabled={!canEditBaselines || savingRole === role}
+                      onClick={() => handleSave(role)}
+                      className="rounded-2xl bg-slate-900 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Use Recommended
+                      {savingRole === role ? "Saving..." : "Save baseline"}
                     </button>
-                  ) : null}
+                    {canEditBaselines ? (
+                      <button
+                        type="button"
+                        onClick={() => applyRecommended(role)}
+                        disabled={!canEditBaselines || isRecommendedAppliedForRole(role)}
+                        className={`rounded-2xl px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] transition disabled:cursor-not-allowed disabled:opacity-75 ${
+                          isRecommendedAppliedForRole(role)
+                            ? "border border-emerald-300 bg-emerald-100 text-emerald-700"
+                            : "border border-emerald-300 bg-emerald-500 text-white shadow-[0_16px_28px_rgba(16,185,129,0.18)] hover:bg-emerald-600"
+                        }`}
+                      >
+                        {isRecommendedAppliedForRole(role) ? "Applied" : "Use Recommended"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                   {PERMISSION_OPTIONS.map((option) => (
                     <label
                       key={`${role}-${option.key}`}
-                      className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                      className="flex items-center gap-3 rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-muted"
                     >
                       <input
                         type="checkbox"

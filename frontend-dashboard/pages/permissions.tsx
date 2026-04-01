@@ -28,7 +28,7 @@ export default function PermissionsPage() {
         />
       ) : (
         <div className="mx-auto max-w-7xl">
-          <section className="rounded-[1.5rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)] backdrop-blur-xl">
+          <section className="rounded-[1.5rem] border border-border-main bg-surface px-4 py-3 text-sm text-text-muted shadow-sm">
             Redirecting to role permissions...
           </section>
         </div>

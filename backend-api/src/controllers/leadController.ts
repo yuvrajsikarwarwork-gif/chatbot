@@ -7,6 +7,7 @@ import {
   getLeadService,
   listLeadListsService,
   listLeadsService,
+  updateLeadStatusService,
 } from "../services/leadService";
 import { upsertLeadCaptureFromConversationVariables } from "../services/leadCaptureService";
 import { env } from "../config/env";
@@ -136,6 +137,30 @@ export async function deleteLeadCtrl(req: AuthRequest, res: Response, next: Next
 
     await deleteLeadService(id, userId);
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateLeadStatusCtrl(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userId = getUserId(req);
+    const id = req.params.id;
+    const status = String(req.body?.status || "").trim();
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!id) {
+      return res.status(400).json({ error: "Lead id is required" });
+    }
+
+    const data = await updateLeadStatusService(id, userId, status);
+    res.json(data);
   } catch (err) {
     next(err);
   }

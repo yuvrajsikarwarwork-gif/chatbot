@@ -14,19 +14,19 @@ export default function PageAccessNotice({
   ctaLabel,
 }: PageAccessNoticeProps) {
   return (
-    <section className="mx-auto max-w-3xl rounded-[1.9rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-8 shadow-[var(--shadow-glass)] backdrop-blur-2xl">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[var(--muted)]">
+    <section className="mx-auto max-w-3xl rounded-[1.9rem] border border-border-main bg-[linear-gradient(180deg,rgba(16,185,129,0.06),rgba(255,255,255,0.98))] p-8 shadow-sm">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-text-muted">
         Access Restricted
       </div>
-      <h1 className="mt-3 bg-[linear-gradient(180deg,var(--text),color-mix(in_srgb,var(--text)_72%,var(--accent)_28%))] bg-clip-text text-[1.75rem] font-black tracking-[-0.03em] text-transparent">
+      <h1 className="mt-3 text-[1.75rem] font-black tracking-[-0.03em] text-text-main">
         {title}
       </h1>
-      <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{description}</p>
+      <p className="mt-3 text-sm leading-6 text-text-muted">{description}</p>
       {href && ctaLabel ? (
         <div className="mt-6">
           <Link
             href={href}
-            className="inline-flex items-center rounded-xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white shadow-[0_18px_32px_var(--accent-glow)] transition duration-300 hover:-translate-y-0.5"
+            className="inline-flex items-center rounded-xl border border-primary bg-primary px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white shadow-sm transition duration-300 hover:-translate-y-0.5 hover:opacity-90"
           >
             {ctaLabel}
           </Link>

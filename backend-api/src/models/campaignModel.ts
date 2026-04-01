@@ -555,6 +555,25 @@ export async function createCampaignChannel(input: CampaignChannelInput) {
   return res.rows[0];
 }
 
+export async function findCampaignChannelByCampaignBotAndPlatform(
+  campaignId: string,
+  botId: string,
+  platform: string
+) {
+  const res = await query(
+    `SELECT cc.*
+     FROM campaign_channels cc
+     WHERE cc.campaign_id = $1
+       AND cc.bot_id = $2
+       AND cc.platform = $3
+     ORDER BY cc.created_at DESC
+     LIMIT 1`,
+    [campaignId, botId, platform]
+  );
+
+  return res.rows[0];
+}
+
 export async function updateCampaignChannel(
   id: string,
   userId: string,
@@ -1050,6 +1069,7 @@ export async function findCampaignChannelByWhatsAppPhoneNumberId(
        AND (w.id IS NULL OR w.deleted_at IS NULL)
        AND (
          cc.config->>'phoneNumberId' = $1
+         OR cc.config->>'phone_number_id' = $1
          OR cc.platform_account_id = $1
          OR EXISTS (
            SELECT 1
@@ -1083,6 +1103,7 @@ export async function findCampaignChannelsByWhatsAppPhoneNumberId(
        AND (w.id IS NULL OR w.deleted_at IS NULL)
        AND (
          cc.config->>'phoneNumberId' = $1
+         OR cc.config->>'phone_number_id' = $1
          OR cc.platform_account_id = $1
          OR EXISTS (
            SELECT 1
@@ -1097,6 +1118,51 @@ export async function findCampaignChannelsByWhatsAppPhoneNumberId(
   );
 
   return res.rows;
+}
+
+export async function findCampaignChannelsByPlatformAccountRefId(
+  platformAccountId: string
+) {
+  const res = await query(
+    `SELECT cc.*
+     FROM campaign_channels cc
+     JOIN campaigns c ON c.id = cc.campaign_id
+     JOIN bots b ON b.id = cc.bot_id
+     LEFT JOIN workspaces w ON w.id = c.workspace_id
+     WHERE cc.platform = 'whatsapp'
+       AND cc.status = 'active'
+       AND c.deleted_at IS NULL
+       AND b.deleted_at IS NULL
+       AND (w.id IS NULL OR w.deleted_at IS NULL)
+       AND cc.platform_account_ref_id = $1
+     ORDER BY cc.created_at DESC`,
+    [platformAccountId]
+  );
+
+  return res.rows;
+}
+
+export async function findCampaignChannelByPlatformAccountRefId(
+  platformAccountId: string
+) {
+  const res = await query(
+    `SELECT cc.*
+     FROM campaign_channels cc
+     JOIN campaigns c ON c.id = cc.campaign_id
+     JOIN bots b ON b.id = cc.bot_id
+     LEFT JOIN workspaces w ON w.id = c.workspace_id
+     WHERE cc.platform = 'whatsapp'
+       AND cc.status = 'active'
+       AND c.deleted_at IS NULL
+       AND b.deleted_at IS NULL
+       AND (w.id IS NULL OR w.deleted_at IS NULL)
+       AND cc.platform_account_ref_id = $1
+     ORDER BY cc.created_at DESC
+     LIMIT 1`,
+    [platformAccountId]
+  );
+
+  return res.rows[0];
 }
 
 export async function findCampaignChannelsByBotAndPlatform(

@@ -3,6 +3,13 @@ import { useRouter } from "next/router";
 
 import { useAuthStore } from "../store/authStore";
 
+function getFallbackRoute(role?: string | null) {
+  const normalized = String(role || "").trim().toLowerCase();
+  return normalized === "super_admin" || normalized === "developer"
+    ? "/workspaces"
+    : "/projects";
+}
+
 export const useAuthGuard = (
   requiredRole?: "user" | "admin" | "developer" | "super_admin"
 ) => {
@@ -23,7 +30,7 @@ export const useAuthGuard = (
         super_admin: 4,
       };
       if (roleWeights[user.role] < roleWeights[requiredRole]) {
-        router.push("/dashboard");
+        router.push(getFallbackRoute(user.role));
       }
     }
   }, [isAuthenticated, user, router, requiredRole]);

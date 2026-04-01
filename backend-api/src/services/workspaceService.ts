@@ -1,10 +1,12 @@
 import bcrypt from "bcryptjs";
+import axios from "axios";
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { db, query } from "../config/db";
 import { createAuthToken, findAuthTokenByHash, markAuthTokenUsed, revokeActiveAuthTokensForUser } from "../models/authTokenModel";
 import { env } from "../config/env";
+import { getBillingWalletCheckoutSecretsService } from "./platformSettingsService";
 import { getUserPlatformRole, resolveWorkspaceMembership } from "./workspaceAccessService";
 import { findPlanById } from "../models/planModel";
 import {
@@ -14,6 +16,7 @@ import {
 } from "../models/billingSubscriptionModel";
 import {
   deleteSupportAccess,
+  findActiveSupportAccess,
   listSupportAccessByWorkspace,
   upsertSupportAccess,
 } from "../models/supportAccessModel";
@@ -24,13 +27,14 @@ import {
   updateSupportRequestStatus,
 } from "../models/supportRequestModel";
 import { upsertWorkspaceMembership } from "../models/workspaceMembershipModel";
+import { findWorkspaceMembership } from "../models/workspaceMembershipModel";
 import {
   createWorkspace,
   findWorkspaceById,
   findWorkspacesByUser,
   updateWorkspace,
 } from "../models/workspaceModel";
-import { findUserById } from "../models/userModel";
+import { findUserByEmail, findUserById } from "../models/userModel";
 import { assertRecord } from "../utils/assertRecord";
 import {
   assignWorkspaceMemberService,
@@ -47,6 +51,7 @@ import { ingestDocumentEmbeddings } from "./documentIngestionService";
 import { retrieveKnowledgeForWorkspace } from "./ragService";
 import { repairWhatsAppContactDuplicates } from "./contactMergeService";
 import { createWorkspaceInviteService } from "./inviteService";
+import { notifyPlatformOperators } from "./notificationService";
 import { sendPasswordResetOtpEmail, sendTransactionalEmail } from "./mailService";
 import {
   recordWorkspaceUsage,
@@ -57,7 +62,16 @@ import { revokeRemotePlatformConnectionService } from "./integrationService";
 
 function normalizeWorkspaceStatus(status?: string) {
   const value = String(status || "active").trim().toLowerCase();
-  const allowed = new Set(["active", "inactive", "paused", "locked", "suspended", "archived"]);
+  const allowed = new Set([
+    "active",
+    "inactive",
+    "paused",
+    "locked",
+    "suspended",
+    "archived",
+    "past_due",
+    "canceled",
+  ]);
   if (!allowed.has(value)) {
     throw { status: 400, message: `Unsupported workspace status '${status}'` };
   }
@@ -127,6 +141,53 @@ function buildWorkspaceExportDownloadUrl(token: string) {
   return `${getPublicApiBaseUrl()}/api/auth/workspace-export?token=${encodeURIComponent(token)}`;
 }
 
+function stripeAuthHeaders(secretKey: string) {
+  return {
+    auth: {
+      username: secretKey,
+      password: "",
+    },
+  };
+}
+
+async function updateStripeSubscriptionCollectionState(
+  subscriptionId: string,
+  mode: "pause" | "resume" | "cancel"
+) {
+  const billing = await getBillingWalletCheckoutSecretsService();
+  const secretKey = String(billing.stripe.secretKey || "").trim();
+  if (!secretKey) {
+    throw { status: 409, message: "Stripe live keys are not configured" };
+  }
+
+  const trimmedSubscriptionId = String(subscriptionId || "").trim();
+  if (!trimmedSubscriptionId) {
+    return { skipped: true };
+  }
+
+  const baseUrl = `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(trimmedSubscriptionId)}`;
+  if (mode === "cancel") {
+    await axios.delete(baseUrl, stripeAuthHeaders(secretKey));
+    return { skipped: false, mode };
+  }
+
+  const body = new URLSearchParams();
+  if (mode === "pause") {
+    body.set("pause_collection[behavior]", "void");
+  } else {
+    body.set("pause_collection", "");
+  }
+
+  await axios.post(baseUrl, body.toString(), {
+    ...stripeAuthHeaders(secretKey),
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+  });
+
+  return { skipped: false, mode };
+}
+
 async function assertDestructiveActionRateLimit(input: {
   userId: string;
   workspaceId: string;
@@ -189,6 +250,21 @@ function buildCsv(rows: Record<string, any>[]) {
   return lines.join("\n");
 }
 
+function dedupeRowsByWorkspaceId(rows: any[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const id = String(row?.id || "").trim();
+    if (!id) {
+      return false;
+    }
+    if (seen.has(id)) {
+      return false;
+    }
+    seen.add(id);
+    return true;
+  });
+}
+
 async function assertWorkspaceRecoveryAccess(userId: string, workspaceId: string) {
   const platformRole = await getUserPlatformRole(userId);
   if (platformRole === "super_admin" || platformRole === "developer") {
@@ -216,17 +292,187 @@ async function assertWorkspaceExportAccess(userId: string, workspaceId: string) 
 }
 
 export async function listWorkspacesService(userId: string) {
-  const rows = await findWorkspacesByUser(userId);
+    const rows = dedupeRowsByWorkspaceId(await findWorkspacesByUser(userId));
   const platformOperator = await isPlatformInternalOperator(userId);
-  return rows.map((row: any) => sanitizeWorkspaceBillingFields(row, platformOperator));
+  const workspaceIds = rows.map((row: any) => String(row?.id || "").trim()).filter(Boolean);
+  const supportAccessIds = new Set<string>();
+  const openRequestIds = new Set<string>();
+  if (workspaceIds.length) {
+    const [supportAccessRes, openRequestRes] = await Promise.all([
+      query(
+        `SELECT DISTINCT workspace_id::text AS workspace_id
+         FROM support_access
+         WHERE user_id = $1
+           AND workspace_id = ANY($2::uuid[])
+           AND expires_at > NOW()`,
+        [userId, workspaceIds]
+      ).catch(() => ({ rows: [] })),
+      query(
+        `SELECT DISTINCT workspace_id::text AS workspace_id
+         FROM support_requests
+         WHERE workspace_id = ANY($1::uuid[])
+           AND status = 'open'`,
+        [workspaceIds]
+      ).catch(() => ({ rows: [] })),
+    ]);
+
+    (supportAccessRes.rows || []).forEach((row: any) => {
+      const workspaceId = String(row?.workspace_id || "").trim();
+      if (workspaceId) {
+        supportAccessIds.add(workspaceId);
+      }
+    });
+    (openRequestRes.rows || []).forEach((row: any) => {
+      const workspaceId = String(row?.workspace_id || "").trim();
+      if (workspaceId) {
+        openRequestIds.add(workspaceId);
+      }
+    });
+  }
+
+  return rows.map((row: any) => ({
+    ...sanitizeWorkspaceBillingFields(row, platformOperator),
+    accessGranted:
+      supportAccessIds.has(String(row?.id || "").trim()) ||
+      openRequestIds.has(String(row?.id || "").trim()),
+    support_access_granted:
+      supportAccessIds.has(String(row?.id || "").trim()) ||
+      openRequestIds.has(String(row?.id || "").trim()),
+  }));
+}
+
+export async function listWorkspaceHistoryService(userId: string) {
+  await assertPlatformRoles(userId, ["super_admin", "developer"]);
+
+  const res = await query(
+    `SELECT
+       w.*,
+       owner.name AS owner_name,
+       owner.email AS owner_email,
+       bs.id::text AS subscription_id,
+       bs.status AS subscription_status,
+       bs.current_period_end AS expiry_date,
+       NULL::timestamptz AS grace_period_end,
+       bs.billing_cycle AS billing_cycle,
+       bs.currency AS currency,
+       bs.base_price_amount AS price_amount,
+       (bs.canceled_at IS NULL) AS auto_renew,
+       COALESCE(bs.plan_id, w.plan_id) AS effective_plan_id,
+       p.name AS subscription_plan_name,
+       bs.seat_quantity,
+       bs.included_seat_limit,
+       bs.extra_seat_quantity,
+       bs.extra_seat_unit_price,
+       bs.ai_reply_limit,
+       bs.ai_overage_unit_price,
+       bs.wallet_auto_topup_enabled,
+       bs.wallet_auto_topup_amount,
+       bs.wallet_low_balance_threshold,
+       bs.external_customer_ref,
+       bs.external_subscription_ref,
+       bs.current_period_start,
+       bs.current_period_end,
+       bs.trial_ends_at,
+       bs.canceled_at,
+       bs.metadata AS billing_metadata,
+       CASE
+         WHEN w.deleted_at IS NOT NULL
+          AND COALESCE(w.purge_after, w.deleted_at + INTERVAL '30 days') > NOW()
+           THEN true
+         WHEN w.deleted_at IS NULL
+           THEN true
+         ELSE false
+       END AS restore_available,
+       CASE
+         WHEN w.deleted_at IS NOT NULL
+          AND COALESCE(w.purge_after, w.deleted_at + INTERVAL '30 days') <= NOW()
+           THEN true
+         ELSE false
+       END AS purge_expired,
+       GREATEST(
+         0,
+         CEIL(
+           EXTRACT(
+             EPOCH FROM (
+               COALESCE(w.purge_after, w.deleted_at + INTERVAL '30 days') - NOW()
+             )
+           ) / 86400.0
+         )
+       )::int AS purge_days_remaining
+     FROM workspaces w
+     LEFT JOIN users owner ON owner.id = w.owner_user_id
+     LEFT JOIN LATERAL (
+       SELECT *
+       FROM billing_subscriptions bs
+       WHERE bs.workspace_id = w.id
+       ORDER BY bs.created_at DESC
+       LIMIT 1
+     ) bs ON true
+     LEFT JOIN plans p ON p.id = COALESCE(bs.plan_id, w.plan_id)
+     WHERE w.deleted_at IS NOT NULL
+        OR LOWER(COALESCE(w.status, '')) IN ('archived', 'suspended', 'locked', 'past_due', 'canceled')
+     ORDER BY COALESCE(w.deleted_at, w.archived_at, w.updated_at, w.created_at) DESC`
+  );
+
+  const workspaceIds = res.rows.map((row: any) => String(row?.id || "").trim()).filter(Boolean);
+  const supportAccessIds = new Set<string>();
+  const openRequestIds = new Set<string>();
+  if (workspaceIds.length) {
+    const [supportAccessRes, openRequestRes] = await Promise.all([
+      query(
+        `SELECT DISTINCT workspace_id::text AS workspace_id
+         FROM support_access
+         WHERE user_id = $1
+           AND workspace_id = ANY($2::uuid[])
+           AND expires_at > NOW()`,
+        [userId, workspaceIds]
+      ).catch(() => ({ rows: [] })),
+      query(
+        `SELECT DISTINCT workspace_id::text AS workspace_id
+         FROM support_requests
+         WHERE workspace_id = ANY($1::uuid[])
+           AND status = 'open'`,
+        [workspaceIds]
+      ).catch(() => ({ rows: [] })),
+    ]);
+
+    (supportAccessRes.rows || []).forEach((row: any) => {
+      const workspaceId = String(row?.workspace_id || "").trim();
+      if (workspaceId) {
+        supportAccessIds.add(workspaceId);
+      }
+    });
+    (openRequestRes.rows || []).forEach((row: any) => {
+      const workspaceId = String(row?.workspace_id || "").trim();
+      if (workspaceId) {
+        openRequestIds.add(workspaceId);
+      }
+    });
+  }
+
+    return dedupeRowsByWorkspaceId(res.rows).map((row: any) => ({
+      ...sanitizeWorkspaceBillingFields(row, true),
+      accessGranted:
+        supportAccessIds.has(String(row?.id || "").trim()) ||
+      openRequestIds.has(String(row?.id || "").trim()),
+    support_access_granted:
+      supportAccessIds.has(String(row?.id || "").trim()) ||
+      openRequestIds.has(String(row?.id || "").trim()),
+  }));
 }
 
 export async function getWorkspaceByIdService(workspaceId: string, userId: string) {
   const workspace = assertRecord(await findWorkspaceById(workspaceId, userId), "Workspace not found");
-  return sanitizeWorkspaceBillingFields(
-    workspace,
-    await isPlatformInternalOperator(userId)
-  );
+  return sanitizeWorkspaceFields(workspace, await isPlatformInternalOperator(userId));
+}
+
+function sanitizeWorkspaceFields<T extends Record<string, any>>(workspace: T, canViewInternal: boolean): T {
+  const clone: Record<string, any> = { ...workspace };
+  if (!canViewInternal) {
+    clone.admin_notes = null;
+  }
+
+  return sanitizeWorkspaceBillingFields(clone as T, canViewInternal);
 }
 
 function sanitizeWorkspaceBillingFields<T extends Record<string, any>>(workspace: T, canViewBilling: boolean): T {
@@ -277,13 +523,18 @@ export async function getWorkspaceOverviewService(workspaceId: string, userId: s
   const workspace = assertRecord(await findWorkspaceById(workspaceId, userId), "Workspace not found");
   await assertWorkspacePermission(userId, workspaceId, WORKSPACE_PERMISSIONS.viewWorkspace);
 
-  const [countsRes, walletSummary, supportRequests] = await Promise.all([
+  const [countsRes, walletSummary, supportRequests, supportGrant] = await Promise.all([
     query(
       `SELECT
          (SELECT COUNT(*)::int FROM workspace_memberships WHERE workspace_id = $1 AND status = 'active') AS member_count,
          (SELECT COUNT(*)::int FROM projects WHERE workspace_id = $1 AND deleted_at IS NULL) AS project_count,
          (SELECT COUNT(*)::int FROM bots WHERE workspace_id = $1 AND deleted_at IS NULL) AS bot_count,
-         (SELECT COUNT(*)::int FROM flows f JOIN bots b ON b.id = f.bot_id WHERE b.workspace_id = $1) AS flow_count,
+         (SELECT COUNT(*)::int
+            FROM flows f
+            JOIN bots b ON b.id = f.bot_id
+           WHERE b.workspace_id = $1
+             AND COALESCE(f.is_active, true) = true
+             AND COALESCE(f.is_system_flow, false) = false) AS flow_count,
          (SELECT COUNT(*)::int FROM campaigns WHERE workspace_id = $1 AND deleted_at IS NULL) AS campaign_count,
          (SELECT COUNT(*)::int FROM platform_accounts WHERE workspace_id = $1) AS platform_account_count,
          (SELECT COUNT(*)::int FROM conversations WHERE workspace_id = $1 AND deleted_at IS NULL) AS conversation_count,
@@ -310,6 +561,7 @@ export async function getWorkspaceOverviewService(workspaceId: string, userId: s
       recentTransactions: [],
     })),
     listSupportRequestsByWorkspace(workspaceId).catch(() => []),
+    findActiveSupportAccess(workspaceId, userId).catch(() => null),
   ]);
 
   const counts = countsRes.rows[0] || {};
@@ -338,7 +590,7 @@ export async function getWorkspaceOverviewService(workspaceId: string, userId: s
   };
 
   return {
-    workspace: sanitizeWorkspaceBillingFields(workspace, canViewBilling),
+    workspace: sanitizeWorkspaceFields(workspace, canViewBilling),
     metrics: {
       members: Number(counts.member_count || 0),
       projects: Number(counts.project_count || 0),
@@ -359,12 +611,29 @@ export async function getWorkspaceOverviewService(workspaceId: string, userId: s
         ? supportRequests.filter((row: any) => String(row?.status || "").toLowerCase() === "open").length
         : 0,
       activeAccess: Number(counts.active_support_access_count || 0),
+      accessGranted: Boolean(supportGrant || Number(counts.open_support_request_count || 0) > 0),
+      support_access_granted: Boolean(supportGrant || Number(counts.open_support_request_count || 0) > 0),
     },
   };
 }
 
 async function performWorkspaceRestore(workspaceId: string, userId: string) {
   const existing = assertRecord(await findWorkspaceById(workspaceId, userId), "Workspace not found");
+  const deletedAt = existing.deleted_at ? new Date(existing.deleted_at) : null;
+  const purgeAfter = existing.purge_after ? new Date(existing.purge_after) : null;
+  if (deletedAt && purgeAfter && purgeAfter.getTime() <= Date.now()) {
+    throw {
+      status: 410,
+      message:
+        "This workspace has passed the 30-day retention window. Create a new workspace to continue.",
+    };
+  }
+  const currentBilling = await findCurrentBillingSubscriptionByWorkspace(workspaceId);
+  const subscriptionId = String(currentBilling?.external_subscription_ref || existing.external_subscription_ref || "").trim();
+  const previousStatus = String(existing.status || "").trim().toLowerCase();
+  if (subscriptionId && ["suspended", "locked", "paused"].includes(previousStatus)) {
+    await updateStripeSubscriptionCollectionState(subscriptionId, "resume");
+  }
   const restored = await updateWorkspace(workspaceId, userId, {
     status: "active",
     lockReason: "",
@@ -744,7 +1013,9 @@ export async function createWorkspaceWalletAdjustmentService(
 }
 
 export async function createWorkspaceService(userId: string, payload: any) {
-  await assertPlatformRoles(userId, ["super_admin", "developer"]);
+  if (!payload?.publicCheckout) {
+    await assertPlatformRoles(userId, ["super_admin", "developer"]);
+  }
 
   const companyName = String(payload.name || payload.companyName || "").trim();
   const ownerName = String(payload.ownerName || payload.fullName || "").trim();
@@ -765,7 +1036,9 @@ export async function createWorkspaceService(userId: string, payload: any) {
   }
 
   const client = await db.connect();
-  let inviteDetails: { inviteLink: string; expiresAt: string } | null = null;
+  let inviteDetails:
+    | { inviteLink: string; expiresAt: string; emailDelivery?: { ok: boolean; provider: string; detail: string; checkedAt: string } | null }
+    | null = null;
   let committed = false;
 
   try {
@@ -791,7 +1064,7 @@ export async function createWorkspaceService(userId: string, payload: any) {
       const ownerRes = await client.query(
         `SELECT id, email, name, phone_number
          FROM users
-         WHERE email = $1
+         WHERE LOWER(email) = $1
          LIMIT 1`,
         [ownerEmail]
       );
@@ -891,6 +1164,10 @@ export async function createWorkspaceService(userId: string, payload: any) {
         Number(payload.aiOverageUnitPrice || 0),
         JSON.stringify({
           created_from: "workspace_create",
+          ...(payload.billingMetadata && typeof payload.billingMetadata === "object"
+            ? payload.billingMetadata
+            : {}),
+          ...(payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {}),
         }),
       ]
     );
@@ -915,7 +1192,7 @@ export async function createWorkspaceService(userId: string, payload: any) {
          metadata,
          created_by
        ) VALUES (
-         $1, $2, 'wallet', $3, 'wallet', $4, 'workspace', 1, $5, $6, $7, 'workspace', $1, $8::jsonb, $9
+         $1, $2, 'wallet', $3, 'wallet', $4, 'workspace', 1, $5, $6, $7, 'workspace', $10, $8::jsonb, $9
        )`,
       [
         workspace.id,
@@ -930,6 +1207,7 @@ export async function createWorkspaceService(userId: string, payload: any) {
           note: initialWalletTopup > 0 ? "Initial wallet top-up" : "Ledger initialized",
         }),
         userId,
+        workspace.id,
       ]
     );
 
@@ -946,7 +1224,13 @@ export async function createWorkspaceService(userId: string, payload: any) {
       },
     });
 
-    if (createdNewOwner || String(payload.sendInvite || "").trim() !== "false") {
+    const shouldSendInvite =
+      createdNewOwner ||
+      String(payload.sendInvite === undefined ? "true" : payload.sendInvite)
+        .trim()
+        .toLowerCase() !== "false";
+
+    if (shouldSendInvite) {
       const inviteEmail = String(ownerEmail || ownerUser?.email || "").trim().toLowerCase();
       if (!inviteEmail || !ownerUserId) {
         throw { status: 400, message: "Owner email is required to send an invite." };
@@ -984,7 +1268,15 @@ export async function createWorkspaceService(userId: string, payload: any) {
       ...created,
       invite_link: inviteDetails?.inviteLink,
       invite_expires_at: inviteDetails?.expiresAt,
-      invite_failed: !inviteDetails && Boolean(createdNewOwner || String(payload.sendInvite || "").trim() !== "false"),
+      invite_delivery: inviteDetails?.emailDelivery || null,
+      invite_failed:
+        !inviteDetails &&
+        Boolean(
+          createdNewOwner ||
+            String(payload.sendInvite === undefined ? "true" : payload.sendInvite)
+              .trim()
+              .toLowerCase() !== "false"
+        ),
     };
   } catch (error) {
     if (!committed) {
@@ -996,11 +1288,105 @@ export async function createWorkspaceService(userId: string, payload: any) {
   }
 }
 
+async function sendWorkspaceOwnerInvite(
+  workspaceId: string,
+  actorUserId: string,
+  ownerEmail?: string | null
+) {
+  const workspace = assertRecord(await findWorkspaceById(workspaceId, actorUserId), "Workspace not found");
+  await assertPlatformRoles(actorUserId, ["super_admin", "developer"]);
+  await assertDestructiveActionRateLimit({
+    userId: actorUserId,
+    workspaceId,
+    actionKey: "workspace_invite_resend",
+    limit: 5,
+    windowMinutes: 1,
+  });
+
+  const ownerUserId = String(workspace.owner_user_id || "").trim();
+  if (!ownerUserId) {
+    throw { status: 404, message: "Workspace owner is not configured" };
+  }
+
+  const owner = await findUserById(ownerUserId);
+  if (!owner) {
+    throw { status: 404, message: "Workspace owner not found" };
+  }
+
+  const nextEmail = String(ownerEmail || owner.email || "").trim().toLowerCase();
+  if (!nextEmail) {
+    throw { status: 400, message: "Owner email is required" };
+  }
+
+  if (ownerEmail) {
+    const existingEmailOwner = await findUserByEmail(nextEmail);
+    if (existingEmailOwner && existingEmailOwner.id !== owner.id) {
+      throw { status: 409, message: "Another user already uses that email address" };
+    }
+
+    await query(
+      `UPDATE users
+       SET email = $1
+       WHERE id = $2`,
+      [nextEmail, owner.id]
+    );
+  }
+
+  const inviteDetails = await createWorkspaceInviteService({
+    userId: owner.id,
+    email: nextEmail,
+    workspaceId,
+    workspaceName: String(workspace.name || "").trim() || "Workspace",
+    role: "admin",
+    createdBy: actorUserId,
+  });
+
+  await logAuditSafe({
+    userId: actorUserId,
+    workspaceId,
+    action: ownerEmail ? "update_owner_email_and_resend_invite" : "resend_invite",
+    entity: "workspace_owner",
+    entityId: owner.id,
+    newData: {
+      ownerUserId: owner.id,
+      ownerEmail: nextEmail,
+      inviteLink: inviteDetails.inviteLink,
+      expiresAt: inviteDetails.expiresAt,
+      emailDelivery: inviteDetails.emailDelivery || null,
+    },
+  });
+
+  if (!inviteDetails.emailDelivery?.ok) {
+    throw {
+      status: 502,
+      message:
+        inviteDetails.emailDelivery?.detail ||
+        "Invite email could not be delivered.",
+    };
+  }
+
+  return {
+    success: true,
+    ownerUserId: owner.id,
+    ownerEmail: nextEmail,
+    inviteLink: inviteDetails.inviteLink,
+    inviteExpiresAt: inviteDetails.expiresAt,
+    emailDelivery: inviteDetails.emailDelivery || null,
+  };
+}
+
 export async function updateWorkspaceService(id: string, userId: string, payload: any) {
   const existing = assertRecord(await findWorkspaceById(id, userId), "Workspace not found");
   await assertPlatformRoles(userId, ["super_admin", "developer"]);
   const updatePayload: Record<string, unknown> = {};
   let hasLimitOverrideUpdate = false;
+  const requestedStatus =
+    payload.status !== undefined ? normalizeWorkspaceStatus(payload.status) : null;
+  const previousStatus = String(existing.status || "").trim().toLowerCase();
+  const currentBilling = await findCurrentBillingSubscriptionByWorkspace(id);
+  const subscriptionId = String(
+    currentBilling?.external_subscription_ref || existing.external_subscription_ref || ""
+  ).trim();
 
   if (payload.name !== undefined) updatePayload.name = payload.name;
   if (payload.planId !== undefined) {
@@ -1011,10 +1397,13 @@ export async function updateWorkspaceService(id: string, userId: string, payload
     updatePayload.planId = payload.planId;
   }
   if (payload.status !== undefined) {
-    updatePayload.status = normalizeWorkspaceStatus(payload.status);
+    updatePayload.status = requestedStatus;
   }
   if (payload.lockReason !== undefined) {
     updatePayload.lockReason = payload.lockReason;
+  }
+  if (payload.adminNotes !== undefined) {
+    updatePayload.adminNotes = String(payload.adminNotes || "").trim() || null;
   }
   const overrideEntries = [
     ["agentSeatLimitOverride", "Agent seat limit override"],
@@ -1028,6 +1417,16 @@ export async function updateWorkspaceService(id: string, userId: string, payload
     if (payload[key] !== undefined) {
       updatePayload[key] = normalizeLimitOverride(payload[key], label);
       hasLimitOverrideUpdate = true;
+    }
+  }
+
+  if (subscriptionId && requestedStatus && requestedStatus !== previousStatus) {
+    if (requestedStatus === "archived") {
+      await updateStripeSubscriptionCollectionState(subscriptionId, "cancel");
+    } else if (requestedStatus === "suspended") {
+      await updateStripeSubscriptionCollectionState(subscriptionId, "pause");
+    } else if (requestedStatus === "active" && ["suspended", "archived"].includes(previousStatus)) {
+      await updateStripeSubscriptionCollectionState(subscriptionId, "resume");
     }
   }
 
@@ -1078,6 +1477,14 @@ export async function archiveWorkspaceService(workspaceId: string, userId: strin
 
   if (String(existing.status || "").toLowerCase() === "archived") {
     return existing;
+  }
+
+  const currentBilling = await findCurrentBillingSubscriptionByWorkspace(workspaceId);
+  const subscriptionId = String(
+    currentBilling?.external_subscription_ref || existing.external_subscription_ref || ""
+  ).trim();
+  if (subscriptionId) {
+    await updateStripeSubscriptionCollectionState(subscriptionId, "cancel");
   }
 
   const archivedAt = new Date().toISOString();
@@ -1148,7 +1555,7 @@ export async function emergencyResetWorkspaceOwnerPasswordService(
     createdBy: actorUserId,
   });
 
-  await sendPasswordResetOtpEmail({
+  const emailDelivery = await sendPasswordResetOtpEmail({
     to: normalizedEmail,
     otp,
     name: owner.name || null,
@@ -1172,7 +1579,95 @@ export async function emergencyResetWorkspaceOwnerPasswordService(
     ownerUserId: owner.id,
     ownerEmail: normalizedEmail,
     expiresAt,
+    emailDelivery,
   };
+}
+
+export async function resendWorkspaceOwnerInviteService(
+  workspaceId: string,
+  actorUserId: string
+) {
+  return sendWorkspaceOwnerInvite(workspaceId, actorUserId);
+}
+
+export async function resendWorkspaceMemberInviteService(
+  workspaceId: string,
+  actorUserId: string,
+  payload: { userId?: string | null }
+) {
+  const workspace = assertRecord(await findWorkspaceById(workspaceId, actorUserId), "Workspace not found");
+  await assertPlatformRoles(actorUserId, ["super_admin", "developer"]);
+
+  const targetUserId = String(payload.userId || "").trim();
+  if (!targetUserId) {
+    throw { status: 400, message: "userId is required" };
+  }
+
+  const membership = await findWorkspaceMembership(workspaceId, targetUserId);
+  if (!membership) {
+    throw { status: 404, message: "Workspace member not found" };
+  }
+
+  const membershipStatus = String(membership.status || "").trim().toLowerCase();
+  if (membershipStatus === "active") {
+    throw { status: 400, message: "Workspace member is already active" };
+  }
+
+  const user = await findUserById(targetUserId);
+  const inviteEmail = String(user?.email || "").trim().toLowerCase();
+  if (!inviteEmail) {
+    throw { status: 404, message: "Workspace member email is not available for invite resend" };
+  }
+
+  const inviteDetails = await createWorkspaceInviteService({
+    userId: targetUserId,
+    email: inviteEmail,
+    workspaceId,
+    workspaceName: String(workspace.name || "").trim() || "Workspace",
+    role: String(membership.role || "user"),
+    createdBy: actorUserId,
+  });
+
+  await logAuditSafe({
+    userId: actorUserId,
+    workspaceId,
+    action: "resend_invite",
+    entity: "workspace_member",
+    entityId: targetUserId,
+    newData: {
+      userId: targetUserId,
+      email: inviteEmail,
+      inviteLink: inviteDetails.inviteLink,
+      expiresAt: inviteDetails.expiresAt,
+      emailDelivery: inviteDetails.emailDelivery || null,
+    },
+  });
+
+  if (!inviteDetails.emailDelivery?.ok) {
+    throw {
+      status: 502,
+      message:
+        inviteDetails.emailDelivery?.detail ||
+        "Invite email could not be delivered.",
+    };
+  }
+
+  return {
+    success: true,
+    userId: targetUserId,
+    email: inviteEmail,
+    inviteLink: inviteDetails.inviteLink,
+    inviteExpiresAt: inviteDetails.expiresAt,
+    emailDelivery: inviteDetails.emailDelivery || null,
+  };
+}
+
+export async function updateWorkspaceOwnerEmailAndResendInviteService(
+  workspaceId: string,
+  actorUserId: string,
+  payload: { ownerEmail?: string | null }
+) {
+  return sendWorkspaceOwnerInvite(workspaceId, actorUserId, payload.ownerEmail || null);
 }
 
 function normalizeSubscriptionStatus(status?: string) {
@@ -1522,7 +2017,7 @@ export async function createWorkspaceSupportRequestService(
   userId: string,
   payload: { targetUserId?: string; reason?: string; requestedExpiresAt?: string }
 ) {
-  assertRecord(await findWorkspaceById(workspaceId, userId), "Workspace not found");
+  const workspace = assertRecord(await findWorkspaceById(workspaceId, userId), "Workspace not found");
   await assertWorkspaceMembershipOrPlatformOperator(userId, workspaceId);
 
   const reason = String(payload.reason || "").trim();
@@ -1536,6 +2031,18 @@ export async function createWorkspaceSupportRequestService(
     targetUserId: String(payload.targetUserId || "").trim() || null,
     reason,
     requestedExpiresAt: payload.requestedExpiresAt || null,
+  });
+  await notifyPlatformOperators({
+    workspaceId,
+    type: "support_request",
+    message: `Support requested for ${workspace.name} by ${request.requested_by || userId}.`,
+    metadata: {
+      requestId: request.id,
+      requestedBy: request.requested_by,
+      workspaceName: workspace.name,
+    },
+  }).catch((err) => {
+    console.warn("Failed to create support request notifications", err);
   });
   await logAuditSafe({
     userId,
@@ -1941,6 +2448,14 @@ export async function deleteWorkspaceService(workspaceId: string, userId: string
   });
   if (existing.deleted_at) {
     return existing;
+  }
+
+  const currentBilling = await findCurrentBillingSubscriptionByWorkspace(workspaceId);
+  const subscriptionId = String(
+    currentBilling?.external_subscription_ref || existing.external_subscription_ref || ""
+  ).trim();
+  if (subscriptionId) {
+    await updateStripeSubscriptionCollectionState(subscriptionId, "cancel");
   }
 
   const deletedAt = new Date().toISOString();

@@ -45,6 +45,19 @@ export async function listSupportRequestsByWorkspace(workspaceId: string) {
   return res.rows;
 }
 
+export async function hasOpenSupportRequestForWorkspace(workspaceId: string) {
+  const res = await query(
+    `SELECT 1
+     FROM support_requests
+     WHERE workspace_id = $1
+       AND status = 'open'
+     LIMIT 1`,
+    [workspaceId]
+  );
+
+  return Boolean(res.rows[0]);
+}
+
 export async function findSupportRequestById(id: string) {
   const res = await query(
     `SELECT *

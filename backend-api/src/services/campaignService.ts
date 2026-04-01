@@ -13,6 +13,7 @@ import {
   findCampaignById,
   findCampaignBySlug,
   findCampaignChannelById,
+  findCampaignChannelByCampaignBotAndPlatform,
   findCampaignChannelsByCampaign,
   findCampaignsByWorkspaceProject,
   findCampaignsByUser,
@@ -318,7 +319,7 @@ function normalizeListKey(value: string) {
 
 function normalizeListSourceType(value?: string) {
   const normalized = String(value || "manual").trim().toLowerCase();
-  const allowed = new Set(["manual", "entry_point", "campaign", "import", "segment"]);
+  const allowed = new Set(["manual", "entry_point", "campaign", "import", "segment", "suppression"]);
   if (!allowed.has(normalized)) {
     throw { status: 400, message: `Unsupported list source type '${value}'` };
   }
@@ -508,7 +509,7 @@ export async function createCampaignService(userId: string, payload: any) {
   );
   const workspaceId = projectAccess?.workspace_id || String(payload.workspaceId || "").trim();
 
-  await validateWorkspaceContext(workspaceId || null);
+  await validateWorkspaceContext(workspaceId || null, { userId });
   await assertProjectScopedWriteAccess({
     userId,
     projectId,
@@ -616,7 +617,7 @@ export async function updateCampaignService(id: string, userId: string, payload:
     allowedProjectRoles: ["project_admin", "editor"],
   });
 
-  await validateWorkspaceContext(nextWorkspaceId || null);
+  await validateWorkspaceContext(nextWorkspaceId || null, { userId });
 
   const nextSlug =
     payload.slug !== undefined
@@ -745,7 +746,7 @@ export async function createCampaignChannelService(userId: string, payload: any)
   }
 
   const platform = requirePlatform(payload.platform);
-  await assertPlatformAllowedByPlan(platform, campaign.workspace_id);
+    await assertPlatformAllowedByPlan(platform, campaign.workspace_id, userId);
 
   if (
     campaign.settings_json?.allow_multiple_platforms === false &&
@@ -785,6 +786,40 @@ export async function createCampaignChannelService(userId: string, payload: any)
     platform,
     platformAccountId: payload.platformAccountId || null,
   });
+
+  const existingChannel = await findCampaignChannelByCampaignBotAndPlatform(
+    campaign.id,
+    bot.id,
+    platform
+  );
+
+  if (existingChannel) {
+    const updated = await updateCampaignChannel(existingChannel.id, userId, {
+      botId: bot.id,
+      platform,
+      platformType: platform,
+      platformAccountId: accountBinding.platformAccountId,
+      platformAccountRefId: accountBinding.platformAccountRefId,
+      name: payload.name,
+      status: payload.status || existingChannel.status || "active",
+      defaultFlowId: payload.defaultFlowId || existingChannel.default_flow_id || null,
+      flowId: payload.flowId || payload.defaultFlowId || existingChannel.flow_id || null,
+      listId: payload.listId || existingChannel.list_id || null,
+      settingsJson: buildChannelSettings(payload),
+      config: serializeChannelConfig(payload.config || {}),
+    });
+    await logAuditSafe({
+      userId,
+      workspaceId: campaign.workspace_id,
+      projectId: campaign.project_id,
+      action: "update",
+      entity: "campaign_channel",
+      entityId: existingChannel.id,
+      oldData: existingChannel,
+      newData: updated || {},
+    });
+    return updated;
+  }
 
   const created = await createCampaignChannel({
     campaignId: campaign.id,
@@ -874,7 +909,7 @@ export async function updateCampaignChannelService(id: string, userId: string, p
 
   if (payload.platform) {
     const platform = requirePlatform(payload.platform);
-    await assertPlatformAllowedByPlan(platform, campaign.workspace_id);
+    await assertPlatformAllowedByPlan(platform, campaign.workspace_id, userId);
     if (
       campaign.settings_json?.allow_multiple_platforms === false &&
       platform !== channel.platform &&
@@ -891,7 +926,7 @@ export async function updateCampaignChannelService(id: string, userId: string, p
     channelUpdatePayload.platform = platform;
     channelUpdatePayload.platformType = platform;
   } else {
-    await assertPlatformAllowedByPlan(channel.platform, campaign.workspace_id);
+    await assertPlatformAllowedByPlan(channel.platform, campaign.workspace_id, userId);
   }
 
   if (payload.platformAccountId !== undefined) {

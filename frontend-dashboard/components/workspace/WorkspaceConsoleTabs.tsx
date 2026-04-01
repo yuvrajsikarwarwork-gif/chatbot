@@ -16,34 +16,37 @@ export default function WorkspaceConsoleTabs({
     canManageUsers,
     canViewBilling,
     isPlatformOperator,
+    isWorkspaceAdmin,
+    supportAccess,
   } = useVisibility();
+  const canOpenWorkspaceInterior = !isPlatformOperator || supportAccess;
 
   const tabs = [
     { label: "Overview", slug: "" as const, visible: true },
     {
       label: "Billing & Wallet",
       slug: "billing" as const,
-      visible: isPlatformOperator || canViewBilling,
+      visible: canOpenWorkspaceInterior && (canViewBilling || isWorkspaceAdmin),
     },
     {
       label: "Limits & Overrides",
       slug: "overrides" as const,
-      visible: isPlatformOperator || canViewBilling,
+      visible: canOpenWorkspaceInterior && (canViewBilling || isWorkspaceAdmin),
     },
     {
       label: "Team & Members",
       slug: "members-access" as const,
-      visible: isPlatformOperator || canManageUsers || canManagePermissions,
+      visible: canOpenWorkspaceInterior && (canManageUsers || canManagePermissions),
     },
     {
       label: "Support Access",
       slug: "support-access" as const,
-      visible: isPlatformOperator,
+      visible: canOpenWorkspaceInterior && isWorkspaceAdmin,
     },
   ].filter((tab) => tab.visible || tab.slug === activeSlug);
 
   return (
-    <section className="rounded-[1.25rem] border border-[var(--line)] bg-[var(--surface)] p-3 shadow-sm">
+    <section className="rounded-[1.25rem] border border-border-main bg-surface p-3 shadow-sm">
       <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => {
           const href = tab.slug
@@ -53,15 +56,15 @@ export default function WorkspaceConsoleTabs({
 
           return (
             <Link
-              key={tab.label}
-              href={href}
-              className={`rounded-[1rem] px-4 py-2 text-sm transition duration-200 ${
-                active
-                  ? "border border-[rgba(129,140,248,0.35)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] text-white shadow-sm"
-                  : "border border-[var(--line)] bg-[var(--surface-strong)] text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-muted)]"
-              }`}
-            >
-              {tab.label}
+            key={tab.label}
+            href={href}
+            className={`rounded-[1rem] px-4 py-2 text-sm font-semibold transition duration-200 ${
+              active
+                  ? "border border-emerald-500 bg-emerald-500 text-white shadow-[0_12px_30px_rgba(16,185,129,0.25)] ring-1 ring-emerald-300"
+                  : "border border-border-main bg-canvas text-text-main hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+            }`}
+          >
+            {tab.label}
             </Link>
           );
         })}

@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 
@@ -36,7 +36,7 @@ export default function CampaignChannelsPage() {
   const setActiveProject = useAuthStore((state) => state.setActiveProject);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const getProjectRole = useAuthStore((state) => state.getProjectRole);
-  const { canViewPage } = useVisibility();
+  const { canViewPage, isReadOnly } = useVisibility();
   const [campaign, setCampaign] = useState<any>(null);
   const [bots, setBots] = useState<any[]>([]);
   const [flowsByBot, setFlowsByBot] = useState<Record<string, any[]>>({});
@@ -56,8 +56,8 @@ export default function CampaignChannelsPage() {
   const canDeleteCampaign = hasWorkspacePermission(selectedWorkspaceId, "delete_campaign");
   const projectRole = getProjectRole(selectedProjectId);
   const canEditProjectCampaign =
-    canEditCampaign || projectRole === "project_admin" || projectRole === "editor";
-  const canDeleteProjectCampaign = canDeleteCampaign || projectRole === "project_admin";
+    !isReadOnly && (canEditCampaign || projectRole === "project_admin" || projectRole === "editor");
+  const canDeleteProjectCampaign = !isReadOnly && (canDeleteCampaign || projectRole === "project_admin");
 
   const tabs = useMemo(
     () => [
@@ -65,6 +65,7 @@ export default function CampaignChannelsPage() {
       { label: "Channels", href: `/campaigns/${campaignId}/channels` },
       { label: "Entries", href: `/campaigns/${campaignId}/entries` },
       { label: "Audience", href: `/campaigns/${campaignId}/audience` },
+      { label: "Automation", href: `/campaigns/${campaignId}/automation` },
       { label: "Launch", href: `/campaigns/${campaignId}/launch` },
       { label: "Activity", href: `/campaigns/${campaignId}/activity` },
     ],
@@ -208,16 +209,16 @@ export default function CampaignChannelsPage() {
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
           <BackButtonStrip href={`/campaigns/${campaignId}`} label="Back to campaign overview" />
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-sm">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
                   Campaign Channels
                 </div>
-                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-text-main">
                   Attach accounts and platforms
                 </h1>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                <p className="mt-2 text-sm leading-6 text-text-muted">
                   Each channel is the routing base for entry points, flows, and audience capture inside this campaign.
                 </p>
               </div>
@@ -229,23 +230,23 @@ export default function CampaignChannelsPage() {
           {success ? <section className="rounded-[1.5rem] border border-emerald-300/45 bg-emerald-500/12 p-4 text-sm font-medium text-emerald-800">{success}</section> : null}
 
           <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
-                  <select className="rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" value={channelForm.botId} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, botId: event.target.value }))}>
+                  <select className="rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" value={channelForm.botId} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, botId: event.target.value }))}>
                     <option value="">Select bot</option>
                     {bots.map((bot) => <option key={bot.id} value={bot.id}>{bot.name}</option>)}
                   </select>
-                  <select className="rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" value={channelForm.platform} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, platform: event.target.value, platformAccountId: "" }))}>
+                  <select className="rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" value={channelForm.platform} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, platform: event.target.value, platformAccountId: "" }))}>
                     {CHANNEL_PLATFORMS.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
                   </select>
                 </div>
-                <input className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" placeholder="Channel name" value={channelForm.name} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, name: event.target.value }))} />
-                <select className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" value={channelForm.platformAccountId} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, platformAccountId: event.target.value }))}>
+                <input className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" placeholder="Channel name" value={channelForm.name} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, name: event.target.value }))} />
+                <select className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" value={channelForm.platformAccountId} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, platformAccountId: event.target.value }))}>
                   <option value="">Select integration account</option>
                   {availableAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
                 </select>
-                <select className="w-full rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] px-4 py-3 text-sm text-[var(--text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] outline-none" value={channelForm.flowId} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, flowId: event.target.value }))}>
+                <select className="w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none" value={channelForm.flowId} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, flowId: event.target.value }))}>
                   <option value="">Select flow</option>
                   {availableFlows.map((flow) => <option key={flow.id} value={flow.id}>{flow.flow_name || flow.name || flow.id}</option>)}
                 </select>
@@ -255,18 +256,18 @@ export default function CampaignChannelsPage() {
                     ["allowMultipleLeads", "Allow multiple leads"],
                     ["requirePhone", "Require phone"],
                   ].map(([key, label]) => (
-                    <label key={key} className="flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-3 text-sm text-[var(--text)]">
+                    <label key={key} className="flex items-center gap-2 rounded-xl border border-border-main bg-canvas px-3 py-3 text-sm text-text-main">
                       <input type="checkbox" checked={Boolean((channelForm as any)[key])} disabled={!canEditProjectCampaign} onChange={(event) => setChannelForm((current) => ({ ...current, [key]: event.target.checked }))} />
                       <span>{label}</span>
                     </label>
                   ))}
                 </div>
                 <div className="flex gap-3">
-                  <button type="button" onClick={handleSave} disabled={busy || !canEditProjectCampaign} className="flex-1 rounded-2xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_30px_var(--accent-glow)] disabled:opacity-50">
+                  <button type="button" onClick={handleSave} disabled={busy || !canEditProjectCampaign} className="flex-1 rounded-2xl border border-primary bg-primary px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-sm disabled:opacity-50">
                     {editingChannelId ? "Save channel" : "Add channel"}
                   </button>
                   {editingChannelId ? (
-                    <button type="button" onClick={resetForm} className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-[var(--text)]">
+                    <button type="button" onClick={resetForm} className="rounded-2xl border border-border-main bg-surface px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-text-main">
                       Cancel
                     </button>
                   ) : null}
@@ -274,33 +275,33 @@ export default function CampaignChannelsPage() {
               </div>
             </section>
 
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+            <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
               <div className="space-y-3">
                 {(campaign?.channels || []).length ? (
                   campaign.channels.map((channel: any) => (
-                    <div key={channel.id} className="rounded-[1.1rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4">
+                    <div key={channel.id} className="rounded-[1.1rem] border border-border-main bg-canvas p-4">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-[var(--text)]">{channel.name || channel.platform}</div>
-                          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                            {channel.platform} · {channel.status}
+                          <div className="text-sm font-semibold text-text-main">{channel.name || channel.platform}</div>
+                          <div className="mt-1 text-xs uppercase tracking-[0.16em] text-text-muted">
+                            {channel.platform} Â· {channel.status}
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <button type="button" onClick={() => startEdit(channel)} disabled={!canEditProjectCampaign} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text)] disabled:opacity-50">Edit</button>
-                          <button type="button" onClick={() => handleDelete(channel.id)} disabled={!canDeleteProjectCampaign} className="rounded-xl border border-rose-300/55 bg-rose-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-800 disabled:cursor-not-allowed disabled:border-slate-300/60 disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100">Delete</button>
+                          <button type="button" onClick={() => startEdit(channel)} disabled={!canEditProjectCampaign} className="rounded-xl border border-border-main bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main disabled:opacity-50">Edit</button>
+                          <button type="button" onClick={() => handleDelete(channel.id)} disabled={!canDeleteProjectCampaign} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700 disabled:cursor-not-allowed disabled:border-border-main/60 disabled:bg-canvas disabled:text-text-muted disabled:opacity-100">Delete</button>
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                  <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                     No channels configured yet. Add a campaign channel to start routing traffic.
                   </div>
                 )}
               </div>
               <div className="mt-5">
-                <Link href={`/campaigns/${campaignId}/entries`} className="text-sm font-medium text-[var(--accent)]">
+                <Link href={`/campaigns/${campaignId}/entries`} className="text-sm font-medium text-primary">
                   Continue to entry points
                 </Link>
               </div>
@@ -311,3 +312,4 @@ export default function CampaignChannelsPage() {
     </DashboardLayout>
   );
 }
+

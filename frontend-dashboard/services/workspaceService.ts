@@ -16,6 +16,7 @@ export interface Workspace {
   purge_after?: string | null;
   subscription_id?: string | null;
   subscription_status?: string | null;
+  billing_status?: string | null;
   expiry_date?: string | null;
   grace_period_end?: string | null;
   billing_cycle?: string | null;
@@ -38,7 +39,9 @@ export interface Workspace {
   current_period_end?: string | null;
   trial_ends_at?: string | null;
   canceled_at?: string | null;
+  billing_metadata?: Record<string, unknown> | null;
   lock_reason?: string | null;
+  admin_notes?: string | null;
   agent_seat_limit_override?: number | null;
   project_limit_override?: number | null;
   active_bot_limit_override?: number | null;
@@ -49,6 +52,31 @@ export interface Workspace {
   platform_account_count?: number | null;
   created_at?: string;
   updated_at?: string;
+  invite_link?: string | null;
+  invite_expires_at?: string | null;
+  invite_failed?: boolean | null;
+  accessGranted?: boolean | null;
+  support_access_granted?: boolean | null;
+  invite_delivery?: {
+    ok: boolean;
+    provider: string;
+    detail: string;
+    checkedAt: string;
+  } | null;
+}
+
+export interface WorkspaceInviteResponse {
+  success: boolean;
+  ownerUserId?: string;
+  ownerEmail?: string;
+  inviteLink?: string | null;
+  inviteExpiresAt?: string | null;
+  emailDelivery?: {
+    ok: boolean;
+    provider: string;
+    detail: string;
+    checkedAt: string;
+  } | null;
 }
 
 export interface SupportRequest {
@@ -82,6 +110,21 @@ export interface SupportAccessRow {
   granted_by_name?: string | null;
   granted_by_email?: string | null;
   expires_at?: string | null;
+}
+
+export interface WorkspaceMember {
+  workspace_id: string;
+  user_id: string;
+  name?: string | null;
+  email?: string | null;
+  global_role?: string | null;
+  role: string;
+  status: string;
+  permissions_json?: Record<string, unknown> | null;
+  invite_link?: string | null;
+  invite_expires_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface WalletTransaction {
@@ -119,6 +162,30 @@ export interface WorkspaceBillingContext {
   wallet: WorkspaceWalletSummary;
 }
 
+export interface WorkspaceMailSettings {
+  workspaceId: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpFrom: string;
+  smtpPassConfigured: boolean;
+  usesSystemDefault: boolean;
+  planName: string;
+  billingStatus: string;
+  canEdit: boolean;
+  restrictionMessage: string | null;
+  workspaceMailConfigured: boolean;
+  source: "workspace" | "system";
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMailTestResult {
+  ok: boolean;
+  detail: string;
+  checkedAt: string;
+}
+
 export interface WorkspaceOverview {
   workspace: Workspace & {
     max_campaigns?: number | null;
@@ -152,6 +219,8 @@ export interface WorkspaceOverview {
     totalRequests: number;
     openRequests: number;
     activeAccess: number;
+    accessGranted?: boolean;
+    support_access_granted?: boolean;
   };
 }
 
@@ -167,10 +236,23 @@ export interface WorkspaceExportRequest {
   previewDownloadPath?: string | null;
 }
 
+export interface WorkspaceHistoryRow extends Workspace {
+  owner_name?: string | null;
+  owner_email?: string | null;
+  restore_available?: boolean;
+  purge_expired?: boolean;
+  purge_days_remaining?: number | null;
+}
+
 export const workspaceService = {
   list: async (): Promise<Workspace[]> => {
     const res = await apiClient.get("/workspaces");
     return res.data;
+  },
+
+  listHistory: async (): Promise<WorkspaceHistoryRow[]> => {
+    const res = await apiClient.get("/workspaces/history");
+    return Array.isArray(res.data) ? res.data : [];
   },
 
   get: async (id: string): Promise<Workspace> => {
@@ -191,6 +273,45 @@ export const workspaceService = {
   getBillingContext: async (id: string): Promise<WorkspaceBillingContext> => {
     const res = await apiClient.get(`/workspaces/${id}/billing-context`);
     return res.data;
+  },
+
+  getMailSettings: async (id: string): Promise<WorkspaceMailSettings> => {
+    const res = await apiClient.get(`/workspaces/${id}/mail-settings`);
+    return res.data;
+  },
+
+  updateMailSettings: async (
+    id: string,
+    payload: {
+      smtpHost: string;
+      smtpPort: number | string;
+      smtpUser: string;
+      smtpPass?: string;
+      smtpFrom: string;
+    }
+  ): Promise<WorkspaceMailSettings> => {
+    const res = await apiClient.put(`/workspaces/${id}/mail-settings`, payload);
+    return res.data;
+  },
+
+  testMailSettings: async (
+    id: string,
+    payload: {
+      smtpHost: string;
+      smtpPort: number | string;
+      smtpUser: string;
+      smtpPass?: string;
+      smtpFrom: string;
+      recipientEmail: string;
+    }
+  ): Promise<WorkspaceMailTestResult> => {
+    const res = await apiClient.post(`/workspaces/${id}/mail-settings/test`, payload);
+    return res.data;
+  },
+
+  listMembers: async (id: string): Promise<WorkspaceMember[]> => {
+    const res = await apiClient.get(`/workspaces/${id}/members`);
+    return Array.isArray(res.data) ? res.data : [];
   },
 
   createWalletAdjustment: async (
@@ -249,6 +370,27 @@ export const workspaceService = {
 
   unlock: async (id: string, payload: Record<string, unknown> = {}): Promise<Workspace> => {
     const res = await apiClient.post(`/workspaces/${id}/unlock`, payload);
+    return res.data;
+  },
+
+  resendOwnerInvite: async (id: string): Promise<WorkspaceInviteResponse> => {
+    const res = await apiClient.post(`/workspaces/${id}/members/resend-owner-invite`);
+    return res.data;
+  },
+
+  resendMemberInvite: async (
+    id: string,
+    payload: { userId: string }
+  ): Promise<WorkspaceInviteResponse & { userId?: string }> => {
+    const res = await apiClient.post(`/workspaces/${id}/invites/resend`, payload);
+    return res.data;
+  },
+
+  updateOwnerEmailAndResendInvite: async (
+    id: string,
+    payload: { ownerEmail: string }
+  ): Promise<WorkspaceInviteResponse> => {
+    const res = await apiClient.post(`/workspaces/${id}/members/update-owner-email`, payload);
     return res.data;
   },
 

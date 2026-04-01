@@ -2,6 +2,44 @@ import apiClient from "./apiClient";
 import { sessionService } from "./sessionService";
 
 export const authService = {
+  pricingCheckout: async (payload: {
+    email: string;
+    password: string;
+    name: string;
+    companyName: string;
+    ownerPhone?: string | null;
+    companyWebsite?: string | null;
+    industry?: string | null;
+    taxId?: string | null;
+    planId?: string;
+    billingCycle?: string;
+    currency?: string;
+    seats?: number;
+    bots?: number;
+    campaignVolume?: number;
+    aiReplies?: number;
+    addOnIds?: string[];
+  }) => {
+    const res = await apiClient.post("/auth/pricing-checkout/init", payload);
+    return res.data;
+  },
+
+  pricingCheckoutConfirm: async (payload: {
+    referenceId: string;
+    orderId?: string;
+    paymentId?: string;
+    signature?: string;
+    sessionId?: string;
+    password: string;
+    planId: string;
+  }) => {
+    const res = await apiClient.post("/auth/pricing-checkout/confirm", payload);
+    if (res.data.token) {
+      localStorage.setItem("token", res.data.token);
+    }
+    return res.data;
+  },
+
   login: async (email: string, password: string) => {
     const res = await apiClient.post("/auth/login", {
       email,
@@ -34,6 +72,16 @@ export const authService = {
     const res = await apiClient.delete("/auth/support-session", {
       params: payload?.workspaceId ? { workspaceId: payload.workspaceId } : undefined,
     });
+    return res.data;
+  },
+
+  startWorkspaceImpersonation: async (workspaceId: string, payload: { durationHours?: number; consentNote?: string } = {}) => {
+    const res = await apiClient.post(`/admin/impersonate/${workspaceId}`, payload);
+    return res.data;
+  },
+
+  endWorkspaceImpersonation: async (payload?: { workspaceId?: string | null }) => {
+    const res = await apiClient.post("/admin/impersonate/exit", payload || {});
     return res.data;
   },
 

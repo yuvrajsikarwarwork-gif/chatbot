@@ -155,15 +155,15 @@ export default function AccountDeletionPage() {
           </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+            <div className="rounded-[1.5rem] border border-white/10 bg-surface/5 p-5">
               <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100/70">Workspace</div>
               <div className="mt-2 text-lg font-semibold">{activeWorkspace?.workspace_name || "Unknown workspace"}</div>
             </div>
-            <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+            <div className="rounded-[1.5rem] border border-white/10 bg-surface/5 p-5">
               <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100/70">Deletion Scheduled</div>
               <div className="mt-2 text-lg font-semibold">{formatDate(activeWorkspace?.workspace_deleted_at)}</div>
             </div>
-            <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+            <div className="rounded-[1.5rem] border border-white/10 bg-surface/5 p-5">
               <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100/70">Permanent Purge</div>
               <div className="mt-2 text-lg font-semibold">{purgeAfterLabel}</div>
             </div>
@@ -176,7 +176,7 @@ export default function AccountDeletionPage() {
                   type="button"
                   onClick={handleRestore}
                   disabled={restoring}
-                  className="rounded-[1rem] bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition duration-200 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-[1rem] bg-surface px-5 py-3 text-sm font-semibold text-text-main transition duration-200 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {restoring ? "Restoring..." : "Restore Account"}
                 </button>
@@ -184,7 +184,7 @@ export default function AccountDeletionPage() {
                   type="button"
                   onClick={handleRequestExport}
                   disabled={requestingExport}
-                  className="rounded-[1rem] border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition duration-200 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-[1rem] border border-white/20 bg-surface/10 px-5 py-3 text-sm font-semibold text-white transition duration-200 hover:bg-surface/15 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {requestingExport ? "Queueing export..." : "Export My Data"}
                 </button>
@@ -192,7 +192,7 @@ export default function AccountDeletionPage() {
             ) : null}
             <Link
               href="/logout"
-              className="rounded-[1rem] border border-white/15 px-5 py-3 text-sm font-semibold text-emerald-50/90 transition duration-200 hover:bg-white/10"
+              className="rounded-[1rem] border border-white/15 px-5 py-3 text-sm font-semibold text-emerald-50/90 transition duration-200 hover:bg-surface/10"
             >
               Sign out
             </Link>

@@ -14,7 +14,7 @@ export default function PlatformAccountsCompatibilityPage() {
     if (!canViewIntegrationsPage) {
       return;
     }
-    router.replace("/integrations").catch(() => undefined);
+    router.replace("/settings?tab=integrations").catch(() => undefined);
   }, [canViewIntegrationsPage, router]);
 
   return (
@@ -23,13 +23,13 @@ export default function PlatformAccountsCompatibilityPage() {
         <PageAccessNotice
           title="Integrations are restricted for this role"
           description="Project integrations stay inside scoped workspace and project access."
-          href="/integrations"
-          ctaLabel="Open integrations"
+          href="/settings?tab=integrations"
+          ctaLabel="Open settings"
         />
       ) : (
         <div className="mx-auto max-w-3xl">
           <section className="rounded-[1.9rem] border border-[var(--glass-border)] bg-[var(--glass-surface)] p-6 text-sm text-[var(--muted)] shadow-[var(--shadow-glass)] backdrop-blur-2xl">
-            Redirecting to integrations...
+            Redirecting to settings...
           </section>
         </div>
       )}

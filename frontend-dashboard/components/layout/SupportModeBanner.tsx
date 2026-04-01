@@ -3,6 +3,7 @@ import { ShieldAlert } from "lucide-react";
 import { useRouter } from "next/router";
 import { authService } from "../../services/authService";
 import { useAuthStore } from "../../store/authStore";
+import { useVisibility } from "../../hooks/useVisibility";
 import { notify } from "../../store/uiStore";
 
 function formatExpiry(value: unknown) {
@@ -29,12 +30,14 @@ export default function SupportModeBanner() {
   const resolvedAccess = useAuthStore((state) => state.resolvedAccess);
   const memberships = useAuthStore((state) => state.memberships);
   const projectAccesses = useAuthStore((state) => state.projectAccesses);
+  const { supportAccess } = useVisibility();
   const [ending, setEnding] = useState(false);
 
   const banner = useMemo(() => {
     const supportMode =
-      Boolean(resolvedAccess?.support_access) ||
-      Boolean(activeWorkspace?.permissions_json?.support_mode);
+      supportAccess &&
+      (Boolean(resolvedAccess?.support_access) ||
+        Boolean(activeWorkspace?.permissions_json?.support_mode));
     if (!supportMode || !activeWorkspace?.workspace_id) {
       return null;
     }
@@ -55,7 +58,7 @@ export default function SupportModeBanner() {
 
   return (
     <div className="support-mode-banner fixed inset-x-0 top-0 z-[90] border-b border-[rgba(255,255,255,0.18)] px-4 py-3 text-white shadow-[0_18px_40px_rgba(127,29,29,0.28)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.2)] bg-[rgba(255,255,255,0.08)]">
             <ShieldAlert size={18} />
@@ -67,10 +70,18 @@ export default function SupportModeBanner() {
             <div className="truncate text-sm font-semibold text-white">
               {banner.actorName} is acting inside {banner.workspaceName}
             </div>
+            <div className="mt-1 text-xs leading-5 text-[rgba(255,245,245,0.82)]">
+              Platform pages like <span className="font-semibold text-white">Permissions</span>, <span className="font-semibold text-white">Plans</span>, <span className="font-semibold text-white">Logs</span>, <span className="font-semibold text-white">Tickets</span>, and <span className="font-semibold text-white">System Settings</span> are hidden while this support session is active.
+            </div>
           </div>
         </div>
-        <div className="text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(255,238,238,0.86)]">
-          {banner.expiresAt ? `Access expires ${banner.expiresAt}` : "Support access active"}
+        <div className="flex flex-col items-start gap-2 text-left lg:items-end lg:text-right">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[rgba(255,238,238,0.86)]">
+            {banner.expiresAt ? `Access expires ${banner.expiresAt}` : "Support access active"}
+          </div>
+          <div className="max-w-xl text-[11px] leading-5 text-[rgba(255,245,245,0.78)]">
+            This is expected. Support mode keeps the session bound to the current workspace so platform controls stay out of the way until you exit support mode.
+          </div>
         </div>
         <button
           type="button"

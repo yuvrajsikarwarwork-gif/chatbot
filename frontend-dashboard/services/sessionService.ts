@@ -23,6 +23,7 @@ export const sessionService = {
       return;
     }
 
+    window.localStorage.removeItem("auth-storage");
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem("activeBotId");
   },

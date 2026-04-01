@@ -40,6 +40,41 @@ export interface CampaignDetail {
   lists: any[];
 }
 
+export interface CampaignAutomationRuntime {
+  campaign: {
+    id: string;
+    name: string;
+    slug: string;
+    workspaceId?: string | null;
+    projectId?: string | null;
+    defaultFlowId?: string | null;
+  };
+  rules: Array<Record<string, any>>;
+  history: Array<Record<string, any>>;
+  versions: Array<Record<string, any>>;
+  segmentLibrary: Array<{ id: string; name: string }>;
+}
+
+export interface CampaignBroadcastAnalytics {
+  campaignId: string;
+  templateSummary: Array<{
+    template_name: string;
+    platform: string;
+    launch_count: number;
+    total_leads: number;
+    success_count: number;
+    fail_count: number;
+    last_sent_at: string | null;
+  }>;
+  suppressionLists: Array<Record<string, unknown>>;
+  totals: {
+    launchCount: number;
+    totalLeads: number;
+    successCount: number;
+    failCount: number;
+  };
+}
+
 export interface CampaignChannelPayload {
   campaignId: string;
   botId: string;
@@ -119,6 +154,57 @@ export const campaignService = {
 
   getActivity: async (id: string): Promise<any[]> => {
     const res = await apiClient.get(`/campaigns/${id}/activity`);
+    return res.data;
+  },
+
+  getBroadcastAnalytics: async (id: string): Promise<CampaignBroadcastAnalytics> => {
+    const res = await apiClient.get(`/campaigns/${id}/broadcast-analytics`);
+    return res.data;
+  },
+
+  getAutomationRuntime: async (id: string): Promise<CampaignAutomationRuntime> => {
+    const res = await apiClient.get(`/campaigns/${id}/automation/runtime`);
+    return res.data;
+  },
+
+  pauseAutomationRule: async (campaignId: string, ruleId: string) => {
+    const res = await apiClient.post(`/campaigns/${campaignId}/automation/${ruleId}/pause`);
+    return res.data;
+  },
+
+  resumeAutomationRule: async (campaignId: string, ruleId: string) => {
+    const res = await apiClient.post(`/campaigns/${campaignId}/automation/${ruleId}/resume`);
+    return res.data;
+  },
+
+  replayAutomationRule: async (campaignId: string, ruleId: string, leadId?: string) => {
+    const res = await apiClient.post(`/campaigns/${campaignId}/automation/${ruleId}/replay`, {
+      ...(leadId ? { leadId } : {}),
+    });
+    return res.data;
+  },
+
+  saveAutomationVersion: async (
+    campaignId: string,
+    payload: { label?: string; notes?: string; status?: string; sourceRuleId?: string; sourceRuleName?: string } = {}
+  ) => {
+    const res = await apiClient.post(`/campaigns/${campaignId}/automation/runtime/version`, payload);
+    return res.data;
+  },
+
+  setAutomationVersionStatus: async (
+    campaignId: string,
+    versionId: string,
+    status: "draft" | "pending" | "approved" | "rejected"
+  ) => {
+    const res = await apiClient.post(`/campaigns/${campaignId}/automation/runtime/version/${versionId}/status`, {
+      status,
+    });
+    return res.data;
+  },
+
+  cloneAutomationRule: async (campaignId: string, ruleId: string) => {
+    const res = await apiClient.post(`/campaigns/${campaignId}/automation/${ruleId}/clone`);
     return res.data;
   },
 

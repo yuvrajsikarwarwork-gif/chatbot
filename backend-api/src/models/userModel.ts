@@ -1,9 +1,10 @@
 import { query } from "../config/db";
 
 export async function findUserByEmail(email: string) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
   const res = await query(
-    "SELECT id, email, name, phone_number, workspace_id, password_hash AS password, role FROM users WHERE email = $1",
-    [email]
+    "SELECT id, email, name, phone_number, workspace_id, password_hash AS password, role FROM users WHERE LOWER(email) = $1",
+    [normalizedEmail]
   );
 
   return res.rows[0];
@@ -25,13 +26,14 @@ export async function createUser(
   role: string = "user",
   phoneNumber?: string | null
 ) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
   const res = await query(
     `
     INSERT INTO users (id, email, password_hash, name, role, phone_number)
     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
     RETURNING id, email, name, phone_number, role
     `,
-    [email, passwordHash, name, role, phoneNumber || null]
+    [normalizedEmail, passwordHash, name, role, phoneNumber || null]
   );
 
   return res.rows[0];
@@ -57,6 +59,7 @@ export async function updateUserById(
     workspaceId?: string | null;
   }
 ) {
+  const nextEmail = input.email === undefined ? null : String(input.email || "").trim().toLowerCase();
   const res = await query(
     `UPDATE users
      SET
@@ -69,7 +72,7 @@ export async function updateUserById(
      RETURNING id, email, name, phone_number, workspace_id, role, created_at`,
     [
       input.name === undefined ? null : input.name,
-      input.email === undefined ? null : input.email,
+      nextEmail,
       input.role === undefined ? null : input.role,
       input.workspaceId === undefined ? null : input.workspaceId,
       input.phoneNumber === undefined ? null : input.phoneNumber,

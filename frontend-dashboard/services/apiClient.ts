@@ -2,6 +2,7 @@ import axios, { AxiosHeaders } from "axios";
 import { API_URL } from "../config/apiConfig";
 import { useAuthStore } from "../store/authStore";
 import { sessionService } from "./sessionService";
+import { extractApiErrorInfo } from "./apiError";
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -49,6 +50,8 @@ apiClient.interceptors.response.use(
     if (!error.response) {
       console.error(`API unreachable at ${API_URL}`);
     }
+
+    (error as any).apiErrorInfo = extractApiErrorInfo(error);
 
     if (error.response?.status === 401 && typeof window !== "undefined") {
       sessionService.clear();

@@ -7,6 +7,8 @@ import {
   getFlowBuilderCapabilitiesService,
   getFlowSummariesByBotService,
   getFlowService,
+  normalizeFlowJson,
+  patchFlowNodeService,
   saveFlowService,
   updateFlowService,
   deleteFlowService,
@@ -17,27 +19,6 @@ function getUserId(req: AuthRequest) {
 }
 
 function normalizeFlowPayload(data: any) {
-  const normalizeNodeType = (type: any) => {
-    const normalized = String(type || "").trim().toLowerCase();
-    if (normalized === "message") return "msg_text";
-    return type;
-  };
-
-  const normalizeFlowJson = (flowJson: any) => {
-    const nodes = Array.isArray(flowJson?.nodes)
-      ? flowJson.nodes.map((node: any) => ({
-          ...node,
-          type: normalizeNodeType(node?.type),
-        }))
-      : [];
-
-    return {
-      ...(flowJson && typeof flowJson === "object" ? flowJson : {}),
-      nodes,
-      edges: Array.isArray(flowJson?.edges) ? flowJson.edges : [],
-    };
-  };
-
   if (!data) {
     return { nodes: [], edges: [] };
   }
@@ -47,6 +28,7 @@ function normalizeFlowPayload(data: any) {
       ...normalizeFlowJson(data.flow_json),
       id: data.id,
       bot_id: data.bot_id,
+      is_system_flow: Boolean(data.is_system_flow),
       created_at: data.created_at,
       updated_at: data.updated_at,
     };
@@ -129,16 +111,35 @@ export async function saveFlowCtrl(req: AuthRequest, res: Response, next: NextFu
     const flowId = req.body.flowId || req.body.flow_id;
     const flowName = req.body.flow_name;
     const userId = getUserId(req);
+    const requestId = req.requestId || "unknown";
 
     // Safety guards to prevent 500 crash
     if (!botId) return res.status(400).json({ error: "botId is missing in request." });
     if (!flowJson) return res.status(400).json({ error: "flow_json payload is missing." });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
+    console.info(`[FlowSave][Controller][${requestId}] save-request-received`, {
+      botId,
+      flowId: flowId || null,
+      flowName: flowName || null,
+      hasNodes: Boolean(Array.isArray(flowJson?.nodes) && flowJson.nodes.length),
+      hasEdges: Boolean(Array.isArray(flowJson?.edges) && flowJson.edges.length),
+    });
+
     const data = await saveFlowService(botId, userId, flowJson, flowId, flowName);
+    console.info(`[FlowSave][Controller][${requestId}] save-request-succeeded`, {
+      botId,
+      flowId: data?.id || flowId || null,
+      flowName: data?.flow_name || flowName || null,
+    });
     res.status(200).json(data);
   } catch (err) {
-    console.error("saveFlowCtrl critical error:", err);
+    console.error(`[FlowSave][Controller][${req.requestId || "unknown"}] save-request-failed`, {
+      botId: req.body?.botId || req.body?.bot_id || null,
+      flowId: req.body?.flowId || req.body?.flow_id || null,
+      flowName: req.body?.flow_name || null,
+      error: err instanceof Error ? err.message : String(err || "Unknown save error"),
+    });
     next(err);
   }
 }
@@ -176,6 +177,51 @@ export async function updateFlowCtrl(req: AuthRequest, res: Response, next: Next
     );
     res.json(data);
   } catch (err) {
+    next(err);
+  }
+}
+
+export async function patchFlowNodeCtrl(req: AuthRequest, res: Response, next: NextFunction) {
+  const requestId = req.requestId || "unknown";
+  try {
+    const { id, nodeId } = req.params;
+    const userId = getUserId(req);
+    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!nodeId) return res.status(400).json({ error: "nodeId is required" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const nodeData = req.body?.node_data ?? req.body?.nodeData ?? req.body?.data ?? req.body?.node;
+    if (!nodeData || typeof nodeData !== "object") {
+      return res.status(400).json({ error: "node_data payload is required" });
+    }
+
+    console.info(`[NodeSave][Controller][${requestId}] patch-request-received`, {
+      flowId: id,
+      nodeId,
+      userId,
+      hasData: Boolean(nodeData),
+      isWholeNodePatch: Boolean(
+        nodeData &&
+          typeof nodeData === "object" &&
+          ("data" in nodeData || "position" in nodeData || "type" in nodeData || "id" in nodeData)
+      ),
+      topLevelKeys: Object.keys(nodeData || {}),
+    });
+
+    const data = await patchFlowNodeService(id, userId, nodeId, nodeData, requestId);
+    console.info(`[NodeSave][Controller][${requestId}] patch-request-succeeded`, {
+      flowId: id,
+      nodeId,
+      savedFlowId: data?.id || null,
+    });
+    res.json(normalizeFlowPayload(data));
+  } catch (err) {
+    console.error(`[NodeSave][Controller][${requestId}] patch-request-failed`, {
+      flowId: req.params?.id || null,
+      nodeId: req.params?.nodeId || null,
+      userId: getUserId(req),
+      error: err instanceof Error ? err.message : String(err || "Unknown patch error"),
+    });
     next(err);
   }
 }

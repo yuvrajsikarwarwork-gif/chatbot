@@ -24,8 +24,8 @@ export default function SectionTabs({ items, currentPath, className = "" }: Sect
             href={item.href}
             className={`rounded-full border px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] transition duration-300 ${
               isActive
-                ? "border-[rgba(129,140,248,0.38)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] !text-white shadow-[0_16px_28px_var(--accent-glow)]"
-                : "border-[var(--glass-border)] bg-[var(--glass-surface)] text-[var(--muted)] hover:-translate-y-0.5 hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
+                ? "border-primary bg-primary text-white shadow-sm"
+                : "border-border-main bg-canvas text-text-main hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary-fade hover:text-primary"
             }`}
           >
             {item.label}

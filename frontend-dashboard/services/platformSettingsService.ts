@@ -8,8 +8,8 @@ export interface GlobalIntegrationsSettings {
     embeddedSignupConfigId: string | null;
     embeddedSignupConfigIdPreview: string | null;
     signatureVerificationEnabled: boolean;
-    legacyVerifyTokenConfigured: boolean;
-    legacyVerifyTokenPreview: string | null;
+    metaWebhookVerifyTokenConfigured: boolean;
+    metaWebhookVerifyTokenPreview: string | null;
   };
   urls: {
     publicApiBaseUrl: string;
@@ -69,6 +69,8 @@ export interface EmailServicesSettings {
     smtpReplyTo: string | null;
     smtpPassConfigured: boolean;
     testRecipient: string | null;
+    smtpEncryption?: string | null;
+    smtpSenderName?: string | null;
   };
   editable: {
     provider: string;
@@ -78,6 +80,8 @@ export interface EmailServicesSettings {
     smtpFrom: string;
     smtpReplyTo: string;
     testRecipient: string;
+    smtpEncryption: string;
+    smtpSenderName: string;
   };
 }
 
@@ -137,7 +141,7 @@ export const platformSettingsService = {
     metaAppId: string;
     embeddedSignupConfigId: string;
     metaAppSecret?: string;
-    legacyVerifyToken?: string;
+    metaWebhookVerifyToken?: string;
   }): Promise<GlobalIntegrationsSettings> => {
     const res = await apiClient.put("/platform-settings/global-integrations", payload);
     return res.data;
@@ -175,13 +179,26 @@ export const platformSettingsService = {
     smtpReplyTo?: string;
     testRecipient?: string;
     smtpPass?: string;
+    smtpEncryption?: string;
+    smtpSenderName?: string;
   }): Promise<EmailServicesSettings> => {
     const res = await apiClient.put("/platform-settings/email-services", payload);
     return res.data;
   },
 
-  testEmailServices: async (): Promise<EmailServicesTestResult> => {
-    const res = await apiClient.post("/platform-settings/email-services/test");
+  testEmailServices: async (payload: {
+    provider: string;
+    smtpHost: string;
+    smtpPort: number | string;
+    smtpUser: string;
+    smtpFrom: string;
+    smtpReplyTo?: string;
+    testRecipient?: string;
+    smtpPass?: string;
+    smtpEncryption?: string;
+    smtpSenderName?: string;
+  }): Promise<EmailServicesTestResult> => {
+    const res = await apiClient.post("/platform-settings/email-services/test", payload);
     return res.data;
   },
 

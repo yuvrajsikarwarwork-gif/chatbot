@@ -6,6 +6,7 @@ import {
   addConversationTagService,
   getConversationMessagesService,
   getConversationService,
+  getConversationTimelineService,
   getConversationsService,
   getWorkspaceConversationsService,
   deleteConversationTagService,
@@ -120,6 +121,24 @@ export async function getMessages(
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
     const data = await getConversationMessagesService(id, userId);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getConversationTimeline(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { id } = req.params;
+    const userId = getUserId(req);
+    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const data = await getConversationTimelineService(id, userId);
     res.json(data);
   } catch (err) {
     next(err);

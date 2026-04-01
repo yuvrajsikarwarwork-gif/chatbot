@@ -61,7 +61,7 @@ export async function createWorkspaceInviteService(input: {
     </div>
   `;
 
-  await sendTransactionalEmail({
+  const emailDelivery = await sendTransactionalEmail({
     to: input.email,
     subject: `You have been invited to ${input.workspaceName}`,
     html,
@@ -71,5 +71,6 @@ export async function createWorkspaceInviteService(input: {
   return {
     inviteLink,
     expiresAt,
+    emailDelivery,
   };
 }

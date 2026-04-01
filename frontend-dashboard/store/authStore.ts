@@ -102,6 +102,7 @@ interface AuthState {
   }) => void;
   setActiveWorkspace: (workspaceId: string) => void;
   setActiveProject: (project: ActiveProject | null) => void;
+  clearSupportContext: () => void;
   setHasHydrated: (value: boolean) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
@@ -136,6 +137,10 @@ function canonicalProjectRole(role: ProjectMembership["role"]) {
     return "editor" as const;
   }
   return role;
+}
+
+function isGlobalSuperAdmin(userRole?: string | null) {
+  return String(userRole || "").trim().toLowerCase() === "super_admin";
 }
 
 const DEFAULT_WORKSPACE_PERMISSIONS: Record<"workspace_admin" | "editor" | "agent" | "viewer", string[]> = {
@@ -264,17 +269,29 @@ export const useAuthStore = create<AuthState>()(
           resolvedAccess: null,
         })),
       setActiveProject: (project) => set({ activeProject: project, resolvedAccess: null }),
-      setHasHydrated: (value) => set({ hasHydrated: value }),
-      clearAuth: () =>
+      clearSupportContext: () =>
         set({
-          user: null,
-          token: null,
-          memberships: [],
-          projectAccesses: [],
           activeWorkspace: null,
           activeProject: null,
           resolvedAccess: null,
-          hasHydrated: true,
+        }),
+      setHasHydrated: (value) => set({ hasHydrated: value }),
+      clearAuth: () =>
+        set(() => {
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem("auth-storage");
+          }
+
+          return {
+            user: null,
+            token: null,
+            memberships: [],
+            projectAccesses: [],
+            activeWorkspace: null,
+            activeProject: null,
+            resolvedAccess: null,
+            hasHydrated: true,
+          };
         }),
       isAuthenticated: () => !!get().token,
       hasWorkspaceRole: (workspaceId, allowedRoles) => {
@@ -282,15 +299,13 @@ export const useAuthStore = create<AuthState>()(
           return false;
         }
 
+        if (isGlobalSuperAdmin(get().user?.role)) {
+          return true;
+        }
+
         const resolvedAccess = get().resolvedAccess;
-        if (
-          ["super_admin", "developer"].includes(String(get().user?.role || "")) &&
-          resolvedAccess?.workspace_id === workspaceId
-        ) {
+        if (String(get().user?.role || "").trim().toLowerCase() === "developer" && resolvedAccess?.workspace_id === workspaceId) {
           const resolvedRole = resolvedAccess?.workspace_role;
-          if (!resolvedRole && !resolvedAccess?.support_access) {
-            return false;
-          }
           if (resolvedAccess?.support_access) {
             return allowedRoles.includes("workspace_admin");
           }
@@ -317,11 +332,12 @@ export const useAuthStore = create<AuthState>()(
           return false;
         }
 
+        if (isGlobalSuperAdmin(get().user?.role)) {
+          return true;
+        }
+
         const resolvedAccess = get().resolvedAccess;
-        if (
-          ["super_admin", "developer"].includes(String(get().user?.role || "")) &&
-          resolvedAccess?.workspace_id === workspaceId
-        ) {
+        if (String(get().user?.role || "").trim().toLowerCase() === "developer" && resolvedAccess?.workspace_id === workspaceId) {
           const permissionMap = resolvedAccess?.workspace_permissions || {};
           return getPermissionCandidates(permission).some((candidate) =>
             Boolean(permissionMap[candidate])

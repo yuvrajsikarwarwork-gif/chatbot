@@ -868,6 +868,36 @@ export async function findWebhookIntegration(botId: string, platform: string) {
   return (await findCompatibilityAccountsByBot(botId, normalizeChannel(platform)))[0] || null;
 }
 
+export async function findActiveWhatsAppPlatformAccountByPhoneNumberId(
+  phoneNumberId: string
+) {
+  const res = await query(
+    `SELECT
+       pa.*,
+       COALESCE(pa.metadata->>'legacyBotId', '') AS bot_id
+     FROM platform_accounts pa
+     LEFT JOIN workspaces w ON w.id = pa.workspace_id
+     LEFT JOIN projects p ON p.id = pa.project_id
+     WHERE pa.platform_type = 'whatsapp'
+       AND pa.status = 'active'
+       AND (w.id IS NULL OR w.deleted_at IS NULL)
+       AND (p.id IS NULL OR p.deleted_at IS NULL)
+       AND (
+         pa.account_id = $1
+         OR pa.phone_number = $1
+         OR pa.metadata->>'phoneNumberId' = $1
+         OR pa.metadata->>'phone_number_id' = $1
+         OR pa.metadata->>'wa_phone_number_id' = $1
+       )
+     ORDER BY pa.created_at DESC
+     LIMIT 1`,
+    [phoneNumberId]
+  );
+
+  const record = res.rows[0];
+  return record ? (record as CompatibilityPlatformAccount) : null;
+}
+
 export async function findLegacyWhatsAppBotMatch(phoneNumberId: string) {
   const res = await query(
     `SELECT
@@ -885,6 +915,8 @@ export async function findLegacyWhatsAppBotMatch(phoneNumberId: string) {
          pa.account_id = $1
          OR pa.phone_number = $1
          OR pa.metadata->>'phoneNumberId' = $1
+         OR pa.metadata->>'phone_number_id' = $1
+         OR pa.metadata->>'wa_phone_number_id' = $1
        )
      ORDER BY pa.created_at DESC
      LIMIT 1`,

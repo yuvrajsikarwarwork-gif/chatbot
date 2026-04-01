@@ -17,6 +17,7 @@ export const loadState = async (
       conversation_id: conversationId,
       current_node_id: null,
       variables: {},
+      bookmarked_state: null,
       waiting_input: false,
       waiting_agent: false,
       input_variable: null,
@@ -26,14 +27,15 @@ export const loadState = async (
     await query(
       `
       INSERT INTO conversation_state
-      (bot_id, conversation_id, current_node_id, variables, waiting_input, waiting_agent, input_variable, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      (bot_id, conversation_id, current_node_id, variables, bookmarked_state, waiting_input, waiting_agent, input_variable, status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       `,
       [
         newState.bot_id,
         newState.conversation_id,
         newState.current_node_id,
         JSON.stringify(newState.variables),
+        JSON.stringify(newState.bookmarked_state || null),
         newState.waiting_input,
         newState.waiting_agent,
         newState.input_variable,
@@ -52,7 +54,8 @@ export const loadState = async (
     waiting_input: Boolean(state.waiting_input),
     waiting_agent: Boolean(state.waiting_agent),
     input_variable: state.input_variable || null,
-    status: state.status || null
+    status: state.status || null,
+    bookmarked_state: state.bookmarked_state || null
   };
 };
 
@@ -66,15 +69,17 @@ export const saveState = async (
     SET
       current_node_id = $1,
       variables = $2,
-      waiting_input = $3,
-      waiting_agent = $4,
-      input_variable = $5,
-      status = $6
-    WHERE conversation_id = $7
+      bookmarked_state = $3,
+      waiting_input = $4,
+      waiting_agent = $5,
+      input_variable = $6,
+      status = $7
+    WHERE conversation_id = $8
     `,
     [
       state.current_node_id,
       JSON.stringify(state.variables),
+      JSON.stringify(state.bookmarked_state || null),
       state.waiting_input,
       state.waiting_agent,
       state.input_variable,

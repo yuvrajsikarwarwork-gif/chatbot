@@ -20,7 +20,7 @@ router.use(authMiddleware);
 router.use(requireAuthenticatedUser);
 
 router.get("/me", resolveWorkspaceContext, resolveProjectContext, getMyPermissionsCtrl);
-router.get("/role/:role", resolveWorkspaceContext, getRolePermissionsCtrl);
+router.get("/role/:role", getRolePermissionsCtrl);
 router.patch("/role", requirePlatformRoles(["developer", "super_admin"]), patchRolePermissionsCtrl);
 router.patch("/user", resolveWorkspaceContext, patchUserPermissionsCtrl);
 
