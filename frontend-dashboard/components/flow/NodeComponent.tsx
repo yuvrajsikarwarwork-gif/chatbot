@@ -1,5 +1,5 @@
 import { Handle, Position, useReactFlow } from "reactflow";
-import { X, Hash, Headset, Bot, RotateCcw, Link, AlertTriangle, MessageSquare, Clock, Split, List } from "lucide-react";
+import { X, Hash, Headset, Bot, AlertTriangle, MessageSquare, Clock, Split, List, Play, LogOut, ArrowRight } from "lucide-react";
 
 import { useFlowValidationContext } from "./FlowValidationContext";
 
@@ -31,25 +31,22 @@ export default function NodeComponent({
     transform: "translateY(-50%)",
   } as const;
 
-  const isMessageNode = type === "message" || type === "msg_text" || type === "msg_media";
-  const isMenuNode = type === "menu" || type === "menu_button" || type === "menu_list";
-  const isConditionNode = type === "condition";
+  const normalizedType = String(type || "").trim().toLowerCase();
+  const isStartNode = type === "start";
   const isEndNode = type === "end";
+  const isTriggerNode = type === "trigger";
+  const isMessageNode = normalizedType === "message";
+  const isMenuNode = normalizedType === "menu";
+  const isConditionNode = type === "condition";
   const isGotoNode = type === "goto";
   const isAgentNode = type === "assign_agent";
-  const isInputNode = type === "input";
+  const isInputNode = normalizedType === "input";
   const isAiNode = type === "ai_generate";
   const isBusinessHoursNode = type === "business_hours";
   const isSplitTrafficNode = type === "split_traffic";
   const isApiNode = type === "api";
   const isWaitingNode = isInputNode || isMenuNode;
-  const isStartNode = type === "start";
-  const linkedLeadFormId = String(
-    data?.linkedFormId || data?.leadFormId || data?.formId || data?.lead_form_id || ""
-  ).trim();
-  const linkedLeadFieldKey = String(
-    data?.linkedFieldKey || data?.leadField || data?.field || ""
-  ).trim();
+
   const contextValidationMessage = flowValidation.invalidNodeReasons[String(id || "")] || "";
   const resolvedValidationMessage = validationMessage || contextValidationMessage;
   const resolvedInvalid = Boolean(isInvalid || resolvedValidationMessage);
@@ -58,6 +55,7 @@ export default function NodeComponent({
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isStartNode) return;
     setNodes((nds) => nds.filter((node) => node.id !== id));
     setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id));
   };
@@ -72,7 +70,7 @@ export default function NodeComponent({
             : "border-border-main shadow-sm hover:border-primary/50"
       } border-solid`}
     >
-      {!isLockedTopology ? (
+      {!isLockedTopology && !isStartNode ? (
         <button
           onClick={handleDelete}
           className="absolute top-2 right-2 text-text-muted hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-surface rounded-full p-0.5"
@@ -81,7 +79,7 @@ export default function NodeComponent({
         </button>
       ) : null}
 
-      {!isStartNode && (
+      {!isStartNode && !isTriggerNode && (
         <Handle
           type="target"
           position={Position.Left}
@@ -90,18 +88,18 @@ export default function NodeComponent({
         />
       )}
 
-      <div
-        className={`p-2.5 border-b flex items-center justify-between pr-8 ${
-          "bg-surface border-border-main"
-        }`}
-      >
+      <div className="p-2.5 border-b flex items-center justify-between pr-8 bg-surface border-border-main">
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={`text-[10px] font-black uppercase tracking-widest truncate ${
-              "text-text-muted"
-            }`}
-          >
-            {data.label || type.replace("_", " ")}
+          {isStartNode ? <Play size={10} className="text-emerald-500" /> : null}
+          {isEndNode ? <LogOut size={10} className="text-rose-500" /> : null}
+          {isMessageNode ? <MessageSquare size={10} className="text-primary" /> : null}
+          {isMenuNode ? <List size={10} className="text-primary" /> : null}
+          {isBusinessHoursNode ? <Clock size={10} className="text-primary" /> : null}
+          {isSplitTrafficNode ? <Split size={10} className="text-primary" /> : null}
+          {isAgentNode ? <Headset size={10} className="text-primary" /> : null}
+          {isAiNode ? <Bot size={10} className="text-primary" /> : null}
+          <span className="text-[10px] font-black uppercase tracking-widest truncate text-text-muted">
+            {data.label || normalizedType.replace("_", " ")}
           </span>
           {resolvedInvalid ? (
             <span
@@ -116,7 +114,7 @@ export default function NodeComponent({
 
         <div className="flex items-center gap-1 bg-surface px-1.5 py-0.5 rounded text-[8px] font-mono text-text-muted border border-border-main">
           <Hash size={8} />
-          {id.slice(-4)}
+          {String(id || "").slice(-4)}
         </div>
       </div>
 
@@ -133,18 +131,15 @@ export default function NodeComponent({
                   Timeout {Number(data.timeout)}s
                 </span>
               ) : null}
-              {linkedLeadFormId ? (
+              {String(data.linkedFormId || data.leadFormId || data.formId || data.lead_form_id || "").trim() ? (
                 <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 border border-emerald-200">
                   Lead form linked
                 </span>
               ) : null}
             </div>
-            <div className="flex items-center gap-1 text-[9px] italic font-bold">
-              <RotateCcw size={10} className="text-text-muted" /> Invalid reply, timeout and fallback are configured in the editor
-            </div>
-            {linkedLeadFieldKey ? (
+            {String(data.linkedFieldKey || data.leadField || data.field || "").trim() ? (
               <p className="text-[9px] text-text-muted">
-                Field: <span className="font-mono text-text-main">{linkedLeadFieldKey}</span>
+                Field: <span className="font-mono text-text-main">{String(data.linkedFieldKey || data.leadField || data.field)}</span>
               </p>
             ) : null}
           </div>
@@ -154,9 +149,7 @@ export default function NodeComponent({
               <MessageSquare size={10} /> Message
             </div>
             <p className="truncate font-bold bg-surface p-1 rounded border text-text-main border-border-main">
-              {(data.media_url || data.url)
-                ? String(data.messageType || data.mediaType || "media").toUpperCase()
-                : "Text"}
+              {(data.media_url || data.url) ? String(data.messageType || data.mediaType || "media").toUpperCase() : "Text"}
             </p>
             <p className="truncate max-w-[180px] text-text-main">{data.text || data.caption || "Configure message..."}</p>
           </div>
@@ -166,34 +159,22 @@ export default function NodeComponent({
               <List size={10} /> Interactive Menu
             </div>
             <p className="truncate font-bold bg-surface p-1 rounded border text-text-main border-border-main">
-              {Number(
-                Array.from({ length: 10 }, (_, index) => index + 1).filter((num) => Boolean(data[`item${num}`])).length
-              ) > 3
-                ? "List Style"
-                : "Button Style"}
+              {Number(Array.from({ length: 10 }, (_, index) => index + 1).filter((num) => Boolean(data[`item${num}`])).length) > 3 ? "List Style" : "Button Style"}
             </p>
             <p className="truncate max-w-[180px] text-text-main">{data.text || "Choose an option..."}</p>
           </div>
         ) : isGotoNode ? (
           <div className="space-y-1">
             <div className="flex items-center gap-1 text-[9px] text-primary font-black uppercase tracking-tight">
-              <Link size={10} />{" "}
-              {data.gotoType === "bot"
-                ? "Other Bot"
-                : data.gotoType === "flow"
-                  ? "Bot Flow"
-                  : "Internal Node"}
+              <ArrowRight size={10} />
+              {data.gotoType === "bot" ? "Other Bot" : data.gotoType === "flow" ? "Bot Flow" : "Internal Node"}
             </div>
-            <p
-              className={`truncate font-bold bg-surface p-1 rounded border ${
-                !data.targetNode && !data.targetBotId
-                  ? "text-primary border-primary/30 animate-pulse"
-                  : "text-text-main border-border-main"
-              }`}
-            >
-              {data.gotoType === "flow"
-                ? data.targetFlowId || "Unconfigured"
-                : data.targetNode || data.targetBotId || "Unconfigured"}
+            <p className={`truncate font-bold bg-surface p-1 rounded border ${
+              !data.targetNode && !data.targetBotId
+                ? "text-primary border-primary/30 animate-pulse"
+                : "text-text-main border-border-main"
+            }`}>
+              {data.gotoType === "flow" ? data.targetFlowId || "Unconfigured" : data.targetNode || data.targetBotId || "Unconfigured"}
             </p>
           </div>
         ) : isAgentNode ? (
@@ -238,6 +219,13 @@ export default function NodeComponent({
               A: {Number(data.percentA || 50)}% | B: {Number(data.percentB || 50)}%
             </p>
             <p className="text-[9px] text-text-muted">Random A/B routing</p>
+          </div>
+        ) : isTriggerNode ? (
+          <div className="space-y-1">
+            <div className="flex items-center gap-1 text-[9px] text-primary font-black uppercase tracking-tight">
+              <Play size={10} /> Trigger Entry
+            </div>
+            <p className="truncate max-w-[180px] text-text-main">{data.text || "Configure trigger..."}</p>
           </div>
         ) : data.text ? (
           <div className="space-y-1">
@@ -286,56 +274,6 @@ export default function NodeComponent({
               </div>
             );
           })}
-        </div>
-      )}
-
-      {isBusinessHoursNode && (
-        <div className="border-t border-border-main bg-surface flex flex-col">
-          <div className="relative p-2 text-[10px] font-bold text-center border-b border-border-main text-primary">
-            <span>Open</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="open"
-              className={sideHandleClassName}
-              style={{ ...sideHandleStyle, background: "var(--primary)" }}
-            />
-          </div>
-          <div className="relative p-2 text-[10px] font-bold text-center text-text-muted">
-            <span>Closed</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="closed"
-              className={sideHandleClassName}
-              style={{ ...sideHandleStyle, background: "var(--text-muted)" }}
-            />
-          </div>
-        </div>
-      )}
-
-      {isSplitTrafficNode && (
-        <div className="border-t border-border-main bg-surface flex flex-col">
-          <div className="relative p-2 text-[10px] font-bold text-center border-b border-border-main text-primary">
-            <span>Variant A</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="a"
-              className={sideHandleClassName}
-              style={{ ...sideHandleStyle, background: "var(--primary)" }}
-            />
-          </div>
-          <div className="relative p-2 text-[10px] font-bold text-center text-text-muted">
-            <span>Variant B</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="b"
-              className={sideHandleClassName}
-              style={{ ...sideHandleStyle, background: "var(--text-muted)" }}
-            />
-          </div>
         </div>
       )}
 
@@ -425,6 +363,7 @@ export default function NodeComponent({
       !isSplitTrafficNode &&
       !isConditionNode &&
       !isApiNode &&
+      !isTriggerNode &&
       maxItems === 0 ? (
         <Handle
           type="source"

@@ -31,6 +31,7 @@ const SCHEMA_COMPAT_ERROR_CODES = new Set(["42P01", "42703"]);
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v23.0";
 const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
 const FLOW_WAIT_JOB_TYPES = ["flow_wait_reminder", "flow_wait_timeout"];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const normalizeTemplateContent = (body: any) => {
   if (body.content && typeof body.content === "object") {
@@ -84,6 +85,10 @@ function getProjectId(req: PolicyRequest) {
     (req.headers["x-project-id"] as string) ||
     undefined
   );
+}
+
+function isUuidLike(value: string) {
+  return UUID_PATTERN.test(String(value || "").trim());
 }
 
 async function assertTemplateScopePermission(input: {
@@ -142,12 +147,17 @@ async function findAccessibleBot(botId: string, userId: string) {
 }
 
 async function findAccessibleCampaign(campaignId: string, userId: string) {
+  const normalizedCampaignId = String(campaignId || "").trim();
+  if (!normalizedCampaignId || !UUID_PATTERN.test(normalizedCampaignId)) {
+    return null;
+  }
+
   const res = await query(
     `SELECT id, workspace_id, project_id
      FROM campaigns
      WHERE id = $1
      LIMIT 1`,
-    [campaignId]
+    [normalizedCampaignId]
   );
 
   const campaign = res.rows[0];
@@ -403,6 +413,9 @@ export async function findAccessibleTemplate(
     });
   } else if (template.campaign_id) {
     const campaign = await findAccessibleCampaign(String(template.campaign_id), userId);
+    if (!campaign) {
+      throw { status: 400, message: "INVALID_CAMPAIGN_ID" };
+    }
     template.workspace_id = campaign.workspace_id || null;
     template.project_id = campaign.project_id || null;
   } else if (template.bot_id) {
@@ -543,6 +556,25 @@ function normalizeTemplateStatus(input: unknown) {
   return status;
 }
 
+const SUPPORTED_TEMPLATE_PLATFORMS = new Set([
+  "whatsapp",
+  "telegram",
+  "email",
+  "facebook",
+  "instagram",
+]);
+
+function normalizeTemplatePlatform(input: unknown) {
+  const platform = String(input || "").trim().toLowerCase();
+  if (!platform) {
+    return "whatsapp";
+  }
+  if (SUPPORTED_TEMPLATE_PLATFORMS.has(platform)) {
+    return platform;
+  }
+  return "whatsapp";
+}
+
 function stringifyRejectionReason(input: unknown) {
   if (!input) return null;
   if (typeof input === "string") return input;
@@ -659,6 +691,7 @@ function normalizeTemplateRecordForResponse(template: any) {
   const payloadContent = parseMetaTemplateComponents(metaPayload?.components || []);
   const rawContent = parseJsonLike(template?.content) || {};
   const rawVariables = parseJsonLike(template?.variables) || {};
+  const platformType = normalizeTemplatePlatform(template?.platform_type || metaPayload?.platform_type || "whatsapp");
   const content = {
     header:
       rawContent?.header ??
@@ -694,6 +727,7 @@ function normalizeTemplateRecordForResponse(template: any) {
 
   return {
     ...template,
+    platform_type: platformType,
     name:
       !isPlaceholderTemplateName(template?.name) && String(template?.name || "").trim()
         ? template.name
@@ -2164,10 +2198,11 @@ export const syncTemplateFromMeta = async (req: PolicyRequest, res: Response) =>
   }
 };
 
-export const importTemplatesFromMeta = async (req: PolicyRequest, res: Response) => {
+export const previewMetaTemplates = async (req: PolicyRequest, res: Response) => {
   try {
     const userId = getUserId(req);
     const campaignId = String(req.body?.campaign_id || req.body?.campaignId || "").trim();
+    console.log("Incoming Campaign ID:", campaignId);
 
     if (!userId) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -2177,7 +2212,64 @@ export const importTemplatesFromMeta = async (req: PolicyRequest, res: Response)
       return res.status(400).json({ error: "campaign_id is required" });
     }
 
+    if (!isUuidLike(campaignId)) {
+      return res.status(400).json({ error: "campaign_id must be a valid UUID" });
+    }
+
     const campaign = await findAccessibleCampaign(campaignId, userId);
+    if (!campaign) {
+      return res.status(400).json({ error: "campaign_id must be a valid UUID" });
+    }
+    let connection;
+    try {
+      connection = await getMetaTemplateConnection({
+        campaign_id: campaign.id,
+        platform_type: "whatsapp",
+      });
+    } catch (error: any) {
+      if (Number(error?.status) === 409) {
+        return res.status(400).json({
+          error: "This campaign does not have a fully configured WhatsApp channel. Please connect a channel first.",
+        });
+      }
+      throw error;
+    }
+
+    const templates = await fetchAllMetaTemplateRecords({
+      accessToken: connection.accessToken,
+      wabaId: connection.wabaId,
+    });
+
+    return res.status(200).json({ templates });
+  } catch (error: any) {
+    return res.status(error.status || 500).json({ error: error.message || "Internal Server Error" });
+  }
+};
+
+export const importTemplatesFromMeta = async (req: PolicyRequest, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const campaignId = String(req.body?.campaign_id || req.body?.campaignId || "").trim();
+    const selectedTemplateIds = Array.isArray(req.body?.selectedTemplateIds)
+      ? req.body.selectedTemplateIds.map((id: any) => String(id || "").trim()).filter(Boolean)
+      : [];
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    if (!campaignId) {
+      return res.status(400).json({ error: "campaign_id is required" });
+    }
+
+    if (!isUuidLike(campaignId)) {
+      return res.status(400).json({ error: "campaign_id must be a valid UUID" });
+    }
+
+    const campaign = await findAccessibleCampaign(campaignId, userId);
+    if (!campaign) {
+      return res.status(400).json({ error: "campaign_id must be a valid UUID" });
+    }
     const connection = await getMetaTemplateConnection({
       campaign_id: campaign.id,
       platform_type: "whatsapp",
@@ -2186,10 +2278,15 @@ export const importTemplatesFromMeta = async (req: PolicyRequest, res: Response)
       accessToken: connection.accessToken,
       wabaId: connection.wabaId,
     });
+    const selectedTemplateIdSet = new Set(selectedTemplateIds);
+    const filteredRemoteTemplates =
+      selectedTemplateIdSet.size > 0
+        ? remoteTemplates.filter((remote) => selectedTemplateIdSet.has(String(remote?.id || "").trim()))
+        : remoteTemplates;
     const columnMap = await getTemplateColumnMap();
     const imported: any[] = [];
 
-    for (const remote of remoteTemplates) {
+    for (const remote of filteredRemoteTemplates) {
       const metaTemplateId = String(remote?.id || "").trim();
       const metaTemplateName = normalizeMetaTemplateName(String(remote?.name || ""));
       const localName = String(remote?.name || metaTemplateName || "Imported Template");

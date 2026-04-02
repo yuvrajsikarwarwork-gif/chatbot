@@ -31,7 +31,7 @@ export function DashboardLayoutShell({ children, title, fullBleed = false }: Das
 
 function DashboardLayoutFrame({ children, title, fullBleed = false }: DashboardLayoutProps) {
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-canvas text-text-main">
+    <div className="flex h-screen w-screen overflow-hidden bg-canvas">
       <Sidebar />
       <WorkspaceRuntimeProvider>
         <DashboardLayoutRuntimeFrame title={title} fullBleed={fullBleed}>
@@ -58,23 +58,25 @@ function DashboardLayoutRuntimeFrame({ children, title, fullBleed = false }: Das
           <title>{`${title} | BOT.OS`}</title>
         </Head>
       ) : null}
-      <div className="relative flex h-full w-full flex-1 flex-col overflow-hidden px-3 py-3 md:px-4 md:py-4">
-        <Navbar />
-        <GlobalBackStrip className="mb-2 mt-2" />
-        {!isWorkspaceShellRoute && banner ? (
-          <div className="mb-2">
-            <WorkspaceStatusBanner workspace={workspace} />
-          </div>
-        ) : null}
-        <main className="flex-1 flex flex-col h-full w-full overflow-y-auto relative">
-          <div
-            className={shellClassName}
-            data-workspace-readonly={applyWorkspaceReadonlyStyles ? "true" : "false"}
-            data-workspace-loading={loading ? "true" : "false"}
-          >
-            {children}
-          </div>
-        </main>
+      <div className="relative flex flex-1 flex-col overflow-y-auto bg-canvas text-text-main">
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col px-3 py-3 md:px-4 md:py-4">
+          <Navbar />
+          <GlobalBackStrip className="mb-2 mt-2" />
+          {!isWorkspaceShellRoute && banner ? (
+            <div className="mb-2">
+              <WorkspaceStatusBanner workspace={workspace} />
+            </div>
+          ) : null}
+          <main className="relative flex min-h-0 w-full flex-1 flex-col">
+            <div
+              className={shellClassName}
+              data-workspace-readonly={applyWorkspaceReadonlyStyles ? "true" : "false"}
+              data-workspace-loading={loading ? "true" : "false"}
+            >
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
     </>
   );

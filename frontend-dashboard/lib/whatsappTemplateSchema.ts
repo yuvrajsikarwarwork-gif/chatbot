@@ -1,5 +1,5 @@
 export type TemplateCategory = "marketing" | "utility" | "authentication";
-export type TemplatePlatform = "whatsapp" | "telegram" | "email" | "sms" | "instagram";
+export type TemplatePlatform = "whatsapp" | "telegram" | "email" | "facebook" | "instagram";
 export type TemplateValidationMode = "draft" | "publish";
 
 export type TemplateButtonType =

@@ -1,4 +1,4 @@
-import {
+﻿import {
   createScopedBot,
   deleteWorkspaceBot,
   findBotById,
@@ -110,100 +110,6 @@ function isSystemFlowRecord(flow: any) {
       flowJson.global_flow ||
       inferredType
   );
-}
-
-function buildSystemSettingsBackfill(
-  currentSettings: any,
-  handoffFlowId: string,
-  csatFlowId: string
-) {
-  const currentSystemMessages =
-    currentSettings?.system_messages && typeof currentSettings.system_messages === "object"
-      ? currentSettings.system_messages
-      : {};
-  const currentSystemFlows =
-    currentSettings?.system_flows && typeof currentSettings.system_flows === "object"
-      ? currentSettings.system_flows
-      : {};
-
-  const fallbackMessage =
-    String(
-      currentSystemMessages.fallback_message ||
-        currentSystemMessages.fallbackMessage ||
-        currentSettings?.fallback_message ||
-        currentSettings?.fallbackMessage ||
-        ""
-    ).trim() || "I didn't quite understand that. Can you rephrase?";
-  const optOutMessage =
-    String(
-      currentSystemMessages.opt_out_message ||
-        currentSystemMessages.optOutMessage ||
-        currentSettings?.opt_out_message ||
-        currentSettings?.optOutMessage ||
-        ""
-    ).trim() || "You have been unsubscribed and will no longer receive messages.";
-
-  const nextSettings = {
-    ...currentSettings,
-    system_messages: {
-      ...currentSystemMessages,
-      fallback_message: fallbackMessage,
-      opt_out_message: optOutMessage,
-    },
-    system_flows: {
-      ...currentSystemFlows,
-      handoff_flow_id:
-        String(currentSystemFlows.handoff_flow_id || currentSystemFlows.handoffFlowId || "").trim() ||
-        handoffFlowId ||
-        null,
-      csat_flow_id:
-        String(currentSystemFlows.csat_flow_id || currentSystemFlows.csatFlowId || "").trim() ||
-        csatFlowId ||
-        null,
-      handoff_mode:
-        String(
-          currentSystemFlows.handoff_mode ||
-            currentSystemFlows.handoffMode ||
-            currentSettings?.handoff_mode ||
-            currentSettings?.handoffMode ||
-            ""
-        ).trim() || "default",
-      csat_mode:
-        String(
-          currentSystemFlows.csat_mode ||
-            currentSystemFlows.csatMode ||
-            currentSettings?.csat_mode ||
-            currentSettings?.csatMode ||
-            ""
-        ).trim() || "default",
-    },
-    keyword_interrupts: Array.isArray(currentSettings?.keyword_interrupts)
-      ? currentSettings.keyword_interrupts
-      : Array.isArray(currentSettings?.universal_rules)
-        ? currentSettings.universal_rules
-        : [],
-    universal_rules: Array.isArray(currentSettings?.universal_rules)
-      ? currentSettings.universal_rules
-      : Array.isArray(currentSettings?.keyword_interrupts)
-        ? currentSettings.keyword_interrupts
-        : [],
-    fallback_message: fallbackMessage,
-    opt_out_message: optOutMessage,
-    handoff_flow_id:
-      String(currentSettings?.handoff_flow_id || currentSystemFlows.handoff_flow_id || "").trim() ||
-      handoffFlowId ||
-      null,
-    csat_flow_id:
-      String(currentSettings?.csat_flow_id || currentSystemFlows.csat_flow_id || "").trim() ||
-      csatFlowId ||
-      null,
-    handoff_mode:
-      String(currentSettings?.handoff_mode || currentSystemFlows.handoff_mode || "").trim() || "default",
-    csat_mode:
-      String(currentSettings?.csat_mode || currentSystemFlows.csat_mode || "").trim() || "default",
-  };
-
-  return nextSettings;
 }
 
 function extractDerivedTriggerKeywords(flowJson: any) {
@@ -422,35 +328,79 @@ function buildHandoffFlowBlueprint() {
     is_system_flow: true,
     layout_left_to_right: true,
     nodes: [
-      { id: "handoff-start", type: "start", position: { x: 120, y: 100 }, data: { label: "Start" } },
       {
-        id: "handoff-ack",
-        type: "message",
-        position: { x: 120, y: 220 },
-        data: { label: "Acknowledgment", text: "No problem. Let me get a human agent to help you out." },
-      },
-      {
-        id: "handoff-assign",
-        type: "assign_agent",
-        position: { x: 120, y: 360 },
-        data: { label: "Assign Agent", text: "Bot paused. An agent will be with you shortly." },
-      },
-      {
-        id: "handoff-set-expectation",
-        type: "message",
-        position: { x: 120, y: 500 },
+        id: "node_trigger_handoff",
+        type: "trigger",
+        position: { x: 100, y: 200 },
         data: {
-          label: "Expectation Setting",
-          text: "I've notified our team. Someone will review your chat and reply here shortly. Reply 'Cancel' to return to the bot.",
+          label: "Support Trigger",
+          triggerType: "keyword",
+          triggerKeywords: "human, support, agent, help desk",
         },
       },
-      { id: "handoff-end", type: "end", position: { x: 520, y: 500 }, data: { label: "End" } },
+      {
+        id: "node_confirm_handoff",
+        type: "menu",
+        position: { x: 400, y: 200 },
+        data: {
+          label: "Confirm Transfer",
+          text: "Would you like me to transfer you to a human support agent?",
+          item1: "Yes, please",
+          item2: "No, I'm good",
+          timeout: 86400,
+          reminderDelay: 43200,
+          reminderText: "Hi there! Just checking in. Did you still want to speak to an agent?",
+        },
+      },
+      {
+        id: "node_wait_msg",
+        type: "message",
+        position: { x: 700, y: 50 },
+        data: {
+          label: "Wait Message",
+          text: "Please wait a moment while I connect you with our next available agent...",
+        },
+      },
+      {
+        id: "node_assign_agent",
+        type: "assign_agent",
+        position: { x: 1000, y: 50 },
+        data: { label: "Transfer to Human" },
+      },
+      {
+        id: "node_cancel_msg",
+        type: "message",
+        position: { x: 700, y: 200 },
+        data: {
+          label: "Cancel Handoff",
+          text: "No problem! Let me know if you need anything else.",
+        },
+      },
+      {
+        id: "node_timeout_msg",
+        type: "message",
+        position: { x: 700, y: 350 },
+        data: {
+          label: "Timeout Notice",
+          text: "This request has timed out due to inactivity. Type 'Help' whenever you need us!",
+        },
+      },
+      {
+        id: "node_end_handoff",
+        type: "end",
+        position: { x: 1300, y: 200 },
+        data: { label: "End Session" },
+      },
     ],
     edges: [
-      { id: "handoff-e1", source: "handoff-start", target: "handoff-ack", sourceHandle: "next" },
-      { id: "handoff-e2", source: "handoff-ack", target: "handoff-assign", sourceHandle: "next" },
-      { id: "handoff-e3", source: "handoff-assign", target: "handoff-set-expectation", sourceHandle: "response" },
-      { id: "handoff-e4", source: "handoff-set-expectation", target: "handoff-end", sourceHandle: "next" },
+      { id: "e1", source: "node_trigger_handoff", target: "node_confirm_handoff", sourceHandle: "next" },
+      { id: "e2", source: "node_confirm_handoff", target: "node_wait_msg", sourceHandle: "item1" },
+      { id: "e3", source: "node_confirm_handoff", target: "node_cancel_msg", sourceHandle: "item2" },
+      { id: "e_timeout", source: "node_confirm_handoff", target: "node_timeout_msg", sourceHandle: "timeout" },
+      { id: "e4", source: "node_wait_msg", target: "node_assign_agent", sourceHandle: "next" },
+      { id: "e5", source: "node_assign_agent", target: "node_end_handoff", sourceHandle: "next" },
+      { id: "e6", source: "node_cancel_msg", target: "node_end_handoff", sourceHandle: "next" },
+      { id: "e7", source: "node_timeout_msg", target: "node_end_handoff", sourceHandle: "next" },
     ],
   };
 }
@@ -462,66 +412,87 @@ function buildCsatFlowBlueprint() {
     is_system_flow: true,
     layout_left_to_right: true,
     nodes: [
-      { id: "csat-start", type: "start", position: { x: 120, y: 100 }, data: { label: "Start" } },
       {
-        id: "csat-menu",
-        type: "menu",
-        position: { x: 120, y: 220 },
+        id: "node_resume_csat",
+        type: "resume_bot",
+        position: { x: 100, y: 200 },
         data: {
-          label: "CSAT Rating",
-          text: "This conversation has been closed. How would you rate the support you received today?",
-          item1: "🤩 Great",
-          item2: "😐 Okay",
-          item3: "😡 Bad",
+          label: "Agent Closed Chat",
+          resumeMode: "restart",
+          resumeText: "Your support ticket has been closed by the agent.",
         },
       },
       {
-        id: "csat-save-good",
-        type: "save",
-        position: { x: 120, y: 360 },
-        data: { label: "Save Great", variable: "last_csat_rating", value: "Great" },
+        id: "node_csat_menu",
+        type: "menu",
+        position: { x: 400, y: 200 },
+        data: {
+          label: "Rate Experience",
+          text: "How was your experience with our support team today?",
+          item1: "Excellent ??",
+          item2: "Average ??",
+          item3: "Poor ??",
+          timeout: 86400,
+          reminderDelay: 43200,
+          reminderText: "We'd love to hear your feedback! Please tap a rating above.",
+        },
       },
       {
-        id: "csat-save-ok",
-        type: "save",
-        position: { x: 380, y: 360 },
-        data: { label: "Save Okay", variable: "last_csat_rating", value: "Okay" },
-      },
-      {
-        id: "csat-save-bad",
-        type: "save",
-        position: { x: 640, y: 360 },
-        data: { label: "Save Bad", variable: "last_csat_rating", value: "Bad" },
-      },
-      { id: "csat-thanks", type: "message", position: { x: 120, y: 500 }, data: { label: "Thanks", text: "Thank you for the feedback! Have a great day." } },
-      {
-        id: "csat-sorry",
+        id: "node_excellent_msg",
         type: "message",
-        position: { x: 640, y: 500 },
+        position: { x: 700, y: 50 },
+        data: {
+          label: "Thank You",
+          text: "That is wonderful to hear! Thank you for reaching out, and have a great day.",
+        },
+      },
+      {
+        id: "node_sorry_msg",
+        type: "message",
+        position: { x: 700, y: 250 },
         data: {
           label: "Apology",
-          text: "We are so sorry to hear that. A manager has been notified and will review your ticket.",
+          text: "We are very sorry to hear that we did not meet your expectations.",
         },
       },
       {
-        id: "csat-risk",
-        type: "save",
-        position: { x: 640, y: 640 },
-        data: { label: "Risk Flag", variable: "csat_risk", value: true },
+        id: "node_capture_issue",
+        type: "input",
+        position: { x: 1000, y: 250 },
+        data: {
+          label: "Capture Complaint",
+          text: "Please explain your issue below. A senior member from our team will review this.",
+          variable: "csat_complaint_text",
+          validation: "text",
+          timeout: 86400,
+          reminderDelay: 43200,
+          reminderText: "Are you still there? Please type your issue so our management team can review it.",
+        },
       },
-      { id: "csat-end", type: "end", position: { x: 360, y: 700 }, data: { label: "End" } },
+      {
+        id: "node_save_complaint",
+        type: "save",
+        position: { x: 1300, y: 250 },
+        data: { label: "Save to Lead", variable: "csat_complaint_text", leadField: "escalation_notes" },
+      },
+      {
+        id: "node_end_csat",
+        type: "end",
+        position: { x: 1600, y: 200 },
+        data: { label: "End Session" },
+      },
     ],
     edges: [
-      { id: "csat-e1", source: "csat-start", target: "csat-menu", sourceHandle: "next" },
-      { id: "csat-e2", source: "csat-menu", target: "csat-save-good", sourceHandle: "item1" },
-      { id: "csat-e3", source: "csat-menu", target: "csat-save-ok", sourceHandle: "item2" },
-      { id: "csat-e4", source: "csat-menu", target: "csat-save-bad", sourceHandle: "item3" },
-      { id: "csat-e5", source: "csat-save-good", target: "csat-thanks", sourceHandle: "next" },
-      { id: "csat-e6", source: "csat-save-ok", target: "csat-thanks", sourceHandle: "next" },
-      { id: "csat-e7", source: "csat-save-bad", target: "csat-sorry", sourceHandle: "next" },
-      { id: "csat-e8", source: "csat-sorry", target: "csat-risk", sourceHandle: "next" },
-      { id: "csat-e9", source: "csat-risk", target: "csat-end", sourceHandle: "next" },
-      { id: "csat-e10", source: "csat-thanks", target: "csat-end", sourceHandle: "next" },
+      { id: "e1", source: "node_resume_csat", target: "node_csat_menu", sourceHandle: "next" },
+      { id: "e2", source: "node_csat_menu", target: "node_excellent_msg", sourceHandle: "item1" },
+      { id: "e3", source: "node_csat_menu", target: "node_sorry_msg", sourceHandle: "item2" },
+      { id: "e4", source: "node_csat_menu", target: "node_sorry_msg", sourceHandle: "item3" },
+      { id: "e_timeout1", source: "node_csat_menu", target: "node_end_csat", sourceHandle: "timeout" },
+      { id: "e5", source: "node_sorry_msg", target: "node_capture_issue", sourceHandle: "next" },
+      { id: "e6", source: "node_capture_issue", target: "node_save_complaint", sourceHandle: "response" },
+      { id: "e_timeout2", source: "node_capture_issue", target: "node_end_csat", sourceHandle: "timeout" },
+      { id: "e7", source: "node_excellent_msg", target: "node_end_csat", sourceHandle: "next" },
+      { id: "e8", source: "node_save_complaint", target: "node_end_csat", sourceHandle: "next" },
     ],
   };
 }
@@ -564,143 +535,15 @@ function namespaceFlowBlueprint(botId: string, flowType: string, flowJson: any) 
   };
 }
 
-async function seedDefaultBotFlows(bot: any) {
-  const scopedBot = assertWorkspaceScopedBot(bot);
-  const handoffBlueprint = namespaceFlowBlueprint(scopedBot.id, "handoff", buildHandoffFlowBlueprint());
-  const csatBlueprint = namespaceFlowBlueprint(scopedBot.id, "csat", buildCsatFlowBlueprint());
-
-  const handoffFlow = await createFlow(
-    scopedBot.id,
-    handoffBlueprint,
-    "Default Human Handoff",
-    false,
-    true,
-    undefined,
-    scopedBot.workspace_id,
-    scopedBot.project_id
-  );
-  const csatFlow = await createFlow(
-    scopedBot.id,
-    csatBlueprint,
-    "Default CSAT Survey",
-    false,
-    true,
-    undefined,
-    scopedBot.workspace_id,
-    scopedBot.project_id
-  );
-
-  return updateWorkspaceBot(bot.id, {
-    settings: {
-      system_messages: {
-        fallback_message: "I didn't quite understand that. Can you rephrase?",
-        opt_out_message: "You have been unsubscribed and will no longer receive messages.",
-      },
-      system_flows: {
-        handoff_flow_id: handoffFlow.id,
-        csat_flow_id: csatFlow.id,
-        handoff_mode: "default",
-        csat_mode: "default",
-      },
-      keyword_interrupts: [],
-    },
-    global_settings: {
-      system_messages: {
-        fallback_message: "I didn't quite understand that. Can you rephrase?",
-        opt_out_message: "You have been unsubscribed and will no longer receive messages.",
-      },
-      system_flows: {
-        handoff_flow_id: handoffFlow.id,
-        csat_flow_id: csatFlow.id,
-        handoff_mode: "default",
-        csat_mode: "default",
-      },
-      keyword_interrupts: [],
-    },
-    settings_json: {
-      system_messages: {
-        fallback_message: "I didn't quite understand that. Can you rephrase?",
-        opt_out_message: "You have been unsubscribed and will no longer receive messages.",
-      },
-      system_flows: {
-        handoff_flow_id: handoffFlow.id,
-        csat_flow_id: csatFlow.id,
-        handoff_mode: "default",
-        csat_mode: "default",
-      },
-      keyword_interrupts: [],
-    },
-  });
-}
-
 function hasSystemFlow(rows: any[], flowType: "handoff" | "csat") {
   return rows.find((row) => {
     return inferSystemFlowType(row) === flowType || Boolean(row?.is_system_flow && inferSystemFlowType(row) === flowType);
   });
 }
 
-async function ensureDefaultSystemFlowsForBot(bot: any) {
-  const scopedBot = assertWorkspaceScopedBot(bot);
-  const flows = await findSystemFlowsByBot(scopedBot.id).catch(() => []);
-  let handoffFlow = hasSystemFlow(flows, "handoff");
-  let csatFlow = hasSystemFlow(flows, "csat");
-
-  if (!handoffFlow) {
-    handoffFlow = await createFlow(
-      scopedBot.id,
-      namespaceFlowBlueprint(scopedBot.id, "handoff", buildHandoffFlowBlueprint()),
-      "Default Human Handoff",
-      false,
-      true,
-      undefined,
-      scopedBot.workspace_id,
-      scopedBot.project_id
-    );
-  }
-
-  if (!csatFlow) {
-    csatFlow = await createFlow(
-      scopedBot.id,
-      namespaceFlowBlueprint(scopedBot.id, "csat", buildCsatFlowBlueprint()),
-      "Default CSAT Survey",
-      false,
-      true,
-      undefined,
-      scopedBot.workspace_id,
-      scopedBot.project_id
-    );
-  }
-
-  const currentSettings = mergeSettingsSources(
-    scopedBot.settings,
-    scopedBot.settings_json,
-    scopedBot.global_settings
-  );
-  const nextSettings = buildSystemSettingsBackfill(
-    currentSettings,
-    String(handoffFlow?.id || "").trim(),
-    String(csatFlow?.id || "").trim()
-  );
-
-  if (JSON.stringify(currentSettings || {}) !== JSON.stringify(nextSettings || {})) {
-    await updateWorkspaceBot(scopedBot.id, {
-      settings: nextSettings,
-      global_settings: nextSettings,
-      settings_json: nextSettings,
-    }).catch((err) => {
-      console.error("Failed to backfill default system flow settings:", err);
-    });
-  }
-
-  return {
-    ...scopedBot,
-    global_settings: nextSettings,
-    settings_json: nextSettings,
-  };
-}
-
 async function cloneBotFlowsForTargetBot(sourceBot: any, targetBot: any) {
-  const sourceFlows = await findAllFlowsByBot(sourceBot.id).catch(() => []);
+  const sourceFlows = (await findAllFlowsByBot(sourceBot.id).catch(() => []))
+    .filter((flow: any) => !isSystemFlowRecord(flow));
   const clonedFlows: Array<{
     sourceFlow: any;
     clonedFlow: any;
@@ -862,10 +705,6 @@ export const createBotService = async (
     workspaceId: resolvedWorkspaceId,
     projectId,
   });
-  const seeded = await seedDefaultBotFlows(created).catch((error) => {
-    console.error("Failed to seed default bot flows:", error);
-    return null;
-  });
   await logAuditSafe({
     userId,
     workspaceId: resolvedWorkspaceId,
@@ -873,9 +712,9 @@ export const createBotService = async (
     action: "create",
     entity: "bot",
     entityId: created.id,
-    newData: seeded || created,
+    newData: created,
   });
-  return seeded || created;
+  return created;
 };
 
 export const copyBotService = async (
@@ -923,60 +762,27 @@ export const copyBotService = async (
     allowedProjectRoles: ["project_admin", "editor"],
   });
 
-  const hydratedSourceBot = await ensureDefaultSystemFlowsForBot(sourceBot).catch((err) => {
-    console.error("Failed to hydrate source bot before copy:", err);
-    return sourceBot;
-  });
-
   const clonedBot = await createScopedBot({
     userId,
     name:
       input.name !== undefined
-        ? String(input.name || "").trim() || `${String(hydratedSourceBot.name || sourceBot.name || "Bot").trim()} Copy`
-        : `${String(hydratedSourceBot.name || sourceBot.name || "Bot").trim()} Copy`,
+        ? String(input.name || "").trim() || `${String(sourceBot.name || "Bot").trim()} Copy`
+        : `${String(sourceBot.name || "Bot").trim()} Copy`,
     triggerKeywords:
       input.trigger_keywords !== undefined
         ? String(input.trigger_keywords || "").trim()
-        : String(hydratedSourceBot.trigger_keywords || sourceBot.trigger_keywords || "").trim(),
+        : String(sourceBot.trigger_keywords || "").trim(),
     workspaceId: sourceBot.workspace_id,
     projectId: requestedProjectId,
   });
 
-  const clonedFlows = await cloneBotFlowsForTargetBot(hydratedSourceBot, clonedBot).catch((err) => {
+  const clonedFlows = await cloneBotFlowsForTargetBot(sourceBot, clonedBot).catch((err) => {
     console.error("Failed to clone source bot flows:", err);
     return [];
   });
-
-  const clonedHandoffFlow = clonedFlows.find(({ sourceFlow }) => inferSystemFlowType(sourceFlow) === "handoff");
-  const clonedCsatFlow = clonedFlows.find(({ sourceFlow }) => inferSystemFlowType(sourceFlow) === "csat");
-
-  const sourceSettings = mergeSettingsSources(
-    hydratedSourceBot.settings,
-    hydratedSourceBot.settings_json,
-    hydratedSourceBot.global_settings
-  );
-  const nextSettings = buildSystemSettingsBackfill(
-    sourceSettings,
-    String(clonedHandoffFlow?.clonedFlow?.id || "").trim(),
-    String(clonedCsatFlow?.clonedFlow?.id || "").trim()
-  );
-
-  await updateWorkspaceBot(clonedBot.id, {
-    settings: nextSettings,
-    global_settings: nextSettings,
-    settings_json: nextSettings,
-  }).catch((err) => {
-    console.error("Failed to update cloned bot settings:", err);
-  });
-
   const hydratedCopy = await getBotService(clonedBot.id, userId).catch((err) => {
     console.error("Failed to hydrate cloned bot details:", err);
-    return {
-      ...clonedBot,
-      settings: nextSettings,
-      settings_json: nextSettings,
-      global_settings: nextSettings,
-    };
+    return clonedBot;
   });
 
   await logAuditSafe({
@@ -1023,20 +829,7 @@ export const updateBotService = async (id: string, userId: string, updateData: a
     updateData.settingsJson,
     updateData.settings_json
   );
-  const hydratedBot = await ensureDefaultSystemFlowsForBot(bot).catch((err) => {
-    console.error("Failed to hydrate system flows during bot update:", err);
-    return bot;
-  });
-  const hydratedSettings = mergeSettingsSources(
-    hydratedBot.settings,
-    hydratedBot.settings_json,
-    hydratedBot.global_settings
-  );
-  const payloadSettings = buildSystemSettingsBackfill(
-    mergedRequestedSettings,
-    String(hydratedSettings?.system_flows?.handoff_flow_id || hydratedSettings?.handoff_flow_id || "").trim(),
-    String(hydratedSettings?.system_flows?.csat_flow_id || hydratedSettings?.csat_flow_id || "").trim()
-  );
+  const payloadSettings = mergedRequestedSettings;
 
   const payload = {
     name: updateData.name ?? bot.name,
@@ -1163,3 +956,5 @@ export const activateBotService = async (id: string, userId: string) => {
   const result = await query(`UPDATE bots SET updated_at = NOW() WHERE id = $1 RETURNING *`, [id]);
   return result.rows[0];
 };
+
+

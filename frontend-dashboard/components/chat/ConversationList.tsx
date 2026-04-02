@@ -14,7 +14,6 @@ const platformBadgeClasses: Record<string, string> = {
   facebook: "bg-primary-fade text-primary",
   instagram: "bg-primary-fade text-primary",
   email: "bg-primary-fade text-primary",
-  sms: "bg-primary-fade text-primary",
   website: "bg-primary-fade text-primary",
 };
 

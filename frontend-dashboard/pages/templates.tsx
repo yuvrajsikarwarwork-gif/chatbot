@@ -12,7 +12,7 @@ import { workspaceService } from "../services/workspaceService";
 import { API_URL } from "../config/apiConfig";
 import {
   Plus, Trash2, Edit, MessageSquare,
-  Smartphone, Mail, Send, Globe, LayoutTemplate,
+  Mail, Send, Globe, LayoutTemplate,
   CheckCircle, Clock, BarChart3, ShieldCheck, ShieldAlert, Timer, Eye, Upload, RefreshCcw, CloudUpload
 } from "lucide-react";
 import CampaignSenderModal from "../components/campaign/CampaignSenderModal";
@@ -372,7 +372,7 @@ export default function TemplatesPage() {
     { id: "whatsapp", name: "WhatsApp", icon: MessageSquare },
     { id: "telegram", name: "Telegram", icon: Send },
     { id: "email", name: "Email", icon: Mail },
-    { id: "sms", name: "SMS", icon: Smartphone },
+    { id: "facebook", name: "Facebook", icon: Globe },
     { id: "instagram", name: "Instagram", icon: Globe }
   ];
 
@@ -386,7 +386,7 @@ export default function TemplatesPage() {
 
   return (
     <>
-      <div className="relative flex-1 flex h-full w-full flex-col overflow-hidden px-4 pb-4 pt-1 md:px-5 md:pb-5 md:pt-1">
+      <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden px-4 pb-4 pt-1 md:px-5 md:pb-5 md:pt-1">
         {!activeWorkspace?.workspace_id || !activeProject?.id ? (
           <div className="mx-auto mb-4 w-full max-w-7xl rounded-2xl border border-dashed border-border-main bg-canvas p-6 text-sm text-text-muted">
             Select a workspace and project before managing templates.
@@ -478,19 +478,20 @@ export default function TemplatesPage() {
             )}
         </div>
 
-        <div className="mx-auto w-full max-w-7xl">
+        <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col">
           {activeView === 'templates' ? (
-            <div className="overflow-hidden rounded-2xl border border-border-main bg-surface shadow-sm">
-              <table className="w-full text-left border-collapse">
-                <thead className="border-b border-border-main bg-canvas text-[11px] font-black uppercase tracking-widest text-text-muted">
-                  <tr>
-                    <th className="px-6 py-4">Template Name</th>
-                    <th className="px-6 py-4">Category</th>
-                    <th className="px-6 py-4">Approval Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-main">
+            <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border-main bg-surface shadow-sm">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="border-b border-border-main bg-canvas text-[11px] font-black uppercase tracking-widest text-text-muted">
+                    <tr>
+                      <th className="px-6 py-4">Template Name</th>
+                      <th className="px-6 py-4">Category</th>
+                      <th className="px-6 py-4">Approval Status</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-main">
                   {templates.map((t: any) => (
                     <tr key={t.id} className="group transition-colors hover:bg-canvas/60">
                       <td className="flex flex-col px-6 py-4 text-sm font-bold text-text-main">
@@ -590,11 +591,12 @@ export default function TemplatesPage() {
                       <td colSpan={4} className="px-6 py-8 text-center text-sm text-text-muted">No templates match the current platform/status filter.</td>
                     </tr>
                   )}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="flex min-h-0 flex-1 flex-col gap-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                  <div className="rounded-2xl border border-border-main bg-surface p-6 shadow-sm">
                     <span className="mb-2 block text-[10px] font-black uppercase tracking-widest text-text-muted">Total Broadcasts</span>
@@ -612,17 +614,18 @@ export default function TemplatesPage() {
                  </div>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-border-main bg-surface shadow-sm">
-                <table className="w-full text-left border-collapse">
-                  <thead className="border-b border-border-main bg-canvas text-[11px] font-black uppercase tracking-widest text-text-muted">
-                    <tr>
-                      <th className="px-6 py-4">Campaign / Template</th>
-                      <th className="px-6 py-4">Target Leads</th>
-                      <th className="px-6 py-4">Performance</th>
-                      <th className="px-6 py-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-main">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-main bg-surface shadow-sm">
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="border-b border-border-main bg-canvas text-[11px] font-black uppercase tracking-widest text-text-muted">
+                      <tr>
+                        <th className="px-6 py-4">Campaign / Template</th>
+                        <th className="px-6 py-4">Target Leads</th>
+                        <th className="px-6 py-4">Performance</th>
+                        <th className="px-6 py-4">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-main">
                   {campaignLogs.map((log: any) => (
                       <tr key={log.id} className="transition-colors hover:bg-canvas/60">
                         <td className="px-6 py-4">
@@ -653,8 +656,9 @@ export default function TemplatesPage() {
                         <td colSpan={4} className="px-6 py-8 text-center text-sm text-text-muted">No campaigns launched yet.</td>
                       </tr>
                     )}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

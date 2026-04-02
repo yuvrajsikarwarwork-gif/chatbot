@@ -25,6 +25,7 @@ import {
   findListByCampaignAndKey,
   findListsByCampaign,
   updateCampaign,
+  updateCampaignByWorkspaceProject,
   updateCampaignChannel,
   updateEntryPoint,
   updateList,
@@ -49,6 +50,7 @@ import { isSupportedPlatform, normalizePlatform } from "../utils/platform";
 import { encryptSecret } from "../utils/encryption";
 import { recordAnalyticsEvent } from "./runtimeAnalyticsService";
 import { logAuditSafe } from "./auditLogService";
+import { DEFAULT_CSAT_FLOW, DEFAULT_HANDOFF_FLOW } from "../config/systemFlowTemplates";
 
 function slugify(value: string) {
   return value
@@ -57,6 +59,73 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+function deepCloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function mergeSettingsSources(...sources: any[]) {
+  return sources.reduce((acc, source) => {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      return acc;
+    }
+    return { ...acc, ...source };
+  }, {});
+}
+
+function buildCampaignSystemFlows(currentSettings: any) {
+  const settings = currentSettings && typeof currentSettings === "object" && !Array.isArray(currentSettings)
+    ? currentSettings
+    : {};
+  const currentSystemFlows =
+    settings.system_flows && typeof settings.system_flows === "object"
+      ? settings.system_flows
+      : {};
+
+  return {
+    handoff:
+      currentSystemFlows.handoff && typeof currentSystemFlows.handoff === "object"
+        ? currentSystemFlows.handoff
+        : deepCloneJson(DEFAULT_HANDOFF_FLOW),
+    csat:
+      currentSystemFlows.csat && typeof currentSystemFlows.csat === "object"
+        ? currentSystemFlows.csat
+        : deepCloneJson(DEFAULT_CSAT_FLOW),
+  };
+}
+
+function getDefaultHandoffKeywords() {
+  const triggerNode = Array.isArray(DEFAULT_HANDOFF_FLOW.nodes)
+    ? (DEFAULT_HANDOFF_FLOW.nodes as any[]).find((node: any) => String(node?.type || "").trim().toLowerCase() === "trigger")
+    : null;
+  return String(triggerNode?.data?.triggerKeywords || "").trim();
+}
+
+function buildCampaignSystemFlowRules(currentSettings: any) {
+  const settings = currentSettings && typeof currentSettings === "object" && !Array.isArray(currentSettings)
+    ? currentSettings
+    : {};
+  const currentRules =
+    settings.system_flow_rules && typeof settings.system_flow_rules === "object"
+      ? settings.system_flow_rules
+      : {};
+
+  return {
+    handoff_keywords:
+      String(
+        currentRules.handoff_keywords ||
+          currentRules.keywords ||
+          currentRules.trigger_keywords ||
+          getDefaultHandoffKeywords()
+      ).trim(),
+    handoff_flow_id:
+      String(currentRules.handoff_flow_id || "handoff").trim() || "handoff",
+    csat_enabled:
+      currentRules.csat_enabled !== undefined ? Boolean(currentRules.csat_enabled) : true,
+    csat_flow_id:
+      String(currentRules.csat_flow_id || "csat").trim() || "csat",
+  };
 }
 
 function ensureRecord<T>(record: T | undefined, message: string): T {
@@ -117,6 +186,93 @@ async function ensureCampaignOwnership(campaignId: string, userId: string) {
   }
 
   return campaign;
+}
+
+export async function ensureCampaignSystemFlows(campaignId: string, userId: string) {
+  const campaign = await ensureCampaignOwnership(campaignId, userId);
+  const currentSettings = mergeSettingsSources(campaign.settings_json);
+  const nextSettings = buildCampaignSettings({ settingsJson: currentSettings }, currentSettings);
+
+  if (JSON.stringify(currentSettings || {}) !== JSON.stringify(nextSettings || {})) {
+    const updated = await updateCampaignByWorkspaceProject(
+      campaign.id,
+      campaign.workspace_id,
+      campaign.project_id,
+      { settingsJson: nextSettings }
+    ).catch((err) => {
+      console.error("Failed to seed campaign system flows:", err);
+      return null;
+    });
+
+    if (updated) {
+      return updated;
+    }
+  }
+
+  const existingChannels = await findCampaignChannelsByCampaign(campaign.id, userId).catch((err) => {
+    console.error("Failed to inspect campaign channels while ensuring system flows:", err);
+    return [];
+  });
+
+  if (existingChannels.length === 0 && campaign.default_flow_id) {
+    const defaultFlow = await findFlowById(campaign.default_flow_id).catch((err) => {
+      console.error("Failed to load default flow while backfilling campaign channel:", err);
+      return null;
+    });
+
+    if (defaultFlow) {
+      const defaultBot = await ensureBotOwnership(defaultFlow.bot_id, userId).catch((err) => {
+        console.error("Failed to resolve default bot while backfilling campaign channel:", err);
+        return null;
+      });
+
+      if (defaultBot) {
+        const seededChannel = await createCampaignChannel({
+          campaignId: campaign.id,
+          userId,
+          botId: defaultBot.id,
+          projectId: campaign.project_id,
+          platform: "whatsapp",
+          platformType: "whatsapp",
+          platformAccountId: null,
+          platformAccountRefId: null,
+          name: `${defaultBot.name} / WhatsApp`,
+          status: "active",
+          defaultFlowId: campaign.default_flow_id,
+          flowId: campaign.default_flow_id,
+          listId: null,
+          settingsJson: buildChannelSettings(
+            { settingsJson: campaign.settings_json || {} },
+            campaign.settings_json || {}
+          ),
+          config: {},
+        }).catch((err) => {
+          console.error("Failed to backfill campaign channel while ensuring system flows:", err);
+          return null;
+        });
+
+        if (seededChannel) {
+          await logAuditSafe({
+            userId,
+            workspaceId: campaign.workspace_id,
+            projectId: campaign.project_id,
+            action: "update",
+            entity: "campaign_channel",
+            entityId: seededChannel.id,
+            oldData: {},
+            newData: seededChannel,
+          }).catch((err) => {
+            console.error("Failed to audit backfilled campaign channel:", err);
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    ...campaign,
+    settings_json: nextSettings,
+  };
 }
 
 async function filterCampaignRowsByProjectScope<T extends { workspace_id?: string | null; project_id?: string | null }>(
@@ -346,8 +502,8 @@ function normalizeCampaignStatus(status?: string) {
   return value;
 }
 
-function buildCampaignSettings(payload: any) {
-  return {
+function buildCampaignSettings(payload: any, currentSettings?: Record<string, unknown>) {
+  const base = {
     allow_multiple_platforms:
       payload.allowMultiplePlatforms ?? payload.settingsJson?.allow_multiple_platforms ?? true,
     auto_assign_agent:
@@ -355,6 +511,13 @@ function buildCampaignSettings(payload: any) {
     allow_restart:
       payload.allowRestart ?? payload.settingsJson?.allow_restart ?? true,
     track_leads: payload.trackLeads ?? payload.settingsJson?.track_leads ?? true,
+  };
+
+  const merged = mergeSettingsSources(currentSettings, payload.settingsJson, base);
+  return {
+    ...merged,
+    system_flows: buildCampaignSystemFlows(merged),
+    system_flow_rules: buildCampaignSystemFlowRules(merged),
   };
 }
 
@@ -477,7 +640,7 @@ export async function listCampaignsService(
 }
 
 export async function getCampaignDetailService(id: string, userId: string) {
-  const campaign = await ensureCampaignOwnership(id, userId);
+  const campaign = await ensureCampaignSystemFlows(id, userId);
   const [channels, entryPoints, lists] = await Promise.all([
     findCampaignChannelsByCampaign(id, userId),
     findEntryPointsByCampaign(id, userId),
@@ -566,6 +729,50 @@ export async function createCampaignService(userId: string, payload: any) {
     metadata: payload.metadata || {},
   });
 
+  if (payload.defaultFlowId) {
+    const defaultFlow = await findFlowById(payload.defaultFlowId);
+    if (defaultFlow) {
+      const defaultBot = await ensureBotOwnership(defaultFlow.bot_id, userId);
+      const seededChannel = await createCampaignChannel({
+        campaignId: createdCampaign.id,
+        userId,
+        botId: defaultBot.id,
+        projectId: createdCampaign.project_id,
+        platform: "whatsapp",
+        platformType: "whatsapp",
+        platformAccountId: null,
+        platformAccountRefId: null,
+        name: `${defaultBot.name} / WhatsApp`,
+        status: "active",
+        defaultFlowId: payload.defaultFlowId,
+        flowId: payload.defaultFlowId,
+        listId: null,
+        settingsJson: buildChannelSettings(payload),
+        config: {},
+      }).catch((err) => {
+        console.error("Failed to seed default campaign channel on create:", err);
+        return null;
+      });
+
+      if (seededChannel) {
+        await logAuditSafe({
+          userId,
+          workspaceId: createdCampaign.workspace_id,
+          projectId,
+          action: "create",
+          entity: "campaign_channel",
+          entityId: seededChannel.id,
+          newData: seededChannel,
+        });
+      }
+    }
+  }
+
+  const seededCampaign = await ensureCampaignSystemFlows(createdCampaign.id, userId).catch((err) => {
+    console.error("Failed to seed campaign system flows on create:", err);
+    return createdCampaign;
+  });
+
   await recordAnalyticsEvent({
     workspaceId: createdCampaign.workspace_id,
     campaignId: createdCampaign.id,
@@ -587,11 +794,11 @@ export async function createCampaignService(userId: string, payload: any) {
     newData: createdCampaign,
   });
 
-  return createdCampaign;
+  return seededCampaign || createdCampaign;
 }
 
 export async function updateCampaignService(id: string, userId: string, payload: any) {
-  const campaign = await ensureCampaignOwnership(id, userId);
+  const campaign = await ensureCampaignSystemFlows(id, userId);
   const nextProjectId =
     payload.projectId !== undefined || payload.project_id !== undefined
       ? String(payload.projectId || payload.project_id || "").trim() || null
@@ -678,14 +885,20 @@ export async function updateCampaignService(id: string, userId: string, payload:
     payload.trackLeads !== undefined ||
     payload.settingsJson !== undefined
   ) {
-    updatePayload.settingsJson = buildCampaignSettings({
-      settingsJson: campaign.settings_json || {},
-      ...payload,
-    });
+    updatePayload.settingsJson = buildCampaignSettings(
+      {
+        settingsJson: campaign.settings_json || {},
+        ...payload,
+      },
+      campaign.settings_json || {}
+    );
   }
   if (payload.metadata !== undefined) updatePayload.metadata = payload.metadata;
 
   const updated = await updateCampaign(id, userId, updatePayload);
+  await ensureCampaignSystemFlows(id, userId).catch((err) => {
+    console.error("Failed to re-seed campaign system flows after update:", err);
+  });
   await logAuditSafe({
     userId,
     workspaceId: nextWorkspaceId,

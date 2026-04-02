@@ -3,6 +3,7 @@ import { findBotById } from "../models/botModel";
 export interface SystemMessages {
   fallbackMessage: string;
   optOutMessage: string;
+  goodbyeMessage?: string | null;
 }
 
 export interface SystemFlows {
@@ -19,6 +20,7 @@ export interface BotGlobalSettings {
   systemMessages: SystemMessages;
   systemFlows: SystemFlows;
   keywordInterrupts: KeywordInterruptRule[];
+  handoffKeywords: string[];
   globalFallbackNodeId: string | null;
 }
 
@@ -28,12 +30,14 @@ const DEFAULT_SETTINGS: BotGlobalSettings = {
   systemMessages: {
     fallbackMessage: "I didn't quite understand that. Can you rephrase?",
     optOutMessage: "You have been unsubscribed and will no longer receive messages.",
+    goodbyeMessage: null,
   },
   systemFlows: {
     handoffFlowId: null,
     csatFlowId: null,
   },
   keywordInterrupts: [],
+  handoffKeywords: [],
   globalFallbackNodeId: null,
 };
 
@@ -123,6 +127,16 @@ function normalizeKeywordInterrupts(value: unknown): KeywordInterruptRule[] {
     .filter(Boolean) as KeywordInterruptRule[];
 }
 
+function normalizeHandoffKeywords(...values: unknown[]) {
+  return Array.from(
+    new Set(
+      values.flatMap((value) =>
+        readKeywordList(value).map((keyword) => String(keyword || "").trim().toLowerCase())
+      )
+    )
+  ).filter(Boolean);
+}
+
 export function normalizeBotGlobalSettings(settingsJson: unknown): BotGlobalSettings {
   const settings = readObject(settingsJson);
   const systemMessages = readObject(
@@ -132,6 +146,7 @@ export function normalizeBotGlobalSettings(settingsJson: unknown): BotGlobalSett
   const legacySystemDefaultFlows = readObject(
     settings.systemDefaultFlows || settings.system_default_flows
   );
+  const handoffFlow = readObject(systemFlows.handoff || systemFlows.handoffFlow || {});
 
   return {
     systemMessages: {
@@ -155,6 +170,15 @@ export function normalizeBotGlobalSettings(settingsJson: unknown): BotGlobalSett
             legacySystemDefaultFlows.opt_out_message ||
             legacySystemDefaultFlows.optOutMessage
         ) || DEFAULT_SETTINGS.systemMessages.optOutMessage,
+      goodbyeMessage:
+        readString(
+          systemMessages.goodbye_message ||
+            systemMessages.goodbyeMessage ||
+            settings.goodbye_message ||
+            settings.goodbyeMessage ||
+            legacySystemDefaultFlows.goodbye_message ||
+            legacySystemDefaultFlows.goodbyeMessage
+        ) || DEFAULT_SETTINGS.systemMessages.goodbyeMessage || null,
     },
     systemFlows: {
       handoffFlowId:
@@ -189,6 +213,21 @@ export function normalizeBotGlobalSettings(settingsJson: unknown): BotGlobalSett
         legacySystemDefaultFlows.universal_rules ||
         legacySystemDefaultFlows.universalRules ||
         []
+    ),
+    handoffKeywords: normalizeHandoffKeywords(
+      settings.handoff_keywords,
+      settings.handoffKeywords,
+      systemFlows.handoff_keywords,
+      systemFlows.handoffKeywords,
+      handoffFlow.keywords,
+      handoffFlow.triggerKeywords,
+      handoffFlow.trigger_keywords,
+      settings.system_flow_rules?.handoff_keywords,
+      settings.system_flow_rules?.keywords,
+      settings.system_flow_rules?.trigger_keywords,
+      settings.systemFlowRules?.handoff_keywords,
+      settings.systemFlowRules?.keywords,
+      settings.systemFlowRules?.trigger_keywords
     ),
     globalFallbackNodeId:
       readString(

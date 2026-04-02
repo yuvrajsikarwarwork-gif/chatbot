@@ -66,26 +66,6 @@ app.use((req, res, next) => {
 
 app.use((req, _res, next) => {
   const path = String(req.path || req.originalUrl || "");
-  if (req.method === "PATCH" && path.includes("/api/flows/") && path.includes("/node/")) {
-    console.info("[RequestBoundary][FlowPatch]", {
-      requestId: req.requestId || "unknown",
-      method: req.method,
-      path,
-      botId: req.headers["x-bot-id"] || null,
-      workspaceId: req.headers["x-workspace-id"] || null,
-      projectId: req.headers["x-project-id"] || null,
-    });
-  }
-  if (req.method === "POST" && path === "/api/debug/flow-save") {
-    console.info("[RequestBoundary][FlowSaveDebug]", {
-      requestId: req.requestId || "unknown",
-      method: req.method,
-      path,
-      botId: req.headers["x-bot-id"] || null,
-      workspaceId: req.headers["x-workspace-id"] || null,
-      projectId: req.headers["x-project-id"] || null,
-    });
-  }
   next();
 });
 

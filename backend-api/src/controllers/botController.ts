@@ -88,6 +88,7 @@ export async function getBotSystemFlows(req: AuthRequest, res: Response) {
     if (!id) return res.status(400).json({ message: "Bot ID is required" });
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+    await getBotService(id, userId);
     const flows = await getSystemFlowSummariesByBotService(id, userId);
     res.json(flows);
   } catch (error: any) {

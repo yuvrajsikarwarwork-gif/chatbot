@@ -13,9 +13,9 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 
 import PageAccessNotice from "../../../components/access/PageAccessNotice";
+import CampaignHeader from "../../../components/campaign/CampaignHeader";
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import BackButtonStrip from "../../../components/navigation/BackButtonStrip";
-import SectionTabs from "../../../components/navigation/SectionTabs";
 import { useVisibility } from "../../../hooks/useVisibility";
 import { botService } from "../../../services/botService";
 import { campaignService } from "../../../services/campaignService";
@@ -1061,27 +1061,18 @@ export default function CampaignAutomationPage() {
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
           <BackButtonStrip href={`/campaigns/${campaignId}/launch`} label="Back to launch" />
-          <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-[var(--shadow-soft)]">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Lifecycle Automation
-                </div>
-                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-text-main">
-                  Scheduled and webhook-driven automations
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-text-muted">
-                  Define rules once, then let the runtime trigger flows for date-based re-engagement or signed external webhook events.
-                </p>
-              </div>
-              <SectionTabs items={tabs} currentPath={router.asPath.split("?")[0] || ""} />
-            </div>
-          </section>
+          <CampaignHeader
+            campaignName={campaign?.name}
+            pageTitle="Campaign Automation"
+            description="Set up rules, bot flows, and automated responses."
+            tabs={tabs}
+            currentPath={router.asPath.split("?")[0] || ""}
+          />
 
-          {error ? <section className="rounded-[1.5rem] border border-rose-300/40 bg-rose-500/10 p-4 text-sm text-rose-700">{error}</section> : null}
-          {success ? <section className="rounded-[1.5rem] border border-emerald-300/35 bg-emerald-500/10 p-4 text-sm text-emerald-700">{success}</section> : null}
+          {error ? <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</section> : null}
+          {success ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{success}</section> : null}
 
-          <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+          <section className="flex flex-col flex-1 min-h-[800px] h-auto bg-surface border border-border-main rounded-[2rem] p-8 pb-16 shadow-sm mb-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -1116,7 +1107,7 @@ export default function CampaignAutomationPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-5 h-[540px] overflow-hidden rounded-[1.5rem] border border-border-main bg-canvas">
+            <div className="mt-5 min-h-[540px] overflow-hidden rounded-2xl border border-border-main bg-canvas">
               <ReactFlow
                 nodes={canvasNodes}
                 edges={canvasEdges}
@@ -1138,7 +1129,7 @@ export default function CampaignAutomationPage() {
             </div>
           </section>
 
-          <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+          <section className="flex flex-col flex-1 min-h-[800px] h-auto bg-surface border border-border-main rounded-[2rem] p-8 pb-16 shadow-sm mb-12">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -1204,7 +1195,7 @@ export default function CampaignAutomationPage() {
                   const lastRun = ruleHistory[0] || null;
                   const isPaused = Boolean(rule.paused || rule.enabled === false);
                   return (
-                    <div key={rule.id} className="rounded-2xl border border-border-main bg-canvas p-4">
+                    <div key={rule.id} className="bg-canvas border border-border-main rounded-2xl p-6 mb-6 flex flex-col gap-6">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-xs font-black uppercase tracking-[0.18em] text-text-muted">{rule.type}</div>
@@ -1217,7 +1208,7 @@ export default function CampaignAutomationPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <Link
                             href={`/campaigns/${campaignId}/automation/runs/${rule.id}`}
-                            className="rounded-full border border-border-main bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main"
+                            className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary"
                           >
                             Run history
                           </Link>
@@ -1227,7 +1218,7 @@ export default function CampaignAutomationPage() {
                               handleRuntimeAction(`pause-${rule.id}`, () => campaignService.pauseAutomationRule(String(campaignId), String(rule.id)))
                             }
                             disabled={!canEditProjectCampaign || isPaused || runtimeActionLoading === `pause-${rule.id}`}
-                            className="rounded-full border border-border-main bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-muted disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Pause
                           </button>
@@ -1237,7 +1228,7 @@ export default function CampaignAutomationPage() {
                               handleRuntimeAction(`resume-${rule.id}`, () => campaignService.resumeAutomationRule(String(campaignId), String(rule.id)))
                             }
                             disabled={!canEditProjectCampaign || !isPaused || runtimeActionLoading === `resume-${rule.id}`}
-                            className="rounded-full border border-primary bg-primary-fade px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-2xl border border-primary bg-primary py-2 px-4 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Resume
                           </button>
@@ -1247,7 +1238,7 @@ export default function CampaignAutomationPage() {
                               handleRuntimeAction(`clone-${rule.id}`, () => campaignService.cloneAutomationRule(String(campaignId), String(rule.id)))
                             }
                             disabled={!canEditProjectCampaign || runtimeActionLoading === `clone-${rule.id}`}
-                            className="rounded-full border border-border-main bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Clone
                           </button>
@@ -1255,25 +1246,25 @@ export default function CampaignAutomationPage() {
                       </div>
 
                       <div className="mt-4 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-xl border border-border-main bg-surface px-3 py-2">
+                        <div className="rounded-xl border border-border-main bg-surface px-4 py-3">
                           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Flow</div>
                           <div className="mt-1 text-sm font-semibold text-text-main">{rule.flowId || "Use branch flow"}</div>
                         </div>
-                        <div className="rounded-xl border border-border-main bg-surface px-3 py-2">
+                        <div className="rounded-xl border border-border-main bg-surface px-4 py-3">
                           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Schedule</div>
                           <div className="mt-1 text-sm font-semibold text-text-main">{rule.cronEveryMinutes ? `${rule.cronEveryMinutes} min` : rule.dateFieldKey || "webhook"}</div>
                         </div>
-                        <div className="rounded-xl border border-border-main bg-surface px-3 py-2">
+                        <div className="rounded-xl border border-border-main bg-surface px-4 py-3">
                           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Webhook</div>
                           <div className="mt-1 text-sm font-semibold text-text-main">{rule.webhookPath || "Generated on save"}</div>
                         </div>
                       </div>
 
-                      <div className="mt-4 rounded-xl border border-border-main bg-surface p-3">
+                      <div className="rounded-xl border border-border-main bg-surface p-4">
                         <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Recent runs</div>
                         <div className="mt-3 space-y-2">
                           {ruleHistory.slice(0, 3).map((entry: any) => (
-                            <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-main bg-canvas px-3 py-2 text-xs">
+                            <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-main bg-canvas px-4 py-3 text-xs">
                               <div>
                                 <span className="font-semibold text-text-main">{entry.leadName || entry.summary || entry.id}</span>
                                 <span className="ml-2 text-text-muted">{String(entry.status || "completed")}</span>
@@ -1288,7 +1279,7 @@ export default function CampaignAutomationPage() {
                                       )
                                     }
                                     disabled={!canEditProjectCampaign || runtimeActionLoading === `replay-${rule.id}-${entry.leadId}`}
-                                    className="rounded-full border border-primary bg-primary-fade px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="rounded-2xl border border-primary bg-primary py-2 px-4 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     Replay
                                   </button>
@@ -1472,7 +1463,7 @@ export default function CampaignAutomationPage() {
             </div>
           </section>
 
-          <section className="rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+          <section className="flex flex-col flex-1 min-h-[800px] h-auto bg-surface border border-border-main rounded-[2rem] p-8 pb-16 shadow-sm mb-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">Automation Rules</div>
@@ -1484,7 +1475,7 @@ export default function CampaignAutomationPage() {
                 <button
                   type="button"
                   onClick={() => setRules((current) => [...current, makeRule()])}
-                  className="rounded-2xl border border-border-main bg-canvas px-4 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary"
+                  className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!canEditProjectCampaign}
                 >
                   Add rule
@@ -1492,7 +1483,7 @@ export default function CampaignAutomationPage() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  className="rounded-2xl border border-primary bg-primary px-4 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full md:w-auto rounded-2xl border border-primary bg-primary py-3 px-8 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={!canEditProjectCampaign || saving}
                 >
                   {saving ? "Saving..." : "Save automation"}
@@ -1536,7 +1527,7 @@ export default function CampaignAutomationPage() {
                           Rule name
                         </label>
                         <input
-                          className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none"
+                          className="w-full rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                           value={rule.name}
                           disabled={!canEditProjectCampaign}
                           onChange={(event) => updateRule(rule.id, { name: event.target.value })}
@@ -1602,7 +1593,7 @@ export default function CampaignAutomationPage() {
                           Date field key
                         </label>
                         <input
-                          className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none"
+                          className="w-full rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                           value={rule.dateFieldKey}
                           disabled={!canEditProjectCampaign}
                           onChange={(event) => updateRule(rule.id, { dateFieldKey: event.target.value })}
@@ -1644,7 +1635,7 @@ export default function CampaignAutomationPage() {
                           type="number"
                           min="10"
                           step="10"
-                          className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none"
+                          className="w-full rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                           value={rule.cronEveryMinutes}
                           disabled={!canEditProjectCampaign || rule.type !== "cron"}
                           onChange={(event) => updateRule(rule.id, { cronEveryMinutes: event.target.value })}
@@ -1665,7 +1656,7 @@ export default function CampaignAutomationPage() {
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <select
-                            className="rounded-full border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main outline-none"
+                            className="rounded-xl border border-border-main bg-surface px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                             value=""
                             onChange={(event) => {
                               const templateKey = event.target.value as BranchTemplateKey;
@@ -1687,7 +1678,7 @@ export default function CampaignAutomationPage() {
                             type="button"
                             onClick={() => updateRule(rule.id, { branches: [...(rule.branches || []), makeBranch()] })}
                             disabled={!canEditProjectCampaign}
-                            className="rounded-full border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary"
+                            className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Add branch
                           </button>
@@ -1783,18 +1774,18 @@ export default function CampaignAutomationPage() {
                       </div>
                       <div className="mt-4 space-y-4">
                         {(rule.branchGroups || []).map((group) => (
-                          <div key={group.id} className="rounded-2xl border border-border-main bg-canvas p-4">
+                          <div key={group.id} className="rounded-2xl border border-border-main bg-canvas p-6">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div className="grid gap-3 md:grid-cols-3 flex-1">
                                 <input
-                                  className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                                  className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                                   value={group.label}
                                   disabled={!canEditProjectCampaign}
                                   onChange={(event) => updateBranchGroup(rule.id, group.id, { label: event.target.value })}
                                   placeholder="Group label"
                                 />
                                 <input
-                                  className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                                  className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                                   value={group.matchFieldKey}
                                   disabled={!canEditProjectCampaign}
                                   onChange={(event) => updateBranchGroup(rule.id, group.id, { matchFieldKey: event.target.value })}
@@ -1805,7 +1796,7 @@ export default function CampaignAutomationPage() {
                                     type="button"
                                     onClick={() => updateBranchGroup(rule.id, group.id, { enabled: !group.enabled })}
                                     disabled={!canEditProjectCampaign}
-                                    className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                    className={`rounded-2xl border px-3 py-2 text-[10px] font-bold uppercase tracking-widest ${
                                       group.enabled
                                         ? "border-primary bg-primary-fade text-primary"
                                         : "border-border-main bg-surface text-text-muted"
@@ -1817,7 +1808,7 @@ export default function CampaignAutomationPage() {
                                     type="button"
                                     onClick={() => removeBranchGroup(rule.id, group.id)}
                                     disabled={!canEditProjectCampaign || (rule.branchGroups || []).length === 1}
-                                    className="rounded-full border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="text-[10px] font-bold uppercase tracking-widest text-red-500 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     Remove
                                   </button>
@@ -1834,23 +1825,23 @@ export default function CampaignAutomationPage() {
                                     type="button"
                                     onClick={() => addBranchGroupBranch(rule.id, group.id)}
                                     disabled={!canEditProjectCampaign}
-                                    className="rounded-full border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main"
+                                    className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     Add branch
                                   </button>
                                 </div>
                                 <div className="mt-3 space-y-2">
                                   {(group.branches || []).map((branch) => (
-                                    <div key={branch.id} className="grid gap-3 rounded-xl border border-border-main bg-canvas p-3 lg:grid-cols-3">
+                                    <div key={branch.id} className="grid gap-3 rounded-xl border border-border-main bg-canvas p-4 lg:grid-cols-3">
                                       <input
-                                        className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                                        className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                                         value={branch.label}
                                         disabled={!canEditProjectCampaign}
                                         onChange={(event) => updateBranchGroupBranch(rule.id, group.id, branch.id, { label: event.target.value })}
                                         placeholder="Branch label"
                                       />
                                       <input
-                                        className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                                        className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                                         value={branch.matchValue}
                                         disabled={!canEditProjectCampaign}
                                         onChange={(event) => updateBranchGroupBranch(rule.id, group.id, branch.id, { matchValue: event.target.value })}
@@ -1861,7 +1852,7 @@ export default function CampaignAutomationPage() {
                                           type="button"
                                           onClick={() => updateBranchGroupBranch(rule.id, group.id, branch.id, { enabled: !branch.enabled })}
                                           disabled={!canEditProjectCampaign}
-                                          className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                          className={`rounded-2xl border px-3 py-2 text-[10px] font-bold uppercase tracking-widest ${
                                             branch.enabled
                                               ? "border-primary bg-primary-fade text-primary"
                                               : "border-border-main bg-surface text-text-muted"
@@ -1877,7 +1868,7 @@ export default function CampaignAutomationPage() {
                                             })
                                           }
                                           disabled={!canEditProjectCampaign || (group.branches || []).length === 1}
-                                          className="rounded-full border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                          className="text-[10px] font-bold uppercase tracking-widest text-red-500 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                           Remove
                                         </button>
@@ -1895,23 +1886,23 @@ export default function CampaignAutomationPage() {
                                     type="button"
                                     onClick={() => addBranchGroupSubflow(rule.id, group.id)}
                                     disabled={!canEditProjectCampaign}
-                                    className="rounded-full border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main"
+                                    className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     Add subflow
                                   </button>
                                 </div>
                                 <div className="mt-3 space-y-2">
                                   {(group.subflows || []).map((subflow) => (
-                                    <div key={subflow.id} className="grid gap-3 rounded-xl border border-border-main bg-canvas p-3 lg:grid-cols-3">
+                                    <div key={subflow.id} className="grid gap-3 rounded-xl border border-border-main bg-canvas p-4 lg:grid-cols-3">
                                       <input
-                                        className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                                        className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                                         value={subflow.label}
                                         disabled={!canEditProjectCampaign}
                                         onChange={(event) => updateBranchGroupSubflow(rule.id, group.id, subflow.id, { label: event.target.value })}
                                         placeholder="Subflow label"
                                       />
                                       <select
-                                        className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                                        className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                                         value={subflow.flowId}
                                         disabled={!canEditProjectCampaign}
                                         onChange={(event) => updateBranchGroupSubflow(rule.id, group.id, subflow.id, { flowId: event.target.value })}
@@ -1928,7 +1919,7 @@ export default function CampaignAutomationPage() {
                                           type="button"
                                           onClick={() => updateBranchGroupSubflow(rule.id, group.id, subflow.id, { enabled: !subflow.enabled })}
                                           disabled={!canEditProjectCampaign}
-                                          className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                          className={`rounded-2xl border px-3 py-2 text-[10px] font-bold uppercase tracking-widest ${
                                             subflow.enabled
                                               ? "border-primary bg-primary-fade text-primary"
                                               : "border-border-main bg-surface text-text-muted"
@@ -1944,7 +1935,7 @@ export default function CampaignAutomationPage() {
                                             })
                                           }
                                           disabled={!canEditProjectCampaign || (group.subflows || []).length === 1}
-                                          className="rounded-full border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                          className="text-[10px] font-bold uppercase tracking-widest text-red-500 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                           Remove
                                         </button>
@@ -1974,20 +1965,20 @@ export default function CampaignAutomationPage() {
                             Trigger flows, update lead state, add notes, or tag the record after the rule fires.
                           </div>
                         </div>
-                          <button
-                            type="button"
-                            onClick={() => updateRule(rule.id, { actions: [...(rule.actions || []), makeAction()] })}
-                            disabled={!canEditProjectCampaign}
-                            className="rounded-full border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary"
-                        >
+                  <button
+                    type="button"
+                    onClick={() => updateRule(rule.id, { actions: [...(rule.actions || []), makeAction()] })}
+                    disabled={!canEditProjectCampaign}
+                    className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
                           Add action
                         </button>
                       </div>
                       <div className="mt-4 space-y-3">
                         {(rule.actions || []).map((action) => (
-                          <div key={action.id} className="grid gap-3 rounded-2xl border border-border-main bg-canvas p-3 lg:grid-cols-5">
+                        <div key={action.id} className="grid gap-3 rounded-2xl border border-border-main bg-canvas p-4 lg:grid-cols-5">
                             <select
-                              className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                              className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                               value={action.type}
                               disabled={!canEditProjectCampaign}
                               onChange={(event) =>
@@ -2000,21 +1991,21 @@ export default function CampaignAutomationPage() {
                               <option value="tag_lead">Tag lead</option>
                             </select>
                             <input
-                              className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                              className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                               value={action.flowId}
                               disabled={!canEditProjectCampaign || action.type !== "start_flow"}
                               onChange={(event) => updateAction(rule.id, action.id, { flowId: event.target.value })}
                               placeholder="Flow id"
                             />
                             <input
-                              className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                              className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                               value={action.leadStatus}
                               disabled={!canEditProjectCampaign || action.type !== "update_lead_status"}
                               onChange={(event) => updateAction(rule.id, action.id, { leadStatus: event.target.value })}
                               placeholder="Lead status"
                             />
                             <input
-                              className="rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                              className="rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                               value={action.note}
                               disabled={!canEditProjectCampaign || action.type !== "add_note"}
                               onChange={(event) => updateAction(rule.id, action.id, { note: event.target.value })}
@@ -2022,7 +2013,7 @@ export default function CampaignAutomationPage() {
                             />
                             <div className="flex items-center justify-between gap-2">
                               <input
-                                className="w-full rounded-xl border border-border-main bg-surface px-3 py-2 text-sm text-text-main outline-none"
+                                className="w-full rounded-xl border border-border-main bg-surface px-4 py-3 text-sm text-text-main outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                                 value={action.tag}
                                 disabled={!canEditProjectCampaign || action.type !== "tag_lead"}
                                 onChange={(event) => updateAction(rule.id, action.id, { tag: event.target.value })}
@@ -2032,7 +2023,7 @@ export default function CampaignAutomationPage() {
                                 type="button"
                                 onClick={() => updateAction(rule.id, action.id, { enabled: !action.enabled })}
                                 disabled={!canEditProjectCampaign}
-                                className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                className={`rounded-2xl border px-3 py-2 text-[10px] font-bold uppercase tracking-widest ${
                                   action.enabled
                                     ? "border-primary bg-primary-fade text-primary"
                                     : "border-border-main bg-surface text-text-muted"
@@ -2048,7 +2039,7 @@ export default function CampaignAutomationPage() {
                                   })
                                 }
                                 disabled={!canEditProjectCampaign || (rule.actions || []).length === 1}
-                                className="rounded-full border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="text-[10px] font-bold uppercase tracking-widest text-red-500 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Remove
                               </button>
@@ -2056,7 +2047,7 @@ export default function CampaignAutomationPage() {
                                 type="button"
                                 onClick={() => duplicateAction(rule.id, action.id)}
                                 disabled={!canEditProjectCampaign}
-                                className="rounded-full border border-border-main bg-surface px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-muted disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-2xl border border-border-main bg-surface py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-text-main transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Duplicate
                               </button>

@@ -167,7 +167,7 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="flex h-full w-64 flex-col bg-sidebar border-r border-border-sidebar">
+    <aside className="flex h-screen w-64 flex-shrink-0 flex-col overflow-y-auto bg-sidebar border-r border-border-sidebar">
       <div className="border-b border-border-sidebar px-5 py-5">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border-sidebar bg-surface/5 text-sm font-bold text-text-sidebar">

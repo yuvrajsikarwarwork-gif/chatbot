@@ -3,9 +3,10 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 
 import PageAccessNotice from "../../../components/access/PageAccessNotice";
+import CampaignHeader from "../../../components/campaign/CampaignHeader";
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import BackButtonStrip from "../../../components/navigation/BackButtonStrip";
-import SectionTabs from "../../../components/navigation/SectionTabs";
+import FormHelpHint from "../../../components/forms/FormHelpHint";
 import { useVisibility } from "../../../hooks/useVisibility";
 import { campaignService } from "../../../services/campaignService";
 import { useAuthStore } from "../../../store/authStore";
@@ -131,55 +132,42 @@ export default function CampaignOverviewPage() {
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
           <BackButtonStrip href="/campaigns" label="Back to campaigns" />
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-                  Campaign Overview
-                </div>
-                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
-                  {campaign?.name || "Campaign"}
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                  Keep high-level campaign identity and status here. Routing and audience setup now live in dedicated child pages.
-                </p>
-              </div>
-              <SectionTabs items={tabs} currentPath={router.asPath.split("?")[0] || ""} />
-            </div>
-          </section>
+          <CampaignHeader
+            campaignName={campaign?.name}
+            pageTitle="Campaign Overview"
+            description="Keep high-level campaign identity and status here. Routing and audience setup now live in dedicated child pages."
+            tabs={tabs}
+            currentPath={router.asPath.split("?")[0] || ""}
+          />
 
           {error ? (
-            <section className="rounded-[1.5rem] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
               {error}
             </section>
           ) : null}
 
           {success ? (
-            <section className="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
               {success}
             </section>
           ) : null}
 
           <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-            <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+            <section className="rounded-[2rem] border border-border-main bg-surface p-8 shadow-sm">
               <div className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Campaign name
-                  </label>
+                  <FormHelpHint label="Campaign name" hint="A clear, unique name to identify this campaign internally." />
                   <input
-                    className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
+                    className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                     value={form.name}
                     disabled={!canEditProjectCampaign || loading}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                    Description
-                  </label>
+                  <FormHelpHint label="Description" hint="Internal notes about the campaign's goals or audience." />
                   <textarea
-                    className="min-h-[120px] w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
+                    className="min-h-[120px] w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                     value={form.description}
                     disabled={!canEditProjectCampaign || loading}
                     onChange={(event) =>
@@ -189,11 +177,9 @@ export default function CampaignOverviewPage() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div>
-                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      Status
-                    </label>
+                    <FormHelpHint label="Status" hint="Drafts are inactive. Active campaigns process entries. Archived campaigns are read-only." />
                     <select
-                      className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                       value={form.status}
                       disabled={!canEditProjectCampaign || loading}
                       onChange={(event) =>
@@ -207,12 +193,10 @@ export default function CampaignOverviewPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      Start
-                    </label>
+                    <FormHelpHint label="Start date" hint="When this campaign should begin processing users." />
                     <input
                       type="date"
-                      className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                       value={form.startDate}
                       disabled={!canEditProjectCampaign || loading}
                       onChange={(event) =>
@@ -221,12 +205,10 @@ export default function CampaignOverviewPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                      End
-                    </label>
+                    <FormHelpHint label="End date" hint="When this campaign automatically stops. Leave blank to run indefinitely." />
                     <input
                       type="date"
-                      className="w-full rounded-2xl border border-border-main bg-surface px-4 py-3 text-sm outline-none"
+                      className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                       value={form.endDate}
                       disabled={!canEditProjectCampaign || loading}
                       onChange={(event) =>
@@ -239,7 +221,7 @@ export default function CampaignOverviewPage() {
                   type="button"
                   onClick={handleSave}
                   disabled={!canEditProjectCampaign || saving || loading}
-                  className="rounded-2xl bg-slate-900 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white disabled:opacity-50"
+                  className="rounded-2xl border border-primary bg-primary px-6 py-3 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
                 >
                   {saving ? "Saving..." : "Save overview"}
                 </button>
@@ -256,31 +238,14 @@ export default function CampaignOverviewPage() {
                   <Link
                     key={card.label}
                     href={card.href}
-                    className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface)] px-4 py-4 shadow-sm transition hover:border-[var(--line-strong)]"
+                    className="rounded-[2rem] border border-border-main bg-surface px-4 py-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/5"
                   >
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
                       {card.label}
                     </div>
-                    <div className="mt-3 text-2xl font-semibold text-[var(--text)]">{card.value}</div>
+                    <div className="mt-3 text-2xl font-semibold text-text-main">{card.value}</div>
                   </Link>
                 ))}
-              </div>
-
-              <div className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
-                  Campaign path
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {tabs.slice(1).map((tab) => (
-                    <Link
-                      key={tab.href}
-                      href={tab.href}
-                      className="rounded-[1.1rem] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4 text-sm text-[var(--text)] transition hover:border-[var(--line-strong)]"
-                    >
-                      {tab.label}
-                    </Link>
-                  ))}
-                </div>
               </div>
             </section>
           </div>

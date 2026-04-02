@@ -118,20 +118,7 @@ export async function saveFlowCtrl(req: AuthRequest, res: Response, next: NextFu
     if (!flowJson) return res.status(400).json({ error: "flow_json payload is missing." });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    console.info(`[FlowSave][Controller][${requestId}] save-request-received`, {
-      botId,
-      flowId: flowId || null,
-      flowName: flowName || null,
-      hasNodes: Boolean(Array.isArray(flowJson?.nodes) && flowJson.nodes.length),
-      hasEdges: Boolean(Array.isArray(flowJson?.edges) && flowJson.edges.length),
-    });
-
     const data = await saveFlowService(botId, userId, flowJson, flowId, flowName);
-    console.info(`[FlowSave][Controller][${requestId}] save-request-succeeded`, {
-      botId,
-      flowId: data?.id || flowId || null,
-      flowName: data?.flow_name || flowName || null,
-    });
     res.status(200).json(data);
   } catch (err) {
     console.error(`[FlowSave][Controller][${req.requestId || "unknown"}] save-request-failed`, {
@@ -195,25 +182,7 @@ export async function patchFlowNodeCtrl(req: AuthRequest, res: Response, next: N
       return res.status(400).json({ error: "node_data payload is required" });
     }
 
-    console.info(`[NodeSave][Controller][${requestId}] patch-request-received`, {
-      flowId: id,
-      nodeId,
-      userId,
-      hasData: Boolean(nodeData),
-      isWholeNodePatch: Boolean(
-        nodeData &&
-          typeof nodeData === "object" &&
-          ("data" in nodeData || "position" in nodeData || "type" in nodeData || "id" in nodeData)
-      ),
-      topLevelKeys: Object.keys(nodeData || {}),
-    });
-
     const data = await patchFlowNodeService(id, userId, nodeId, nodeData, requestId);
-    console.info(`[NodeSave][Controller][${requestId}] patch-request-succeeded`, {
-      flowId: id,
-      nodeId,
-      savedFlowId: data?.id || null,
-    });
     res.json(normalizeFlowPayload(data));
   } catch (err) {
     console.error(`[NodeSave][Controller][${requestId}] patch-request-failed`, {

@@ -15,9 +15,9 @@ import FlowHeader from "../components/flow/FlowHeader";
 import FlowSidebar from "../components/flow/FlowSidebar";
 import GlobalRulesInfoPanel from "../components/flow/GlobalRulesInfoPanel";
 import RequirePermission from "../components/access/RequirePermission";
-import DashboardLayout from "../components/layout/DashboardLayout";
 import { useVisibility } from "../hooks/useVisibility";
 import { flowService } from "../services/flowService";
+import { campaignService } from "../services/campaignService";
 import { projectService } from "../services/projectService";
 import { workspaceService } from "../services/workspaceService";
 import { extractApiErrorInfo, notifyApiError } from "../services/apiError";
@@ -37,17 +37,12 @@ const staticNodeTypes = {
   start: NodeComponent,
   input: NodeComponent,
   menu: NodeComponent,
-  menu_button: NodeComponent,
-  menu_list: NodeComponent,
-  msg_text: NodeComponent,
   send_template: NodeComponent,
-  msg_media: NodeComponent,
   ai_generate: NodeComponent,
   business_hours: NodeComponent,
   split_traffic: NodeComponent,
   api: NodeComponent,
   delay: NodeComponent,
-  reminder: NodeComponent,
   assign_agent: NodeComponent,
   end: NodeComponent,
   goto: NodeComponent,
@@ -55,15 +50,13 @@ const staticNodeTypes = {
   knowledge_lookup: NodeComponent,
   save: NodeComponent,
   trigger: NodeComponent,
-  error_handler: NodeComponent,
   resume_bot: NodeComponent,
-  timeout: NodeComponent,
-  lead_form: NodeComponent,
 } as const;
 
 type FlowValidationResult = {
   invalidNodeIds: string[];
   invalidNodeReasons: Record<string, string>;
+  invalidNodes: Array<{ id: string; label: string; reason: string }>;
   isValid: boolean;
 };
 
@@ -81,8 +74,8 @@ type FlowDraftSnapshot = {
   layoutLeftToRight: boolean;
 };
 
-function getFlowDraftStorageKey(botId: string, flowId?: string | null, flowName?: string | null) {
-  const safeBotId = String(botId || "").trim();
+function getFlowDraftStorageKey(entityId: string, flowId?: string | null, flowName?: string | null) {
+  const safeBotId = String(entityId || "").trim();
   const safeFlowId = String(flowId || "").trim();
   const safeFlowName = String(flowName || "").trim();
   if (!safeBotId) return "";
@@ -123,6 +116,9 @@ function clearFlowDraftSnapshot(storageKey: string) {
 
 function looksLikeLegacyInputNode(type: any, data: any) {
   const normalized = String(type || "").trim().toLowerCase();
+  if (normalized === "save") {
+    return false;
+  }
   const nodeData = data && typeof data === "object" && !Array.isArray(data) ? data : {};
   const promptText = String(
     nodeData.prompt ||
@@ -156,6 +152,9 @@ function normalizeCanvasNodeType(type: any, data?: any) {
   }
   if (["menu_button", "menu_list", "menu"].includes(normalized)) {
     return "menu";
+  }
+  if (normalized === "save") {
+    return "save";
   }
   if (looksLikeLegacyInputNode(normalized, data)) {
     return "input";
@@ -281,9 +280,31 @@ function sanitizeClipboardNode(node: Node) {
 
 function sanitizeClipboardEdge(edge: Edge) {
   const { selected, animated, hidden, labelStyle, ...rest } = edge as any;
-  return {
-    ...rest,
+  const nextEdge: any = { ...rest };
+  const normalizeHandle = (value: any) => {
+    const text = String(value ?? "").trim();
+    if (!text || text === "undefined" || text === "null") {
+      return undefined;
+    }
+    return text;
   };
+
+  const sourceHandle = normalizeHandle(nextEdge.sourceHandle);
+  const targetHandle = normalizeHandle(nextEdge.targetHandle);
+
+  if (sourceHandle) {
+    nextEdge.sourceHandle = sourceHandle;
+  } else {
+    delete nextEdge.sourceHandle;
+  }
+
+  if (targetHandle) {
+    nextEdge.targetHandle = targetHandle;
+  } else {
+    delete nextEdge.targetHandle;
+  }
+
+  return nextEdge as Edge;
 }
 
 function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
@@ -311,10 +332,19 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
   }
 
   const invalidNodeReasons: Record<string, string> = {};
+  const invalidNodesById = new Map<string, { id: string; label: string; reason: string }>();
 
   const markInvalid = (nodeId: string, reason: string) => {
     if (!invalidNodeReasons[nodeId]) {
       invalidNodeReasons[nodeId] = reason;
+    }
+    if (!invalidNodesById.has(nodeId)) {
+      const match = normalizedNodes.find((node: any) => String(node?.id || "") === nodeId);
+      invalidNodesById.set(nodeId, {
+        id: nodeId,
+        label: getNodeDisplayLabel(match),
+        reason,
+      });
     }
   };
 
@@ -322,12 +352,19 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
     (outgoingByNode.get(nodeId) || []).some((edge) => String(edge?.sourceHandle || "") === handleId);
 
   const hasOutgoing = (nodeId: string) => (outgoingByNode.get(nodeId) || []).length > 0;
+  const outgoingHandleCount = (nodeId: string, handleId: string) =>
+    (outgoingByNode.get(nodeId) || []).filter((edge) => String(edge?.sourceHandle || "") === handleId).length;
+
+  const rootNodeTypes = new Set(["start", "trigger", "resume_bot"]);
 
   for (const node of normalizedNodes) {
     const nodeId = String(node?.id || "");
     if (!nodeId) continue;
 
     const nodeType = normalizeCanvasNodeType(node?.type, node?.data);
+    if (["reminder", "timeout", "error_handler"].includes(nodeType)) {
+      continue;
+    }
     const incomingCount = (incomingByNode.get(nodeId) || []).length;
     const outgoingCount = (outgoingByNode.get(nodeId) || []).length;
     const visibleMenuItems = Array.from({ length: nodeType === "menu" ? 10 : 0 }, (_, index) => {
@@ -338,11 +375,25 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
       };
     }).filter((item) => Boolean(item.label));
 
-    if (nodeType === "start") {
+    if (rootNodeTypes.has(nodeType)) {
       if (incomingCount > 0) {
-        markInvalid(nodeId, "Start nodes cannot have incoming connections.");
-      } else if (outgoingCount === 0) {
-        markInvalid(nodeId, "Start nodes need an outgoing connection.");
+        markInvalid(
+          nodeId,
+          nodeType === "resume_bot"
+            ? "Resume bot nodes cannot have incoming connections."
+            : nodeType === "trigger"
+              ? "Trigger nodes cannot have incoming connections."
+              : "Start nodes cannot have incoming connections."
+        );
+      } else if (outgoingCount !== 1) {
+        markInvalid(
+          nodeId,
+          nodeType === "resume_bot"
+            ? "Resume bot nodes must have exactly one outgoing connection."
+            : nodeType === "trigger"
+              ? "Trigger nodes must have exactly one outgoing connection."
+              : "Start nodes must have exactly one outgoing connection."
+        );
       }
       continue;
     }
@@ -398,6 +449,42 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
         markInvalid(nodeId, "Input nodes need an incoming connection.");
       } else if (!hasOutgoingHandle(nodeId, "response")) {
         markInvalid(nodeId, "Input nodes need a Response connection.");
+      }
+      continue;
+    }
+
+    if (nodeType === "save") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Save nodes need an incoming connection.");
+      } else if (outgoingCount !== 1 || outgoingHandleCount(nodeId, "next") !== 1) {
+        markInvalid(nodeId, "Save nodes need exactly one Next connection.");
+      }
+      continue;
+    }
+
+    if (nodeType === "message") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Message nodes need an incoming connection.");
+      } else if (outgoingCount !== 1 || outgoingHandleCount(nodeId, "next") !== 1) {
+        markInvalid(nodeId, "Message nodes need exactly one Next connection.");
+      }
+      continue;
+    }
+
+    if (nodeType === "delay") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Delay nodes need an incoming connection.");
+      } else if (outgoingCount !== 1 || outgoingHandleCount(nodeId, "next") !== 1) {
+        markInvalid(nodeId, "Delay nodes need exactly one Next connection.");
+      }
+      continue;
+    }
+
+    if (nodeType === "assign_agent") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Assign agent nodes need an incoming connection.");
+      } else if (outgoingCount !== 1 || outgoingHandleCount(nodeId, "next") !== 1) {
+        markInvalid(nodeId, "Assign agent nodes need exactly one Next connection.");
       }
       continue;
     }
@@ -460,7 +547,62 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
   return {
     invalidNodeIds: Object.keys(invalidNodeReasons),
     invalidNodeReasons,
+    invalidNodes: Array.from(invalidNodesById.values()),
     isValid: Object.keys(invalidNodeReasons).length === 0,
+  };
+}
+
+function sanitizeFlowGraphEdges(nodes: Node[], edges: Edge[]) {
+  const normalizedNodes = Array.isArray(nodes) ? nodes : [];
+  const normalizedEdges = Array.isArray(edges) ? edges : [];
+  const validNodeIds = new Set(
+    normalizedNodes.map((node) => String(node?.id || "").trim()).filter(Boolean)
+  );
+  const startNodeTypes = new Set(["start", "trigger", "resume_bot"]);
+  const startNodeIds = new Set(
+    normalizedNodes
+      .filter((node) => startNodeTypes.has(String(node?.type || "").trim().toLowerCase()))
+      .map((node) => String(node?.id || "").trim())
+      .filter(Boolean)
+  );
+  let removedInvalidEdges = 0;
+
+  const sanitizedEdges = normalizedEdges.filter((edge) => {
+    const sourceId = String(edge?.source || "").trim();
+    const targetId = String(edge?.target || "").trim();
+
+    if (!sourceId || !targetId) {
+      removedInvalidEdges += 1;
+      return false;
+    }
+
+    if (!validNodeIds.has(sourceId) || !validNodeIds.has(targetId)) {
+      removedInvalidEdges += 1;
+      return false;
+    }
+
+    if (startNodeIds.has(targetId)) {
+      removedInvalidEdges += 1;
+      return false;
+    }
+
+    return true;
+  });
+
+  return { nodes: normalizedNodes, edges: sanitizedEdges, removedInvalidEdges };
+}
+
+function buildBlankFlowCanvas() {
+  return {
+    nodes: [
+      {
+        id: "node_start",
+        type: "start",
+        position: { x: 120, y: 120 },
+        data: { label: "Start" },
+      },
+    ],
+    edges: [],
   };
 }
 
@@ -473,16 +615,6 @@ function inferSystemFlowType(flow: any) {
     .toLowerCase();
   if (currentType === "handoff" || currentType === "csat") {
     return currentType;
-  }
-
-  const currentName = String(flow?.flow_name || flow?.name || flowJson.flow_name || flowJson.name || "")
-    .trim()
-    .toLowerCase();
-  if (currentName.includes("handoff")) {
-    return "handoff";
-  }
-  if (currentName.includes("csat")) {
-    return "csat";
   }
 
   return "";
@@ -551,12 +683,9 @@ function layoutFlowNodes(flowJson: any, isLeftToRight: boolean) {
   const roots = originalNodes
     .filter((node: any) => {
       const nodeId = String(node?.id || "");
-    const nodeType = String(node?.type || "").trim().toLowerCase();
-    return (
-      nodeType === "start" ||
-      (incomingCount.get(nodeId) || 0) === 0
-    );
-  })
+      const nodeType = String(node?.type || "").trim().toLowerCase();
+      return nodeType === "start" || nodeType === "trigger" || nodeType === "resume_bot" || (incomingCount.get(nodeId) || 0) === 0;
+    })
     .sort((a: any, b: any) => (nodeOrder.get(String(a?.id || "")) || 0) - (nodeOrder.get(String(b?.id || "")) || 0));
 
   const levels = new Map<string, number>();
@@ -569,7 +698,7 @@ function layoutFlowNodes(flowJson: any, isLeftToRight: boolean) {
     const targets = outgoing.get(nodeId) || [];
     targets.forEach((targetId) => {
       const nextLevel = currentLevel + 1;
-      if (!levels.has(targetId) || nextLevel > (levels.get(targetId) || 0)) {
+      if (!levels.has(targetId)) {
         levels.set(targetId, nextLevel);
         queue.push(targetId);
       }
@@ -677,35 +806,79 @@ function buildSystemFlowBlueprint(flowType: "handoff" | "csat") {
       is_system_flow: true,
       layout_left_to_right: true,
       nodes: [
-        { id: "handoff-start", type: "start", position: { x: 120, y: 100 }, data: { label: "Start" } },
-      {
-        id: "handoff-ack",
-        type: "message",
-        position: { x: 120, y: 220 },
-        data: { label: "Acknowledgment", text: "No problem. Let me get a human agent to help you out." },
-      },
+        {
+          id: "handoff-trigger",
+          type: "trigger",
+          position: { x: 120, y: 100 },
+          data: {
+            label: "Support Trigger",
+            triggerType: "keyword",
+            triggerKeywords: "human, support, agent, help desk",
+            entryKey: "human",
+          },
+        },
+        {
+          id: "handoff-confirm",
+          type: "menu",
+          position: { x: 420, y: 100 },
+          data: {
+            label: "Confirm Transfer",
+            text: "Would you like me to transfer you to a human support agent?",
+            item1: "Yes, please",
+            item2: "No, I'm good",
+            timeout: 86400,
+            reminderDelay: 43200,
+            reminderText: "Hi there! Just checking in. Did you still want to speak to an agent?",
+            timeoutFallback: "This request has timed out due to inactivity. Type 'Help' whenever you need us!",
+          },
+        },
+        {
+          id: "handoff-wait",
+          type: "message",
+          position: { x: 720, y: 20 },
+          data: {
+            label: "Wait Message",
+            text: "Please wait a moment while I connect you with our next available agent...",
+          },
+        },
         {
           id: "handoff-assign",
           type: "assign_agent",
-          position: { x: 120, y: 360 },
-          data: { label: "Assign Agent", text: "Bot paused. An agent will be with you shortly." },
-        },
-      {
-        id: "handoff-set-expectation",
-        type: "message",
-        position: { x: 120, y: 500 },
-        data: {
-          label: "Expectation Setting",
-            text: "I've notified our team. Someone will review your chat and reply here shortly. Reply 'Cancel' to return to the bot.",
+          position: { x: 1020, y: 20 },
+          data: {
+            label: "Transfer to Human",
+            text: "Bot paused. An agent will be with you shortly.",
           },
         },
-        { id: "handoff-end", type: "end", position: { x: 520, y: 500 }, data: { label: "End" } },
+        {
+          id: "handoff-cancel",
+          type: "message",
+          position: { x: 720, y: 190 },
+          data: {
+            label: "Cancel Handoff",
+            text: "No problem! Let me know if you need anything else.",
+          },
+        },
+        {
+          id: "handoff-timeout",
+          type: "message",
+          position: { x: 720, y: 360 },
+          data: {
+            label: "Timeout Notice",
+            text: "This request has timed out due to inactivity. Type 'Help' whenever you need us!",
+          },
+        },
+        { id: "handoff-end", type: "end", position: { x: 1320, y: 100 }, data: { label: "End Session" } },
       ],
       edges: [
-        { id: "handoff-e1", source: "handoff-start", target: "handoff-ack", sourceHandle: "next" },
-        { id: "handoff-e2", source: "handoff-ack", target: "handoff-assign", sourceHandle: "next" },
-        { id: "handoff-e3", source: "handoff-assign", target: "handoff-set-expectation", sourceHandle: "response" },
-        { id: "handoff-e4", source: "handoff-set-expectation", target: "handoff-end", sourceHandle: "next" },
+        { id: "handoff-e1", source: "handoff-trigger", target: "handoff-confirm", sourceHandle: "next" },
+        { id: "handoff-e2", source: "handoff-confirm", target: "handoff-wait", sourceHandle: "item1" },
+        { id: "handoff-e3", source: "handoff-confirm", target: "handoff-cancel", sourceHandle: "item2" },
+        { id: "handoff-e4", source: "handoff-confirm", target: "handoff-timeout", sourceHandle: "timeout" },
+        { id: "handoff-e5", source: "handoff-wait", target: "handoff-assign", sourceHandle: "next" },
+        { id: "handoff-e6", source: "handoff-assign", target: "handoff-end", sourceHandle: "next" },
+        { id: "handoff-e7", source: "handoff-cancel", target: "handoff-end", sourceHandle: "next" },
+        { id: "handoff-e8", source: "handoff-timeout", target: "handoff-end", sourceHandle: "next" },
       ],
     };
   }
@@ -716,7 +889,7 @@ function buildSystemFlowBlueprint(flowType: "handoff" | "csat") {
     is_system_flow: true,
     layout_left_to_right: true,
     nodes: [
-      { id: "csat-start", type: "start", position: { x: 120, y: 100 }, data: { label: "Start" } },
+      { id: "csat-resume", type: "resume_bot", position: { x: 120, y: 100 }, data: { label: "Resume Bot" } },
       {
         id: "csat-menu",
         type: "menu",
@@ -766,7 +939,7 @@ function buildSystemFlowBlueprint(flowType: "handoff" | "csat") {
       { id: "csat-end", type: "end", position: { x: 360, y: 700 }, data: { label: "End" } },
     ],
     edges: [
-      { id: "csat-e1", source: "csat-start", target: "csat-menu", sourceHandle: "next" },
+      { id: "csat-e1", source: "csat-resume", target: "csat-menu", sourceHandle: "next" },
       { id: "csat-e2", source: "csat-menu", target: "csat-save-good", sourceHandle: "item1" },
       { id: "csat-e3", source: "csat-menu", target: "csat-save-ok", sourceHandle: "item2" },
       { id: "csat-e4", source: "csat-menu", target: "csat-save-bad", sourceHandle: "item3" },
@@ -783,130 +956,8 @@ function buildSystemFlowBlueprint(flowType: "handoff" | "csat") {
 function buildLeadQualificationFlowBlueprint(botName?: string) {
   return {
     layout_left_to_right: true,
-    nodes: [
-      { id: "primary-start", type: "start", position: { x: 120, y: 100 }, data: { label: "Start" } },
-      {
-        id: "primary-welcome",
-        type: "message",
-        position: { x: 120, y: 220 },
-        data: {
-          label: "Welcome",
-          text: `Welcome to ${botName || "your bot"}! I can help qualify a lead, connect you to a human, or recover from an error. Choose an option below to get started.`,
-        },
-      },
-      {
-        id: "primary-menu",
-        type: "menu",
-        position: { x: 120, y: 360 },
-        data: {
-          label: "Choose Path",
-          text: "What would you like to do today?",
-          item1: "Sales Lead",
-          item2: "Talk to Human",
-          item3: "Other / Error",
-        },
-      },
-      {
-        id: "primary-name-input",
-        type: "input",
-        position: { x: 120, y: 520 },
-        data: {
-          label: "Lead Name",
-          text: "What is your full name?",
-          variable: "full_name",
-          linkedFieldKey: "full_name",
-          validation: "text",
-          onInvalidMessage: "Please enter your name again.",
-          maxRetries: 3,
-          timeout: 900,
-          reminderDelay: 300,
-          reminderText: "Still there? Please reply with your full name.",
-          timeoutFallback: "No response received. We will continue later.",
-        },
-      },
-      {
-        id: "primary-email-input",
-        type: "input",
-        position: { x: 120, y: 680 },
-        data: {
-          label: "Lead Email",
-          text: "Thanks. What is your email address?",
-          variable: "email",
-          linkedFieldKey: "email",
-          validation: "email",
-          onInvalidMessage: "Please enter a valid email address.",
-          maxRetries: 3,
-          timeout: 900,
-          reminderDelay: 300,
-          reminderText: "Could you share your email address?",
-          timeoutFallback: "No response received. We will continue later.",
-        },
-      },
-      {
-        id: "primary-email-check",
-        type: "condition",
-        position: { x: 120, y: 840 },
-        data: {
-          label: "Validate Email",
-          variable: "email",
-          operator: "exists",
-          value: "",
-        },
-      },
-      {
-        id: "primary-lead-status",
-        type: "save",
-        position: { x: 420, y: 840 },
-        data: {
-          label: "Mark Qualified",
-          variable: "lead_status",
-          value: "qualified",
-        },
-      },
-      {
-        id: "primary-human-handoff",
-        type: "assign_agent",
-        position: { x: 120, y: 1000 },
-        data: {
-          label: "Assign Human",
-          text: "A human agent will review your request now.",
-        },
-      },
-      {
-        id: "primary-handoff-note",
-        type: "message",
-        position: { x: 120, y: 1160 },
-        data: {
-          label: "Handoff Note",
-          text: "Thanks. I have forwarded your details to the team. We will continue the conversation from here.",
-        },
-      },
-      {
-        id: "primary-error-message",
-        type: "message",
-        position: { x: 420, y: 520 },
-        data: {
-          label: "Recovery Message",
-          text: "Sorry, I didn't catch that. Please reply with a valid email, choose another option, or type HELP to speak with a human.",
-        },
-      },
-      { id: "primary-end", type: "end", position: { x: 520, y: 860 }, data: { label: "End" } },
-    ],
-    edges: [
-      { id: "primary-e1", source: "primary-start", target: "primary-welcome", sourceHandle: "next" },
-      { id: "primary-e2", source: "primary-welcome", target: "primary-menu", sourceHandle: "next" },
-      { id: "primary-e3", source: "primary-menu", target: "primary-name-input", sourceHandle: "item1" },
-      { id: "primary-e4", source: "primary-menu", target: "primary-human-handoff", sourceHandle: "item2" },
-      { id: "primary-e5", source: "primary-menu", target: "primary-error-message", sourceHandle: "item3" },
-      { id: "primary-e6", source: "primary-name-input", target: "primary-email-input", sourceHandle: "response" },
-      { id: "primary-e7", source: "primary-email-input", target: "primary-email-check", sourceHandle: "response" },
-      { id: "primary-e8", source: "primary-email-check", target: "primary-lead-status", sourceHandle: "true" },
-      { id: "primary-e9", source: "primary-email-check", target: "primary-error-message", sourceHandle: "false" },
-      { id: "primary-e10", source: "primary-lead-status", target: "primary-human-handoff", sourceHandle: "next" },
-      { id: "primary-e11", source: "primary-human-handoff", target: "primary-handoff-note", sourceHandle: "response" },
-      { id: "primary-e12", source: "primary-handoff-note", target: "primary-end", sourceHandle: "next" },
-      { id: "primary-e13", source: "primary-error-message", target: "primary-end", sourceHandle: "next" },
-    ],
+    nodes: [],
+    edges: [],
   };
 }
 
@@ -922,8 +973,16 @@ function FlowBuilderCanvas() {
   const { isReadOnly, isPlatformOperator } = useVisibility();
   
   const botId = router.query.botId as string;
+  const campaignId = typeof router.query.campaignId === "string" ? router.query.campaignId.trim() : "";
+  const requestedFlowId =
+    typeof router.query.flowId === "string" ? router.query.flowId.trim().toLowerCase() : "";
+  const requestedSystemFlowType =
+    typeof router.query.systemFlowType === "string"
+      ? router.query.systemFlowType.trim().toLowerCase()
+      : "";
+  const isCampaignSystemFlowEditor = Boolean(campaignId);
   const { unlockedBotIds } = useBotStore();
-  const isUnlocked = unlockedBotIds.includes(botId);
+  const isUnlocked = isCampaignSystemFlowEditor ? true : unlockedBotIds.includes(botId);
   const permissionsReady =
     !!activeWorkspace?.workspace_id && !!activeProject?.id;
   const canEditWorkflow = hasWorkspacePermission(activeWorkspace?.workspace_id, "edit_workflow");
@@ -1063,11 +1122,11 @@ function FlowBuilderCanvas() {
   const manualNodeSaveInFlightRef = useRef(false);
 
   const { takeSnapshot, undo, redo, past, future } = useFlowHistory(nodes, edges, setNodes, setEdges, setIsDirty);
-  const canEditTopology = canEditProjectWorkflow && !isSystemFlow;
+  const canEditTopology = canEditProjectWorkflow && (!isSystemFlow || isCampaignSystemFlowEditor);
   const flowValidation = useMemo(() => validateFlowGraph(nodes, edges), [nodes, edges]);
   const flowDraftStorageKey = useMemo(
-    () => getFlowDraftStorageKey(botId, currentFlowId, currentFlowName),
-    [botId, currentFlowId, currentFlowName]
+    () => getFlowDraftStorageKey(campaignId || botId, currentFlowId, currentFlowName),
+    [botId, campaignId, currentFlowId, currentFlowName]
   );
   const botGlobalSettings = useMemo(
     () => botMetadata?.global_settings || botMetadata?.settings_json || botMetadata?.settings || null,
@@ -1091,14 +1150,10 @@ function FlowBuilderCanvas() {
     const normalized = Array.isArray(summaries) ? summaries : [];
     const matched = normalized.find((flow: any) => {
       const currentFlowType = String(flow?.system_flow_type || flow?.flow_json?.system_flow_type || "").trim();
-      const currentName = String(flow?.flow_name || flow?.name || "").trim().toLowerCase();
       if (currentFlowType === flowType) {
         return true;
       }
-      if (flowType === "handoff") {
-        return currentName === "default human handoff" || currentName.includes("handoff");
-      }
-      return currentName === "default csat survey" || currentName.includes("csat");
+      return false;
     });
 
     return String(matched?.id || "").trim() || undefined;
@@ -1123,12 +1178,54 @@ function FlowBuilderCanvas() {
     const importedFlow = layoutConfig.hasExplicitValue
       ? layoutFlowNodes(repairedFlow, layoutConfig.isLeftToRight)
       : repairedFlow;
+    const importedNodes = Array.isArray(importedFlow.nodes) ? importedFlow.nodes : [];
+    const importedEdges = Array.isArray(importedFlow.edges) ? importedFlow.edges : [];
+    const validNodeIds = new Set(importedNodes.map((node: any) => String(node?.id || "").trim()).filter(Boolean));
+    const startNodeTypes = new Set(["start", "trigger", "resume_bot"]);
+    const startNodeIds = new Set(
+      importedNodes
+        .filter((node: any) => startNodeTypes.has(String(node?.type || "").trim().toLowerCase()))
+        .map((node: any) => String(node?.id || "").trim())
+        .filter(Boolean)
+    );
+    let removedInvalidEdges = 0;
+    const sanitizedEdges = importedEdges.filter((edge: any) => {
+      const sourceId = String(edge?.source || "").trim();
+      const targetId = String(edge?.target || "").trim();
+
+      if (!sourceId || !targetId) {
+        removedInvalidEdges += 1;
+        return false;
+      }
+
+      if (!validNodeIds.has(sourceId) || !validNodeIds.has(targetId)) {
+        removedInvalidEdges += 1;
+        return false;
+      }
+
+      if (startNodeIds.has(targetId)) {
+        removedInvalidEdges += 1;
+        return false;
+      }
+
+      return true;
+    });
+
+    const sanitizedFlow = {
+      ...importedFlow,
+      nodes: importedNodes,
+      edges: sanitizedEdges,
+    };
+
+    if (removedInvalidEdges > 0) {
+      notify("Cleaned up invalid connections from imported JSON.", "info");
+    }
 
     startTransition(() => {
       takeSnapshot();
       setFlowLayoutLeftToRight(layoutConfig.isLeftToRight);
-      setNodes(importedFlow.nodes);
-      setEdges(importedFlow.edges || []);
+      setNodes(sanitizedFlow.nodes);
+      setEdges(sanitizedFlow.edges || []);
       setIsDirty(true);
       setSelectedNode(null);
       setViewport({ x: 0, y: 0, zoom: 1 });
@@ -1253,10 +1350,36 @@ function FlowBuilderCanvas() {
     setEdges(normalizedFlow.edges);
   }, [normalizeFlowForCanvas, setNodes, setEdges]);
 
-  const refreshFlowSummariesSafe = useCallback(async (targetBotId: string) => {
-    if (!targetBotId) return [];
+  const refreshFlowSummariesSafe = useCallback(async (targetId: string) => {
+    if (!targetId) return [];
+
     try {
-      const summaries = await flowService.getFlowSummaries(targetBotId);
+      if (isCampaignSystemFlowEditor) {
+        const campaign = await campaignService.get(targetId);
+        const systemFlows: Record<string, any> =
+          (campaign?.settings_json?.system_flows && typeof campaign.settings_json.system_flows === "object")
+            ? campaign.settings_json.system_flows
+            : {};
+        const normalized = ["handoff", "csat"]
+          .map((flowType) => {
+            const flowJson = systemFlows?.[flowType];
+            if (!flowJson) return null;
+            return {
+              id: flowType,
+              campaign_id: targetId,
+              flow_name: flowJson.flow_name || (flowType === "handoff" ? "Global: Human Handoff" : "Post-Handoff CSAT"),
+              flow_json: flowJson,
+              is_system_flow: true,
+              is_global_flow: true,
+              system_flow_type: flowType,
+            };
+          })
+          .filter(Boolean) as any[];
+        setFlowSummaries(normalized);
+        return normalized;
+      }
+
+      const summaries = await flowService.getFlowSummaries(targetId);
       const normalized = Array.isArray(summaries) ? summaries : [];
       setFlowSummaries(normalized);
       return normalized;
@@ -1264,16 +1387,23 @@ function FlowBuilderCanvas() {
       console.error("Flow summaries refresh failed:", error);
       return [];
     }
-  }, []);
+  }, [isCampaignSystemFlowEditor]);
 
-  const ensureSystemFlowExists = useCallback(async (targetBotId: string, flowType: "handoff" | "csat") => {
-    if (!targetBotId) return null;
-    await botService.getBot(targetBotId).catch((err) => {
-      console.error("Failed to hydrate bot while resolving system flow:", err);
-    });
-    const summaries = await refreshFlowSummariesSafe(targetBotId);
-    return getSystemFlowIdByType(summaries, flowType) || null;
-  }, [getSystemFlowIdByType, refreshFlowSummariesSafe]);
+  const ensureSystemFlowExists = useCallback(async (targetId: string, flowType: "handoff" | "csat") => {
+    if (!targetId) return null;
+
+    if (isCampaignSystemFlowEditor) {
+      return flowType;
+    }
+
+    try {
+      const systemFlows = await botService.getSystemFlows(targetId);
+      return getSystemFlowIdByType(Array.isArray(systemFlows) ? systemFlows : [], flowType) || null;
+    } catch (err) {
+      console.error("Failed to resolve system flows:", err);
+      return null;
+    }
+  }, [getSystemFlowIdByType, isCampaignSystemFlowEditor]);
 
   const ensurePrimaryFlowExists = useCallback(async (targetBotId: string, summaries: any[] = [], botName?: string) => {
     if (!targetBotId) return null;
@@ -1323,14 +1453,14 @@ function FlowBuilderCanvas() {
     const normalized = String(type || "").trim().toLowerCase();
     const base = { label: formatDefaultLabel(normalized), text: "" };
 
-    if (normalized === "message" || normalized === "msg_text" || normalized === "msg_media") {
+    if (normalized === "message") {
       return {
         ...base,
-        messageType: normalized === "msg_media" ? "image" : "text",
+        messageType: "text",
       };
     }
 
-    if (normalized === "menu" || normalized === "menu_button" || normalized === "menu_list") {
+    if (normalized === "menu") {
       return {
         ...base,
         menuMode: "auto",
@@ -1409,6 +1539,23 @@ function FlowBuilderCanvas() {
         ...base,
         variable: "",
         leadField: "",
+      };
+    }
+
+    if (normalized === "trigger") {
+      return {
+        ...base,
+        triggerKeywords: "",
+        triggerType: "keyword",
+        entryKey: "",
+      };
+    }
+
+    if (normalized === "resume_bot") {
+      return {
+        ...base,
+        resumeText: "Welcome back.",
+        resumeMode: "continue",
       };
     }
 
@@ -1515,7 +1662,62 @@ function FlowBuilderCanvas() {
 
         if (cancelled) return;
 
-        if (botId && isUnlocked) {
+        if (isCampaignSystemFlowEditor) {
+          setAllowedNodeTypes([]);
+          setNodeDisabledReasons({});
+
+          const campaign = await campaignService.get(campaignId);
+          if (cancelled) return;
+
+          setBotMetadata(campaign);
+          const campaignFlows: Record<string, any> =
+            (campaign?.settings_json?.system_flows && typeof campaign.settings_json.system_flows === "object")
+              ? campaign.settings_json.system_flows
+              : {};
+          const requestedCampaignFlowKey = requestedSystemFlowType || requestedFlowId || "handoff";
+          const selectedFlow = campaignFlows?.[requestedCampaignFlowKey];
+          const fallbackFlowName =
+            requestedCampaignFlowKey === "handoff"
+              ? "Global: Human Handoff"
+              : "Post-Handoff CSAT";
+
+          if (!selectedFlow) {
+            const blankFlow = buildBlankFlowCanvas();
+            applyLoadedFlow({
+              id: requestedCampaignFlowKey,
+              flow_name: fallbackFlowName,
+              flow_json: blankFlow,
+              is_system_flow: true,
+              is_global_flow: true,
+            });
+            setFlowSummaries([]);
+            return;
+          }
+
+          applyLoadedFlow({
+            id: requestedCampaignFlowKey,
+            flow_name: selectedFlow.flow_name || fallbackFlowName,
+            flow_json: selectedFlow,
+            is_system_flow: true,
+            is_global_flow: true,
+          });
+          setFlowSummaries([
+            {
+              id: "handoff",
+              flow_name: campaignFlows?.handoff?.flow_name || "Global: Human Handoff",
+              flow_json: campaignFlows?.handoff || null,
+              is_system_flow: true,
+              system_flow_type: "handoff",
+            },
+            {
+              id: "csat",
+              flow_name: campaignFlows?.csat?.flow_name || "Post-Handoff CSAT",
+              flow_json: campaignFlows?.csat || null,
+              is_system_flow: true,
+              system_flow_type: "csat",
+            },
+          ]);
+        } else if (botId && isUnlocked) {
 
           const capabilities = await flowService.getCapabilities(botId);
           if (cancelled) return;
@@ -1528,11 +1730,9 @@ function FlowBuilderCanvas() {
 
           const summaries = await refreshFlowSummariesSafe(botId);
           if (cancelled) return;
+          const systemFlowSummaries = await botService.getSystemFlows(botId).catch(() => []);
+          if (cancelled) return;
 
-          const requestedSystemFlowType =
-            typeof router.query.systemFlowType === "string"
-              ? router.query.systemFlowType.trim().toLowerCase()
-              : "";
           const requestedFlowId =
             typeof router.query.flowId === "string" ? router.query.flowId.trim() : "";
           const requestedFlow = requestedFlowId
@@ -1546,15 +1746,9 @@ function FlowBuilderCanvas() {
             setCurrentFlowName("Untitled flow");
             setIsSystemFlow(false);
             setFlowLayoutLeftToRight(true);
-            setNodes([
-              {
-                id: `node-start-${Date.now()}`,
-                type: "start",
-                position: { x: 120, y: 120 },
-                data: { label: "Start" },
-              },
-            ]);
-            setEdges([]);
+            const blankFlow = buildBlankFlowCanvas();
+            setNodes(blankFlow.nodes);
+            setEdges(blankFlow.edges);
             setSelectedNode(null);
             setIsDirty(false);
             setViewport({ x: 0, y: 0, zoom: 1 });
@@ -1569,6 +1763,9 @@ function FlowBuilderCanvas() {
                   : undefined) ||
               (requestedSystemFlowType === "handoff" || requestedSystemFlowType === "csat"
                 ? getSystemFlowIdByType(summaries, requestedSystemFlowType)
+                : undefined) ||
+              (requestedSystemFlowType === "handoff" || requestedSystemFlowType === "csat"
+                ? getSystemFlowIdByType(systemFlowSummaries, requestedSystemFlowType)
                 : undefined) ||
               getDefaultFlowId(summaries) ||
               undefined;
@@ -1585,7 +1782,7 @@ function FlowBuilderCanvas() {
           if (!initialFlowId && !requestedSystemFlowType) {
             setCurrentFlowId(null);
             setCurrentFlowName("");
-            applyLoadedFlow({ nodes: [], edges: [] });
+            applyLoadedFlow(buildBlankFlowCanvas());
             return;
           }
 
@@ -1621,6 +1818,7 @@ function FlowBuilderCanvas() {
     };
   }, [
     botId,
+    campaignId,
     isUnlocked,
     unlockedBotIds,
     router.isReady,
@@ -1632,6 +1830,9 @@ function FlowBuilderCanvas() {
     getSystemFlowIdByType,
     activeWorkspace?.workspace_id,
     activeProject?.id,
+    isCampaignSystemFlowEditor,
+    requestedSystemFlowType,
+    router.query.flowId,
   ]);
 
   const openCreateFlowDialog = useCallback(() => {
@@ -1644,7 +1845,7 @@ function FlowBuilderCanvas() {
     () =>
       flowSummaries.filter((flow: any) => {
         const flowType = String(flow?.system_flow_type || flow?.flow_json?.system_flow_type || "").trim();
-        return !Boolean(flow.is_global_flow || flowType);
+        return !Boolean(flow.is_global_flow || flow.is_system_flow || flowType);
       }),
     [flowSummaries]
   );
@@ -1663,6 +1864,10 @@ function FlowBuilderCanvas() {
   }, []);
 
   const handleCreateFlow = useCallback(async (requestedName: string) => {
+    if (isCampaignSystemFlowEditor) {
+      notify("Campaign system flows are edited from the shared flow template.", "error");
+      return;
+    }
     if (!botId || !canEditTopology) {
       return;
     }
@@ -1707,7 +1912,7 @@ function FlowBuilderCanvas() {
     applyLoadedFlow(created);
     setSelectedNode(null);
     setIsDirty(false);
-  }, [applyLoadedFlow, botId, botMetadata?.name, canEditTopology, refreshFlowSummariesSafe, regularFlowSummaries.length, router, setCurrentFlowId]);
+  }, [applyLoadedFlow, botId, canEditTopology, refreshFlowSummariesSafe, regularFlowSummaries.length, router, setCurrentFlowId, isCampaignSystemFlowEditor]);
 
   const persistFlow = useCallback(async (
     nextNodes = nodes,
@@ -1717,10 +1922,24 @@ function FlowBuilderCanvas() {
     showValidationError = true,
     skipValidation = false
   ) => {
-    if (!botId || !isUnlocked || !canEditProjectWorkflow) {
+    const sanitized = sanitizeFlowGraphEdges(nextNodes, nextEdges);
+    if (sanitized.removedInvalidEdges > 0) {
+      notify("Cleaned up invalid connections before saving the flow.", "info");
+      setNodes(sanitized.nodes);
+      setEdges(sanitized.edges);
+      nextNodes = sanitized.nodes;
+      nextEdges = sanitized.edges;
+    }
+
+    if (!canEditProjectWorkflow) {
+      notify("You do not have permission to edit this workflow.", "error");
+      return false;
+    }
+    if (!botId && !isCampaignSystemFlowEditor) {
+      notify("Cannot save: this workflow is currently locked.", "error");
       console.warn("persistFlow blocked", {
         botId: !!botId,
-        isUnlocked,
+        campaignId: !!campaignId,
         canEditProjectWorkflow,
         permissionsReady,
         activeWorkspaceId: activeWorkspace?.workspace_id,
@@ -1732,17 +1951,18 @@ function FlowBuilderCanvas() {
       const validation = validateFlowGraph(nextNodes, nextEdges);
       if (!validation.isValid) {
         if (showValidationError) {
-          const invalidLabels = validation.invalidNodeIds
-            .map((nodeId) => {
-              const match = (nextNodes || []).find((node: any) => String(node?.id || "") === String(nodeId));
-              return getNodeDisplayLabel(match);
-            })
-            .filter(Boolean)
-            .slice(0, 3);
+          const invalidSummaries = (validation.invalidNodes || [])
+            .filter((entry) => Boolean(String(entry?.label || entry?.id || "").trim()))
+            .slice(0, 4)
+            .map((entry) => {
+              const label = String(entry.label || entry.id || "Node").trim();
+              const reason = String(entry.reason || "").trim();
+              return reason ? `${label} (${reason})` : label;
+            });
           notify(
-            invalidLabels.length > 0
-              ? `Connect the highlighted nodes before saving: ${invalidLabels.join(", ")}.`
-              : "Connect the highlighted nodes before saving.",
+            invalidSummaries.length > 0
+              ? `Cannot save flow. Please fix: ${invalidSummaries.join(", ")}.`
+              : "Cannot save flow. Please ensure all nodes are properly connected.",
             "error"
           );
         }
@@ -1753,21 +1973,52 @@ function FlowBuilderCanvas() {
 
     setIsSaving(true);
     try {
-      const saved = await flowService.saveFlow(
-        botId,
-        {
+      if (isCampaignSystemFlowEditor) {
+        const flowKey = String(currentFlowId || requestedSystemFlowType || "").trim() || requestedSystemFlowType;
+        const currentCampaign = botMetadata || {};
+        const currentSettings = (currentCampaign?.settings_json && typeof currentCampaign.settings_json === "object")
+          ? currentCampaign.settings_json
+          : {};
+        const nextFlowJson = {
           nodes: nextNodes,
           edges: nextEdges,
           layout_left_to_right: flowLayoutLeftToRight,
           layoutLeftToRight: flowLayoutLeftToRight,
-        },
-        currentFlowId || undefined,
-        String(nextFlowName || currentFlowName).trim() || undefined
-      );
-      setCurrentFlowId(saved?.id || currentFlowId);
-      setCurrentFlowName(String(saved?.flow_name || currentFlowName).trim());
-      if (saved?.id) {
-        await refreshFlowSummariesSafe(botId);
+        };
+        const nextSettings = {
+          ...currentSettings,
+          system_flows: {
+            ...(currentSettings.system_flows && typeof currentSettings.system_flows === "object" ? currentSettings.system_flows : {}),
+            [flowKey]: {
+              ...nextFlowJson,
+              flow_name: String(nextFlowName || currentFlowName).trim() || undefined,
+            },
+          },
+        };
+        const savedCampaign = await campaignService.update(campaignId, {
+          settingsJson: nextSettings,
+        });
+        setBotMetadata(savedCampaign);
+        setCurrentFlowId(flowKey);
+        setCurrentFlowName(String(nextFlowName || currentFlowName).trim());
+        await refreshFlowSummariesSafe(campaignId);
+      } else {
+        const saved = await flowService.saveFlow(
+          botId,
+          {
+            nodes: nextNodes,
+            edges: nextEdges,
+            layout_left_to_right: flowLayoutLeftToRight,
+            layoutLeftToRight: flowLayoutLeftToRight,
+          },
+          currentFlowId || undefined,
+          String(nextFlowName || currentFlowName).trim() || undefined
+        );
+        setCurrentFlowId(saved?.id || currentFlowId);
+        setCurrentFlowName(String(saved?.flow_name || currentFlowName).trim());
+        if (saved?.id) {
+          await refreshFlowSummariesSafe(botId);
+        }
       }
       clearFlowDraftSnapshot(flowDraftStorageKey);
       setIsDirty(false);
@@ -1779,10 +2030,10 @@ function FlowBuilderCanvas() {
     } finally {
       setTimeout(() => setIsSaving(false), 800);
     }
-  }, [botId, nodes, edges, isDirty, isUnlocked, currentFlowId, currentFlowName, canEditProjectWorkflow, permissionsReady, activeWorkspace?.workspace_id, activeProject?.id, refreshFlowSummariesSafe, flowLayoutLeftToRight, flowDraftStorageKey]);
+  }, [botId, campaignId, requestedSystemFlowType, nodes, edges, isDirty, currentFlowId, currentFlowName, canEditProjectWorkflow, permissionsReady, activeWorkspace?.workspace_id, activeProject?.id, refreshFlowSummariesSafe, flowLayoutLeftToRight, flowDraftStorageKey, isCampaignSystemFlowEditor, botMetadata]);
 
   const handleRenameFlow = useCallback(async (nextName: string) => {
-    if (!botId || !currentFlowId || !canEditProjectWorkflow) {
+    if ((!botId && !isCampaignSystemFlowEditor) || !currentFlowId || !canEditProjectWorkflow) {
       return;
     }
 
@@ -1791,7 +2042,7 @@ function FlowBuilderCanvas() {
       const saved = await persistFlow(nodes, edges, true, nextName);
       if (saved) {
         setCurrentFlowName(nextName);
-        await refreshFlowSummariesSafe(botId);
+        await refreshFlowSummariesSafe(isCampaignSystemFlowEditor ? campaignId : botId);
         setIsDirty(false);
         notify("Flow name updated.", "success");
       }
@@ -1801,7 +2052,7 @@ function FlowBuilderCanvas() {
     } finally {
       setIsSaving(false);
     }
-  }, [botId, canEditProjectWorkflow, currentFlowId, nodes, edges, refreshFlowSummariesSafe, persistFlow]);
+  }, [botId, campaignId, isCampaignSystemFlowEditor, canEditProjectWorkflow, currentFlowId, nodes, edges, refreshFlowSummariesSafe, persistFlow]);
 
   const handleSubmitFlowNameDialog = useCallback(async () => {
     const nextName = flowNameDraft.trim();
@@ -1878,6 +2129,7 @@ function FlowBuilderCanvas() {
   }, []);
 
   const handleNodeSaveAndClose = useCallback(async (newData: any): Promise<boolean> => {
+    console.log("3. Reached handleNodeSaveAndClose in flows.tsx");
     console.info("[NodeSave][FlowCanvas] save-handler-start", {
       flowId: currentFlowId || null,
       selectedNodeId: selectedNode?.id || null,
@@ -1887,6 +2139,7 @@ function FlowBuilderCanvas() {
     });
     if (!permissionsReady) {
       console.warn("handleNodeSaveAndClose: permissions not ready, aborting");
+      notify("Loading workspace permissions. Please try again in a moment.", "error");
       return false;
     }
     if (!canEditProjectWorkflow) {
@@ -1894,89 +2147,39 @@ function FlowBuilderCanvas() {
       return false;
     }
     if (!selectedNode) {
+      notify("Missing required fields in this node.", "error");
       setSelectedNode(null);
       return false;
     }
 
-    suppressNodeReselect();
-    suppressAutoSaveRef.current = true;
-    manualNodeSaveInFlightRef.current = true;
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    setIsSaving(true);
     const selectedNodeId = String(selectedNode.id);
     const patchedNode = buildPatchedNodeForSave(selectedNode, newData);
-    await apiClient.post("/debug/flow-save", {
-      stage: "click",
-      flowId: currentFlowId || null,
-      nodeId: selectedNodeId,
-      nodeType: patchedNode?.type || null,
-      label: patchedNode?.data?.label || null,
-    }).catch(() => null);
 
     const nextNodes = nodes.map((node) =>
       node.id === selectedNode.id ? patchedNode : node
     );
 
     setNodes(nextNodes);
-
-    let saveFailureMessage = "";
-    let saveFailureDetails: string[] = [];
-    try {
-      const saved = await persistFlow(nextNodes, edges, true, currentFlowName, false, true);
-      if (saved) {
-        clearFlowDraftSnapshot(flowDraftStorageKey);
-        setDraftSaveStatus("Saved to backend.");
-        setIsDirty(false);
-        setSelectedNode(null);
-        console.info("[NodeSave][FlowCanvas] save-handler-success", {
-          flowId: currentFlowId || null,
-          selectedNodeId,
-          selectedNodeType: patchedNode?.type || null,
-        });
-        return true;
-      }
-    } catch (error) {
-      console.error("Node patch save error", error);
-      const apiError = extractApiErrorInfo(
-        error,
-        "Node changes were applied locally, but the flow could not be saved.",
-        "Node Save Failed"
-      );
-      saveFailureMessage = apiError.message;
-      saveFailureDetails = apiError.details;
-    } finally {
-      suppressAutoSaveRef.current = false;
-      manualNodeSaveInFlightRef.current = false;
-      setIsSaving(false);
-    }
-
+    setSelectedNode(null);
     setIsDirty(true);
-    setSelectedNode(patchedNode);
-    if (!saveFailureMessage) {
-      const validation = validateFlowGraph(nextNodes, edges);
-      saveFailureMessage =
-        validation.invalidNodeReasons[selectedNodeId] ||
-        "Node changes were applied locally, but the flow save could not be completed.";
-    }
-
-    notify({
-      tone: "error",
-      title: "Node Save Failed",
-      message: saveFailureMessage,
-      details: saveFailureDetails,
-      durationMs: saveFailureDetails.length > 0 ? 9000 : 5000,
+    writeFlowDraftSnapshot(flowDraftStorageKey, {
+      botId: String(botId || "").trim(),
+      flowId: String(currentFlowId || "").trim(),
+      flowName: String(currentFlowName || "").trim(),
+      savedAt: new Date().toISOString(),
+      nodes: nextNodes,
+      edges,
+      layoutLeftToRight: flowLayoutLeftToRight,
     });
-    console.info("[NodeSave][FlowCanvas] save-handler-failed", {
+    setDraftSaveStatus("Draft updated locally.");
+    console.info("[NodeSave][FlowCanvas] save-handler-local-success", {
       flowId: currentFlowId || null,
       selectedNodeId,
       selectedNodeType: patchedNode?.type || null,
-      message: saveFailureMessage,
     });
-    return false;
-  }, [selectedNode, buildPatchedNodeForSave, nodes, edges, persistFlow, setNodes, suppressNodeReselect, currentFlowName, currentFlowId, permissionsReady, canEditProjectWorkflow, flowDraftStorageKey]);
+    setSelectedNode(null);
+    return true;
+  }, [selectedNode, buildPatchedNodeForSave, nodes, edges, setNodes, currentFlowName, currentFlowId, flowDraftStorageKey, botId, flowLayoutLeftToRight]);
 
   const handleCloseNodeEditor = useCallback(() => {
     console.info("[NodeSave][FlowCanvas] editor-close-requested", {
@@ -2007,7 +2210,7 @@ function FlowBuilderCanvas() {
   }, [canEditProjectWorkflow, persistFlow, nodes, edges, isDirty, isSaving, router]);
 
   const handleSelectFlow = useCallback(async (flowId: string) => {
-    if (!botId || !flowId) {
+    if ((!botId && !isCampaignSystemFlowEditor) || !flowId) {
       return;
     }
 
@@ -2019,7 +2222,24 @@ function FlowBuilderCanvas() {
         }
       }
       setIsLoading(true);
-      const data = await flowService.getFlow(botId, flowId);
+      const data = isCampaignSystemFlowEditor
+        ? (() => {
+            const campaignSettings = botMetadata?.settings_json || {};
+            const selectedFlow = campaignSettings?.system_flows?.[flowId];
+            return selectedFlow
+              ? {
+                  id: flowId,
+                  flow_name: selectedFlow.flow_name || (flowId === "handoff" ? "Global: Human Handoff" : "Post-Handoff CSAT"),
+                  flow_json: selectedFlow,
+                  is_system_flow: true,
+                  is_global_flow: true,
+                }
+              : null;
+          })()
+        : await flowService.getFlow(botId, flowId);
+      if (!data) {
+        throw new Error("Flow not found");
+      }
       applyLoadedFlow(data);
       setSelectedNode(null);
       setIsDirty(false);
@@ -2029,7 +2249,7 @@ function FlowBuilderCanvas() {
     } finally {
       setIsLoading(false);
     }
-  }, [applyLoadedFlow, botId, persistFlow, nodes, edges, isDirty]);
+  }, [applyLoadedFlow, botId, campaignId, isCampaignSystemFlowEditor, botMetadata, persistFlow, nodes, edges, isDirty]);
 
   useEffect(() => {
     if (suppressAutoSaveRef.current || manualNodeSaveInFlightRef.current) {
@@ -2045,7 +2265,7 @@ function FlowBuilderCanvas() {
   const deleteSelected = useCallback(() => {
     if (!canEditTopology) return;
     takeSnapshot();
-    setNodes((nds) => nds.filter((node) => !node.selected));
+    setNodes((nds) => nds.filter((node) => !node.selected || String(node?.type || "").trim().toLowerCase() === "start"));
     setEdges((eds) => eds.filter((edge) => !edge.selected));
     setSelectedNode(null); 
     setIsDirty(true);
@@ -2159,16 +2379,22 @@ function FlowBuilderCanvas() {
       return ["input", "textarea", "select", "option", "button"].includes(tagName);
     };
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const activeElement = document.activeElement as HTMLElement | null;
-      if (isEditableTarget(e.target) || isEditableTarget(activeElement)) {
-        return;
-      }
+  const handleKeyDown = (e: KeyboardEvent) => {
+    const activeElement = document.activeElement as HTMLElement | null;
+    const selection = typeof window !== "undefined" ? window.getSelection?.() : null;
+    const hasTextSelection = Boolean(selection && !selection.isCollapsed && String(selection.toString() || "").trim());
+    if (isEditableTarget(e.target) || isEditableTarget(activeElement)) {
+      return;
+    }
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
+    if (hasTextSelection) {
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
         return;
       }
 
@@ -2267,7 +2493,7 @@ function FlowBuilderCanvas() {
           id: "msg_welcome_1",
           type: "message",
           position: { x: 320, y: 120 },
-          data: { label: "Welcome", text: "Hi! Welcome to our assistant. How can I help you today?" },
+          data: { label: "Intro", text: "Sample greeting message for a blank flow." },
         },
         {
           id: "menu_main_1",
@@ -2471,16 +2697,16 @@ function FlowBuilderCanvas() {
     );
   }
 
-  if (isLoading) return <div className="flex h-full w-full items-center justify-center bg-canvas text-text-main font-black animate-pulse tracking-tighter uppercase">Loading Workflow...</div>;
+  if (isLoading) return <div className="fixed inset-0 z-50 flex h-screen w-screen items-center justify-center bg-canvas text-text-main font-black animate-pulse tracking-tighter uppercase">Loading Workflow...</div>;
 
-  if (!botId || !isUnlocked) {
+  if ((!botId && !campaignId) || (!isCampaignSystemFlowEditor && !isUnlocked)) {
     return (
       <FlowPortal availableBots={availableBots} embedded />
     );
   }
 
   return (
-    <div className="flex-1 flex h-full w-full flex-col overflow-hidden bg-canvas font-sans text-text-main">
+    <div className="fixed inset-0 z-50 flex h-screen w-screen flex-col overflow-hidden bg-canvas font-sans text-text-main">
         <RequirePermission
           permissionKey="edit_workflow"
           fallback={
@@ -2488,7 +2714,8 @@ function FlowBuilderCanvas() {
           isSidebarOpen={isSidebarOpen}
               setIsSidebarOpen={setIsSidebarOpen}
               botName={botMetadata?.name}
-              botId={botId}
+              botId={botId || campaignId}
+              builderContextLabel={campaignId ? "Campaign System Flow" : undefined}
               canEditWorkflow={false}
               canDeleteFlowAction={canDeleteProjectFlow}
               flowSummaries={regularFlowSummaries}
@@ -2525,7 +2752,8 @@ function FlowBuilderCanvas() {
           isSidebarOpen={isSidebarOpen}
           setIsSidebarOpen={setIsSidebarOpen}
           botName={botMetadata?.name}
-          botId={botId}
+          botId={botId || campaignId}
+          builderContextLabel={campaignId ? "Campaign System Flow" : undefined}
           canEditWorkflow={canEditProjectWorkflow}
           isSystemFlow={isSystemFlow}
           canDeleteFlowAction={canDeleteProjectFlow}
@@ -2766,6 +2994,4 @@ export default function FlowBuilderPageWrapper() {
     </ReactFlowProvider>
   );
 }
-
-(FlowBuilderPageWrapper as any).getLayout = (page: any) => <DashboardLayout>{page}</DashboardLayout>;
 

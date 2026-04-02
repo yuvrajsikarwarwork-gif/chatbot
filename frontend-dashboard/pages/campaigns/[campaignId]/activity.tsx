@@ -2,9 +2,9 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 
 import PageAccessNotice from "../../../components/access/PageAccessNotice";
+import CampaignHeader from "../../../components/campaign/CampaignHeader";
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import BackButtonStrip from "../../../components/navigation/BackButtonStrip";
-import SectionTabs from "../../../components/navigation/SectionTabs";
 import { useVisibility } from "../../../hooks/useVisibility";
 import { campaignService } from "../../../services/campaignService";
 import { useAuthStore } from "../../../store/authStore";
@@ -52,6 +52,7 @@ export default function CampaignActivityPage() {
     success: stats.success,
     failed: stats.failed,
   }));
+  const campaign = broadcastAnalytics?.campaign || null;
   const performanceRows = [...templateRows]
     .map((row: any) => {
       const recipients = Number(row.total_leads || 0);
@@ -131,26 +132,17 @@ export default function CampaignActivityPage() {
       ) : (
         <div className="mx-auto max-w-6xl space-y-6">
           <BackButtonStrip href={`/campaigns/${campaignId}/launch`} label="Back to launch" />
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-                  Activity
-                </div>
-                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
-                  Launch and delivery activity
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                  Review template send activity tied to this campaign from the current workspace and project context.
-                </p>
-              </div>
-              <SectionTabs items={tabs} currentPath={router.asPath.split("?")[0] || ""} />
-            </div>
-          </section>
+          <CampaignHeader
+            campaignName={campaign?.name}
+            pageTitle="Campaign Activity"
+            description="Monitor real-time metrics, delivery, and user engagement."
+            tabs={tabs}
+            currentPath={router.asPath.split("?")[0] || ""}
+          />
 
-          {error ? <section className="rounded-[1.5rem] border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</section> : null}
+          {error ? <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</section> : null}
 
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+          <section className="flex h-auto min-h-[500px] flex-col rounded-[2rem] border border-border-main bg-surface p-8 shadow-sm">
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-4">
                 {[
@@ -354,29 +346,29 @@ export default function CampaignActivityPage() {
               </div>
 
               {loading ? (
-                <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                   Loading campaign activity...
                 </div>
               ) : logs.length ? (
                 logs.map((log, index) => (
-                  <div key={log.id || index} className="rounded-[1.1rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4">
+                  <div key={log.id || index} className="rounded-xl border border-border-main bg-canvas p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div>
                         <div className="text-sm font-semibold text-[var(--text)]">
                           {log.template_name || log.templateName || "Template send"}
                         </div>
-                        <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+                        <div className="mt-1 text-xs uppercase tracking-[0.16em] text-text-muted">
                           {log.status || log.delivery_status || "unknown"}
                         </div>
                       </div>
-                      <div className="text-xs text-[var(--muted)]">
+                      <div className="text-xs text-text-muted">
                         {log.created_at ? new Date(log.created_at).toLocaleString() : "Unknown"}
                       </div>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface-strong)] px-4 py-6 text-sm text-[var(--muted)]">
+                <div className="rounded-xl border border-dashed border-border-main bg-canvas px-4 py-6 text-sm text-text-muted">
                   No campaign activity has been recorded for this campaign yet.
                 </div>
               )}

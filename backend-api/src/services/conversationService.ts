@@ -589,8 +589,7 @@ export async function getConversationTimelineService(id: string, userId: string)
       FROM messages m
       JOIN conversations c ON c.id = m.conversation_id
       WHERE c.contact_id = $1
-    ),
-    ${includeIdentityEvents ? `
+    )${includeIdentityEvents ? `,
     identity_events AS (
       SELECT
         'identity' AS event_type,

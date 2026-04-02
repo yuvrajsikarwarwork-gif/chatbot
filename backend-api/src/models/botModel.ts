@@ -33,6 +33,102 @@ function quoteIdentifier(identifier: string) {
   return `"${String(identifier || "").replace(/"/g, '""')}"`;
 }
 
+async function tableExists(client: any, tableName: string) {
+  const res = await client.query(
+    `SELECT 1
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = $1
+     LIMIT 1`,
+    [tableName]
+  );
+  return res.rowCount > 0;
+}
+
+async function columnExists(client: any, tableName: string, columnName: string) {
+  const res = await client.query(
+    `SELECT 1
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = $1
+       AND column_name = $2
+     LIMIT 1`,
+    [tableName, columnName]
+  );
+  return res.rowCount > 0;
+}
+
+async function deleteFromTableIfBotScoped(client: any, tableName: string, botId: string) {
+  if (!(await tableExists(client, tableName))) {
+    return;
+  }
+
+  if (await columnExists(client, tableName, "bot_id")) {
+    await client.query(`DELETE FROM ${quoteIdentifier(tableName)} WHERE bot_id = $1`, [botId]);
+  }
+}
+
+async function deleteQueueJobsForBot(client: any, botId: string) {
+  if (!(await tableExists(client, "queue_jobs"))) {
+    return;
+  }
+
+  if (await columnExists(client, "queue_jobs", "bot_id")) {
+    await client.query("DELETE FROM queue_jobs WHERE bot_id = $1", [botId]);
+    return;
+  }
+
+  if (await columnExists(client, "queue_jobs", "payload")) {
+    await client.query(
+      `DELETE FROM queue_jobs
+       WHERE payload->>'botId' = $1
+          OR payload->>'bot_id' = $1`,
+      [botId]
+    );
+  }
+}
+
+async function deleteConversationScopedRows(client: any, tableName: string, botId: string) {
+  if (!(await tableExists(client, tableName))) {
+    return;
+  }
+
+  if (await columnExists(client, tableName, "conversation_id")) {
+    await client.query(
+      `DELETE FROM ${quoteIdentifier(tableName)}
+       WHERE conversation_id IN (
+         SELECT id
+         FROM conversations
+         WHERE bot_id = $1
+       )`,
+      [botId]
+    );
+  }
+}
+
+async function deleteFlowNodesForBot(client: any, botId: string) {
+  if (!(await tableExists(client, "flow_nodes"))) {
+    return;
+  }
+
+  if (await columnExists(client, "flow_nodes", "bot_id")) {
+    await client.query("DELETE FROM flow_nodes WHERE bot_id = $1", [botId]);
+    return;
+  }
+
+  if (await columnExists(client, "flow_nodes", "flow_id")) {
+    await client.query(
+      `DELETE FROM flow_nodes
+       WHERE flow_id IN (
+         SELECT id
+         FROM flows
+         WHERE bot_id = $1
+       )`,
+      [botId]
+    );
+  }
+}
+
 async function getTablesWithColumn(client: any, columnName: string, excludedTables: string[] = []) {
   const res = await client.query(
     `SELECT DISTINCT table_name
@@ -345,24 +441,18 @@ export async function deleteWorkspaceBot(id: string) {
 
   try {
     await client.query("BEGIN");
-    await client.query(
-      `DELETE FROM flow_nodes
-       WHERE flow_id IN (
-         SELECT id
-         FROM flows
-         WHERE bot_id = $1
-       )`,
-      [id]
-    );
-
-    const botTables = await getTablesWithColumn(client, "bot_id", ["bots", "flow_nodes"]);
-    await purgeTablesByColumn(
-      client,
-      botTables,
-      (tableName) => `${quoteIdentifier("bot_id")} = $1`,
-      id
-    );
-
+    await deleteFromTableIfBotScoped(client, "analytics_events", id);
+    await deleteFromTableIfBotScoped(client, "agent_tickets", id);
+    await deleteQueueJobsForBot(client, id);
+    await deleteConversationScopedRows(client, "conversation_state", id);
+    await deleteConversationScopedRows(client, "conversation_events", id);
+    await deleteFromTableIfBotScoped(client, "messages", id);
+    await deleteFromTableIfBotScoped(client, "conversations", id);
+    await deleteFromTableIfBotScoped(client, "leads", id);
+    await deleteFromTableIfBotScoped(client, "campaign_channels", id);
+    await deleteFromTableIfBotScoped(client, "bot_assignments", id);
+    await deleteFromTableIfBotScoped(client, "flow_trigger_receipts", id);
+    await deleteFlowNodesForBot(client, id);
     await client.query("DELETE FROM flows WHERE bot_id = $1", [id]);
     await client.query("DELETE FROM bots WHERE id = $1", [id]);
     await client.query("COMMIT");

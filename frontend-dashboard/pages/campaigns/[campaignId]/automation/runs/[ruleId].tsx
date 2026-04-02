@@ -3,9 +3,9 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useState } from "react";
 
 import PageAccessNotice from "../../../../../components/access/PageAccessNotice";
+import CampaignHeader from "../../../../../components/campaign/CampaignHeader";
 import DashboardLayout from "../../../../../components/layout/DashboardLayout";
 import BackButtonStrip from "../../../../../components/navigation/BackButtonStrip";
-import SectionTabs from "../../../../../components/navigation/SectionTabs";
 import { useVisibility } from "../../../../../hooks/useVisibility";
 import { campaignService } from "../../../../../services/campaignService";
 import { useAuthStore } from "../../../../../store/authStore";
@@ -126,31 +126,21 @@ export default function AutomationRunDetailPage() {
       ) : (
         <div className="mx-auto max-w-7xl space-y-6">
           <BackButtonStrip href={`/campaigns/${campaignId}/automation`} label="Back to automation" />
-
-          <section className="rounded-[1.75rem] border border-border-main bg-surface p-6 shadow-[var(--shadow-soft)]">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Automation run detail
-                </div>
-                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-text-main">
-                  Run replay and history inspector
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-text-muted">
-                  Review a single automation rule, inspect its execution history, and replay selected runs from one operator-focused view.
-                </p>
-              </div>
-              <SectionTabs items={tabs} currentPath={router.asPath.split("?")[0] || ""} />
-            </div>
-          </section>
+          <CampaignHeader
+            campaignName={campaign?.name}
+            pageTitle="Automation Run Detail"
+            description="Review a single automation rule, inspect its execution history, and replay selected runs from one operator-focused view."
+            tabs={tabs}
+            currentPath={router.asPath.split("?")[0] || ""}
+          />
 
           {error ? (
-            <section className="rounded-[1.5rem] border border-rose-300/40 bg-rose-500/10 p-4 text-sm text-rose-700">
+            <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
               {error}
             </section>
           ) : null}
           {message ? (
-            <section className="rounded-[1.5rem] border border-emerald-300/35 bg-emerald-500/10 p-4 text-sm text-emerald-700">
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
               {message}
             </section>
           ) : null}
@@ -162,7 +152,7 @@ export default function AutomationRunDetailPage() {
               { label: "Failed", value: history.filter((entry: any) => String(entry.status || "") === "failed").length },
               { label: "Dead letters", value: history.filter((entry: any) => String(entry.status || "") === "failed" || String(entry.status || "") === "retry").length },
             ].map((card) => (
-              <div key={card.label} className="rounded-2xl border border-border-main bg-surface px-4 py-3">
+              <div key={card.label} className="rounded-2xl border border-border-main bg-canvas px-4 py-3">
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">{card.label}</div>
                 <div className="mt-1 text-lg font-semibold text-text-main">{card.value}</div>
               </div>
@@ -170,7 +160,7 @@ export default function AutomationRunDetailPage() {
           </section>
 
           <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-4 rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+            <div className="space-y-4 rounded-[2rem] border border-border-main bg-surface p-8 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Selected rule</div>
@@ -182,7 +172,7 @@ export default function AutomationRunDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   <Link
                     href={`/campaigns/${campaignId}/automation`}
-                    className="rounded-full border border-border-main bg-canvas px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main"
+                    className="rounded-2xl border border-border-main bg-canvas py-3 px-6 text-[10px] font-black uppercase tracking-[0.15em] text-text-main transition-all hover:bg-surface active:scale-95"
                   >
                     Open workflow
                   </Link>
@@ -190,7 +180,7 @@ export default function AutomationRunDetailPage() {
                     type="button"
                     onClick={handleReplay}
                     disabled={!canEditProjectCampaign || !selectedRun?.leadId || actionLoading === "replay"}
-                    className="rounded-full border border-primary bg-primary px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-2xl border border-primary bg-primary py-3 px-6 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {actionLoading === "replay" ? "Replaying..." : "Replay selected"}
                   </button>
@@ -260,7 +250,7 @@ export default function AutomationRunDetailPage() {
               </div>
             </div>
 
-            <div className="space-y-4 rounded-[1.5rem] border border-border-main bg-surface p-6 shadow-sm">
+            <div className="space-y-4 rounded-[2rem] border border-border-main bg-surface p-8 shadow-sm">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Run inspection</div>
                 <div className="mt-1 text-sm font-semibold text-text-main">

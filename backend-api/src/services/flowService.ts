@@ -22,9 +22,6 @@ import { getEffectiveWorkspaceBilling, resolveWorkspacePlanLimit } from "./billi
 import { getAiProvidersSettingsService } from "./platformSettingsService";
 import { updateWorkspaceBot } from "../models/botModel";
 
-// Legacy compatibility layer.
-// Runtime message processing lives in flowEngine.ts.
-
 function mergeSettingsSources(...sources: any[]) {
   return sources.reduce((acc, source) => {
     if (!source || typeof source !== "object" || Array.isArray(source)) {
@@ -238,98 +235,6 @@ function looksLikeLegacyInputNode(nodeType: string, nodeData: any) {
   );
 }
 
-function buildSystemSettingsBackfill(
-  currentSettings: any,
-  handoffFlowId: string,
-  csatFlowId: string
-) {
-  const currentSystemMessages =
-    currentSettings?.system_messages && typeof currentSettings.system_messages === "object"
-      ? currentSettings.system_messages
-      : {};
-  const currentSystemFlows =
-    currentSettings?.system_flows && typeof currentSettings.system_flows === "object"
-      ? currentSettings.system_flows
-      : {};
-
-  const fallbackMessage =
-    String(
-      currentSystemMessages.fallback_message ||
-        currentSystemMessages.fallbackMessage ||
-        currentSettings?.fallback_message ||
-        currentSettings?.fallbackMessage ||
-        ""
-    ).trim() || "I didn't quite understand that. Can you rephrase?";
-  const optOutMessage =
-    String(
-      currentSystemMessages.opt_out_message ||
-        currentSystemMessages.optOutMessage ||
-        currentSettings?.opt_out_message ||
-        currentSettings?.optOutMessage ||
-        ""
-    ).trim() || "You have been unsubscribed and will no longer receive messages.";
-
-  return {
-    ...currentSettings,
-    system_messages: {
-      ...currentSystemMessages,
-      fallback_message: fallbackMessage,
-      opt_out_message: optOutMessage,
-    },
-    system_flows: {
-      ...currentSystemFlows,
-      handoff_flow_id:
-        String(currentSystemFlows.handoff_flow_id || currentSystemFlows.handoffFlowId || "").trim() ||
-        handoffFlowId ||
-        null,
-      csat_flow_id:
-        String(currentSystemFlows.csat_flow_id || currentSystemFlows.csatFlowId || "").trim() ||
-        csatFlowId ||
-        null,
-      handoff_mode:
-        String(
-          currentSystemFlows.handoff_mode ||
-            currentSystemFlows.handoffMode ||
-            currentSettings?.handoff_mode ||
-            currentSettings?.handoffMode ||
-            ""
-        ).trim() || "default",
-      csat_mode:
-        String(
-          currentSystemFlows.csat_mode ||
-            currentSystemFlows.csatMode ||
-            currentSettings?.csat_mode ||
-            currentSettings?.csatMode ||
-            ""
-        ).trim() || "default",
-    },
-    keyword_interrupts: Array.isArray(currentSettings?.keyword_interrupts)
-      ? currentSettings.keyword_interrupts
-      : Array.isArray(currentSettings?.universal_rules)
-        ? currentSettings.universal_rules
-        : [],
-    universal_rules: Array.isArray(currentSettings?.universal_rules)
-      ? currentSettings.universal_rules
-      : Array.isArray(currentSettings?.keyword_interrupts)
-        ? currentSettings.keyword_interrupts
-        : [],
-    fallback_message: fallbackMessage,
-    opt_out_message: optOutMessage,
-    handoff_flow_id:
-      String(currentSettings?.handoff_flow_id || currentSystemFlows.handoff_flow_id || "").trim() ||
-      handoffFlowId ||
-      null,
-    csat_flow_id:
-      String(currentSettings?.csat_flow_id || currentSystemFlows.csat_flow_id || "").trim() ||
-      csatFlowId ||
-      null,
-    handoff_mode:
-      String(currentSettings?.handoff_mode || currentSystemFlows.handoff_mode || "").trim() || "default",
-    csat_mode:
-      String(currentSettings?.csat_mode || currentSystemFlows.csat_mode || "").trim() || "default",
-  };
-}
-
 const FLOW_NODE_TYPES = new Set([
   "start",
   "message",
@@ -352,6 +257,11 @@ const FLOW_NODE_TYPES = new Set([
   "assign_agent",
   "goto",
   "end",
+  "trigger",
+  "error_handler",
+  "resume_bot",
+  "timeout",
+  "lead_form",
 ]);
 
 function normalizeNodeType(type: unknown, nodeData?: any) {
@@ -366,6 +276,184 @@ function normalizeNodeType(type: unknown, nodeData?: any) {
     return "input";
   }
   return normalized;
+}
+
+function validateFlowTopology(flowJson: any) {
+  const nodes = Array.isArray(flowJson?.nodes) ? flowJson.nodes : [];
+  const edges = Array.isArray(flowJson?.edges) ? flowJson.edges : [];
+  const incomingByNode = new Map<string, any[]>();
+  const outgoingByNode = new Map<string, any[]>();
+
+  for (const node of nodes) {
+    const nodeId = String(node?.id || "").trim();
+    if (!nodeId) continue;
+    incomingByNode.set(nodeId, []);
+    outgoingByNode.set(nodeId, []);
+  }
+
+  for (const edge of edges) {
+    const sourceId = String(edge?.source || "").trim();
+    const targetId = String(edge?.target || "").trim();
+    if (sourceId && outgoingByNode.has(sourceId)) {
+      outgoingByNode.get(sourceId)!.push(edge);
+    }
+    if (targetId && incomingByNode.has(targetId)) {
+      incomingByNode.get(targetId)!.push(edge);
+    }
+  }
+
+  const markInvalid = (nodeId: string, reason: string) => {
+    const error = new Error(reason) as any;
+    error.status = 400;
+    error.message = reason;
+    error.nodeId = nodeId;
+    throw error;
+  };
+
+  const hasOutgoingHandle = (nodeId: string, handleId: string) =>
+    (outgoingByNode.get(nodeId) || []).some((edge) => String(edge?.sourceHandle || "") === handleId);
+
+  const visibleMenuOptions = (node: any) =>
+    Array.from({ length: 10 }, (_, index) => {
+      const num = index + 1;
+      return String(node?.data?.[`item${num}`] || "").trim();
+    }).filter(Boolean);
+
+  const startNodes = nodes.filter((node: any) => normalizeNodeType(node?.type, node?.data) === "start");
+  if (startNodes.length > 1) {
+    markInvalid(String(startNodes[1]?.id || ""), "Flows can only have one Start node.");
+  }
+
+  for (const node of nodes) {
+    const nodeId = String(node?.id || "").trim();
+    if (!nodeId) continue;
+
+    const nodeType = normalizeNodeType(node?.type, node?.data);
+    if (["reminder", "timeout", "error_handler"].includes(nodeType)) {
+      continue;
+    }
+
+    const incomingCount = (incomingByNode.get(nodeId) || []).length;
+    const outgoingCount = (outgoingByNode.get(nodeId) || []).length;
+
+    if (nodeType === "start") {
+      if (incomingCount > 0) {
+        markInvalid(nodeId, "Start nodes cannot have incoming connections.");
+      }
+      if (outgoingCount !== 1) {
+        markInvalid(nodeId, "Start nodes must have exactly one outgoing connection.");
+      }
+      continue;
+    }
+
+    if (nodeType === "trigger") {
+      if (incomingCount > 0) {
+        markInvalid(nodeId, "Trigger nodes cannot have incoming connections.");
+      }
+      if (outgoingCount !== 1) {
+        markInvalid(nodeId, "Trigger nodes must have exactly one outgoing connection.");
+      }
+      continue;
+    }
+
+    if (nodeType === "end") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "End nodes need an incoming connection.");
+      }
+      if (outgoingCount > 0) {
+        markInvalid(nodeId, "End nodes cannot have outgoing connections.");
+      }
+      continue;
+    }
+
+    if (nodeType === "condition") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Condition nodes need an incoming connection.");
+      }
+      const missingBranches = ["true", "false"].filter((handleId) => !hasOutgoingHandle(nodeId, handleId));
+      if (missingBranches.length > 0) {
+        markInvalid(nodeId, "Condition nodes need both True and False branches.");
+      }
+      continue;
+    }
+
+    if (nodeType === "menu") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Menu nodes need an incoming connection.");
+      }
+      const options = visibleMenuOptions(node);
+      if (options.length === 0) {
+        markInvalid(nodeId, "Menu nodes need at least one option.");
+      }
+      const missingItems = options
+        .map((_, index) => `item${index + 1}`)
+        .filter((handleId) => !hasOutgoingHandle(nodeId, handleId));
+      if (missingItems.length > 0) {
+        markInvalid(nodeId, "Connect every visible menu option before saving.");
+      }
+      continue;
+    }
+
+    if (nodeType === "input") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Input nodes need an incoming connection.");
+      }
+      if (!hasOutgoingHandle(nodeId, "response")) {
+        markInvalid(nodeId, "Input nodes need a Response connection.");
+      }
+      continue;
+    }
+
+    if (nodeType === "business_hours") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Business hours nodes need an incoming connection.");
+      }
+      const missing = ["open", "closed"].filter((handleId) => !hasOutgoingHandle(nodeId, handleId));
+      if (missing.length > 0) {
+        markInvalid(nodeId, "Business hours nodes need Open and Closed outputs.");
+      }
+      continue;
+    }
+
+    if (nodeType === "split_traffic") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "Split traffic nodes need an incoming connection.");
+      }
+      const missing = ["a", "b"].filter((handleId) => !hasOutgoingHandle(nodeId, handleId));
+      if (missing.length > 0) {
+        markInvalid(nodeId, "Split traffic nodes need both Variant A and Variant B outputs.");
+      }
+      continue;
+    }
+
+    if (nodeType === "api") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "API nodes need an incoming connection.");
+      }
+      const missing = ["success", "error"].filter((handleId) => !hasOutgoingHandle(nodeId, handleId));
+      if (missing.length > 0) {
+        markInvalid(nodeId, "API nodes need both Success and Error outputs.");
+      }
+      continue;
+    }
+
+    if (nodeType === "ai_generate") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "AI generate nodes need an incoming connection.");
+      }
+      if (outgoingCount === 0) {
+        markInvalid(nodeId, "AI generate nodes need an outgoing connection.");
+      }
+      continue;
+    }
+
+    if (incomingCount === 0) {
+      markInvalid(nodeId, `${String(node?.data?.label || node?.data?.text || node?.type || nodeId).trim()} needs an incoming connection.`);
+    }
+    if (outgoingCount === 0) {
+      markInvalid(nodeId, `${String(node?.data?.label || node?.data?.text || node?.type || nodeId).trim()} needs an outgoing connection.`);
+    }
+  }
 }
 
 export function normalizeFlowJson(flowJson: any) {
@@ -422,168 +510,6 @@ function namespaceFlowBlueprint(botId: string, flowType: string, flowJson: any) 
     ...(flowJson && typeof flowJson === "object" ? flowJson : {}),
     nodes,
     edges,
-  };
-}
-
-async function ensureDefaultSystemFlowsForBot(bot: any) {
-  const flows = await findFlowsByBot(bot.id).catch(() => []);
-  const findExisting = (flowType: "handoff" | "csat") =>
-    flows.find((row: any) => {
-      return inferSystemFlowType(row) === flowType;
-    });
-
-  const currentSettings = mergeSettingsSources(bot.settings, bot.settings_json, bot.global_settings);
-
-  let handoffFlow = findExisting("handoff");
-  let csatFlow = findExisting("csat");
-
-  if (!handoffFlow) {
-    handoffFlow = await createFlow(
-      bot.id,
-      namespaceFlowBlueprint(bot.id, "handoff", {
-        system_flow_type: "handoff",
-        is_global_flow: true,
-        is_system_flow: true,
-        nodes: [
-          { id: "handoff-start", type: "start", position: { x: 120, y: 100 }, data: { label: "Start" } },
-      {
-        id: "handoff-ack",
-        type: "message",
-        position: { x: 120, y: 220 },
-        data: { label: "Acknowledgment", text: "No problem. Let me get a human agent to help you out." },
-      },
-          {
-            id: "handoff-assign",
-            type: "assign_agent",
-            position: { x: 120, y: 360 },
-            data: { label: "Assign Agent", text: "Bot paused. An agent will be with you shortly." },
-          },
-      {
-        id: "handoff-set-expectation",
-        type: "message",
-        position: { x: 120, y: 500 },
-        data: {
-          label: "Expectation Setting",
-          text: "I've notified our team. Someone will review your chat and reply here shortly. Reply 'Cancel' to return to the bot.",
-            },
-          },
-          { id: "handoff-end", type: "end", position: { x: 520, y: 500 }, data: { label: "End" } },
-        ],
-        edges: [
-          { id: "handoff-e1", source: "handoff-start", target: "handoff-ack", sourceHandle: "next" },
-          { id: "handoff-e2", source: "handoff-ack", target: "handoff-assign", sourceHandle: "next" },
-          { id: "handoff-e3", source: "handoff-assign", target: "handoff-set-expectation", sourceHandle: "response" },
-          { id: "handoff-e4", source: "handoff-set-expectation", target: "handoff-end", sourceHandle: "next" },
-        ],
-      }),
-      "Default Human Handoff",
-      false,
-      true,
-      undefined,
-      bot.workspace_id,
-      bot.project_id
-    );
-  }
-
-  if (!csatFlow) {
-    csatFlow = await createFlow(
-      bot.id,
-      namespaceFlowBlueprint(bot.id, "csat", {
-        system_flow_type: "csat",
-        is_global_flow: true,
-        is_system_flow: true,
-        nodes: [
-          { id: "csat-start", type: "start", position: { x: 120, y: 100 }, data: { label: "Start" } },
-          {
-            id: "csat-menu",
-            type: "menu",
-            position: { x: 120, y: 220 },
-            data: {
-              label: "CSAT Rating",
-              text: "This conversation has been closed. How would you rate the support you received today?",
-              item1: "🤩 Great",
-              item2: "😐 Okay",
-              item3: "😡 Bad",
-            },
-          },
-          {
-            id: "csat-save-good",
-            type: "save",
-            position: { x: 120, y: 360 },
-            data: { label: "Save Great", variable: "last_csat_rating", value: "Great" },
-          },
-          {
-            id: "csat-save-ok",
-            type: "save",
-            position: { x: 380, y: 360 },
-            data: { label: "Save Okay", variable: "last_csat_rating", value: "Okay" },
-          },
-          {
-            id: "csat-save-bad",
-            type: "save",
-            position: { x: 640, y: 360 },
-            data: { label: "Save Bad", variable: "last_csat_rating", value: "Bad" },
-          },
-          { id: "csat-thanks", type: "message", position: { x: 120, y: 500 }, data: { label: "Thanks", text: "Thank you for the feedback! Have a great day." } },
-          {
-            id: "csat-sorry",
-            type: "message",
-            position: { x: 640, y: 500 },
-            data: {
-              label: "Apology",
-              text: "We are so sorry to hear that. A manager has been notified and will review your ticket.",
-            },
-          },
-          {
-            id: "csat-risk",
-            type: "save",
-            position: { x: 640, y: 640 },
-            data: { label: "Risk Flag", variable: "csat_risk", value: true },
-          },
-          { id: "csat-end", type: "end", position: { x: 360, y: 700 }, data: { label: "End" } },
-        ],
-        edges: [
-          { id: "csat-e1", source: "csat-start", target: "csat-menu", sourceHandle: "next" },
-          { id: "csat-e2", source: "csat-menu", target: "csat-save-good", sourceHandle: "item1" },
-          { id: "csat-e3", source: "csat-menu", target: "csat-save-ok", sourceHandle: "item2" },
-          { id: "csat-e4", source: "csat-menu", target: "csat-save-bad", sourceHandle: "item3" },
-          { id: "csat-e5", source: "csat-save-good", target: "csat-thanks", sourceHandle: "next" },
-          { id: "csat-e6", source: "csat-save-ok", target: "csat-thanks", sourceHandle: "next" },
-          { id: "csat-e7", source: "csat-save-bad", target: "csat-sorry", sourceHandle: "next" },
-          { id: "csat-e8", source: "csat-sorry", target: "csat-risk", sourceHandle: "next" },
-          { id: "csat-e9", source: "csat-risk", target: "csat-end", sourceHandle: "next" },
-          { id: "csat-e10", source: "csat-thanks", target: "csat-end", sourceHandle: "next" },
-        ],
-      }),
-      "Default CSAT Survey",
-      false,
-      true,
-      undefined,
-      bot.workspace_id,
-      bot.project_id
-    );
-  }
-
-  const nextSettings = buildSystemSettingsBackfill(
-    currentSettings,
-    String(handoffFlow?.id || "").trim(),
-    String(csatFlow?.id || "").trim()
-  );
-
-  if (JSON.stringify(currentSettings || {}) !== JSON.stringify(nextSettings || {})) {
-    await updateWorkspaceBot(bot.id, {
-      settings: nextSettings,
-      global_settings: nextSettings,
-      settings_json: nextSettings,
-    }).catch((err) => {
-      console.error("Failed to backfill default system flow settings from flow service:", err);
-    });
-  }
-
-  return {
-    ...bot,
-    global_settings: nextSettings,
-    settings_json: nextSettings,
   };
 }
 
@@ -762,6 +688,8 @@ async function validateFlowJsonAgainstCapabilities(
     }
   }
 
+  validateFlowTopology(normalized);
+
   return normalized;
 }
 
@@ -935,7 +863,26 @@ export async function saveFlowService(
     return updated;
   }
 
-  return null;
+  const created = await createFlow(
+    botId,
+    normalizedFlowJson,
+    flowName || "Primary Flow",
+    true,
+    false,
+    undefined,
+    bot.workspace_id,
+    bot.project_id
+  );
+  await logAuditSafe({
+    userId,
+    workspaceId: bot.workspace_id,
+    projectId: bot.project_id,
+    action: "create",
+    entity: "flow",
+    entityId: created.id,
+    newData: created as unknown as Record<string, unknown>,
+  });
+  return created;
 }
 
 export async function createNewFlowService(
@@ -1035,11 +982,6 @@ export async function patchFlowNodeService(
   nodeData: any,
   requestId = "unknown"
 ) {
-  console.info(`[NodeSave][Service][${requestId}] loading-flow`, {
-    flowId,
-    nodeId,
-    userId,
-  });
   const flow = await findFlowById(flowId);
   if (!flow) {
     throw { status: 404, message: "Flow not found" };
@@ -1118,22 +1060,7 @@ export async function patchFlowNodeService(
     ),
   };
 
-  console.info(`[NodeSave][Service][${requestId}] normalized-node-ready`, {
-    flowId,
-    nodeId,
-    currentType: currentNode?.type || null,
-    nextType: nextNodeType,
-    isWholeNodePatch,
-    mergedDataKeys: Object.keys(mergedNodeData || {}),
-    label: nextNode?.data?.label || null,
-  });
-
   const updated = await patchFlowNode(flowId, nodeId, nextNode, flow.flow_name, requestId);
-  console.info(`[NodeSave][Service][${requestId}] database-patch-succeeded`, {
-    flowId,
-    nodeId,
-    savedFlowId: updated?.id || null,
-  });
 
   await logAuditSafe({
     userId,
@@ -1181,3 +1108,4 @@ export async function deleteFlowService(id: string, userId: string) {
   });
   await deleteFlow(id, bot.id);
 }
+

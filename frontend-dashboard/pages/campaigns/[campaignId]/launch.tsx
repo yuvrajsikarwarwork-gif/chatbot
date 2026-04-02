@@ -2,10 +2,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 import CampaignSenderModal from "../../../components/campaign/CampaignSenderModal";
+import CampaignHeader from "../../../components/campaign/CampaignHeader";
 import PageAccessNotice from "../../../components/access/PageAccessNotice";
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import BackButtonStrip from "../../../components/navigation/BackButtonStrip";
-import SectionTabs from "../../../components/navigation/SectionTabs";
 import { useVisibility } from "../../../hooks/useVisibility";
 import apiClient from "../../../services/apiClient";
 import { useAuthStore } from "../../../store/authStore";
@@ -138,45 +138,36 @@ export default function CampaignLaunchPage() {
       ) : (
         <div className="mx-auto max-w-6xl space-y-6">
           <BackButtonStrip href={`/campaigns/${campaignId}/audience`} label="Back to audience" />
-          <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--muted)]">
-                  Launch
-                </div>
-                <h1 className="mt-3 text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
-                  Launch {campaign?.name || "campaign"}
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                  Use approved templates, a selected bot, and target leads from the active project to launch this campaign.
-                </p>
-              </div>
-              <SectionTabs items={tabs} currentPath={router.asPath.split("?")[0] || ""} />
-            </div>
-          </section>
+          <CampaignHeader
+            campaignName={campaign?.name}
+            pageTitle="Campaign Launch"
+            description="Review settings and officially start or pause the campaign."
+            tabs={tabs}
+            currentPath={router.asPath.split("?")[0] || ""}
+          />
 
-          {error ? <section className="rounded-[1.5rem] border border-rose-300/55 bg-rose-500/12 p-4 text-sm font-medium text-rose-800">{error}</section> : null}
+          {error ? <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</section> : null}
 
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
+          <section className="flex h-auto min-h-[500px] flex-col rounded-[2rem] border border-border-main bg-surface p-8 shadow-sm">
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Approved templates</div>
-                <div className="mt-3 text-2xl font-semibold text-[var(--text)]">
+              <div className="rounded-2xl border border-border-main bg-canvas p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Approved templates</div>
+                <div className="mt-3 text-2xl font-semibold text-text-main">
                   {approvedTemplates.length}
                 </div>
               </div>
-              <div className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Campaign lists</div>
-                <div className="mt-3 text-2xl font-semibold text-[var(--text)]">{campaign?.lists?.length || 0}</div>
+              <div className="rounded-2xl border border-border-main bg-canvas p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Campaign lists</div>
+                <div className="mt-3 text-2xl font-semibold text-text-main">{campaign?.lists?.length || 0}</div>
               </div>
-              <div className="rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">Channels</div>
-                <div className="mt-3 text-2xl font-semibold text-[var(--text)]">{campaign?.channels?.length || 0}</div>
+              <div className="rounded-2xl border border-border-main bg-canvas p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">Channels</div>
+                <div className="mt-3 text-2xl font-semibold text-text-main">{campaign?.channels?.length || 0}</div>
               </div>
             </div>
 
-            <div className="mt-6 rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-strong)] p-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+            <div className="mt-6 rounded-2xl border border-border-main bg-canvas p-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
                 Launch readiness
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -185,8 +176,8 @@ export default function CampaignLaunchPage() {
                     key={item.label}
                     className={`rounded-xl border px-4 py-3 text-sm ${
                       item.met
-                        ? "border-emerald-300/45 bg-emerald-500/12 text-emerald-800"
-                        : "border-rose-300/45 bg-rose-500/12 text-rose-800"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : "border-rose-200 bg-rose-50 text-rose-700"
                     }`}
                   >
                     <div className="font-semibold">{item.label}</div>
@@ -199,7 +190,7 @@ export default function CampaignLaunchPage() {
             </div>
 
             {!isLaunchReady ? (
-              <div className="mt-6 rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-4 text-sm text-[var(--muted)]">
+              <div className="mt-6 rounded-2xl border border-border-main bg-canvas px-4 py-4 text-sm text-text-muted">
                 Complete the missing launch requirements before sending this campaign from a test environment.
               </div>
             ) : null}
@@ -209,7 +200,7 @@ export default function CampaignLaunchPage() {
                 type="button"
                 onClick={() => setIsLaunchOpen(true)}
                 disabled={!isLaunchReady || loading}
-                className="rounded-2xl border border-[rgba(129,140,248,0.4)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_30px_var(--accent-glow)] disabled:cursor-not-allowed disabled:border-border-main/60 disabled:bg-canvas disabled:text-text-muted disabled:shadow-none disabled:opacity-100"
+                className="rounded-2xl border border-primary bg-primary px-6 py-3 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 disabled:cursor-not-allowed disabled:border-border-main/60 disabled:bg-canvas disabled:text-text-muted disabled:shadow-none disabled:opacity-100"
               >
                 Launch campaign
               </button>

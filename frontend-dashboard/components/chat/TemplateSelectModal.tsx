@@ -72,12 +72,6 @@ const platformPreviewThemes: Record<string, any> = {
     message: "bg-violet-100 text-violet-950",
     note: "bg-violet-100/70 text-violet-900",
   },
-  sms: {
-    label: "SMS",
-    shell: "bg-indigo-50 border-indigo-200 text-indigo-950",
-    message: "bg-indigo-100 text-indigo-950",
-    note: "bg-indigo-100/70 text-indigo-900",
-  },
   instagram: {
     label: "Instagram",
     shell: "bg-pink-50 border-pink-200 text-pink-950",

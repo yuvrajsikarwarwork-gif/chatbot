@@ -126,6 +126,15 @@ async function assertFlowStorageCompatibility() {
   };
 }
 
+function normalizeFlowJsonPayload(flowJson: any) {
+  const source = flowJson && typeof flowJson === "object" ? flowJson : {};
+  return {
+    ...source,
+    nodes: Array.isArray(source.nodes) ? source.nodes : [],
+    edges: Array.isArray(source.edges) ? source.edges : [],
+  };
+}
+
 export async function findFlowsByBot(botId: string) {
   const columns = await getFlowColumnSupport();
   if (!columns.isSystemFlow) {
@@ -294,7 +303,20 @@ export async function createFlow(
   projectId?: string | null
 ) {
   await assertFlowStorageCompatibility();
-  const flowJsonStr = JSON.stringify(flowJson || { nodes: [], edges: [] });
+  const defaultStartNode = {
+    id: "node_start",
+    type: "start",
+    position: { x: 50, y: 200 },
+    data: { label: "Start" },
+  };
+  const normalizedFlowJson = normalizeFlowJsonPayload(flowJson || { nodes: [], edges: [] });
+  const normalizedNodes = Array.isArray(normalizedFlowJson.nodes) ? normalizedFlowJson.nodes : [];
+  const hasStartNode = normalizedNodes.some((node: any) => String(node?.type || "").trim().toLowerCase() === "start");
+  const finalFlowJson = {
+    ...normalizedFlowJson,
+    nodes: hasStartNode ? normalizedNodes : [defaultStartNode, ...normalizedNodes],
+  };
+  const flowJsonStr = JSON.stringify(finalFlowJson);
   const columns = await getFlowColumnSupport();
   const client = await db.connect();
 
@@ -349,7 +371,7 @@ export async function createFlow(
       insertValues
     );
 
-    await syncFlowNodes(client, res.rows[0].id, flowJson);
+    await syncFlowNodes(client, res.rows[0].id, finalFlowJson);
     await client.query("COMMIT");
 
     return res.rows[0];
@@ -445,12 +467,6 @@ export async function patchFlowNode(
   const client = await db.connect();
 
   try {
-    console.info(`[NodeSave][Model][${requestId}] begin-transaction`, {
-      flowId,
-      nodeId,
-      nodeType: nextNode?.type || null,
-      label: nextNode?.data?.label || null,
-    });
     await client.query("BEGIN");
 
     const existing = await client.query("SELECT * FROM flows WHERE id = $1 FOR UPDATE", [flowId]);
@@ -465,13 +481,6 @@ export async function patchFlowNode(
     if (nodeIndex < 0) {
       throw { status: 404, message: "Node not found" };
     }
-
-    console.info(`[NodeSave][Model][${requestId}] flow-row-locked`, {
-      flowId,
-      nodeId,
-      nodeIndex,
-      nodeCount: nodes.length,
-    });
 
     const updatedNode = {
       ...nodes[nodeIndex],
@@ -518,12 +527,6 @@ export async function patchFlowNode(
     );
 
     await client.query("COMMIT");
-    console.info(`[NodeSave][Model][${requestId}] commit-succeeded`, {
-      flowId,
-      nodeId,
-      savedFlowId: updatedRes.rows[0]?.id || null,
-      nodeType: updatedNode?.type || null,
-    });
     return updatedRes.rows[0];
   } catch (error) {
     await client.query("ROLLBACK");

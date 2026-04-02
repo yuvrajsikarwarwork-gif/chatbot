@@ -1,9 +1,9 @@
 ﻿import { useUiStore } from "../../store/uiStore";
 
 const TOAST_TONE_CLASS: Record<string, string> = {
-  success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  error: "border-red-200 bg-red-50 text-red-800",
-  info: "border-border-main bg-surface text-text-main",
+  success: "border-emerald-300 bg-emerald-50 text-emerald-950 ring-1 ring-emerald-200",
+  error: "border-rose-300 bg-rose-50 text-rose-950 ring-1 ring-rose-200",
+  info: "border-slate-300 bg-white text-slate-950 ring-1 ring-slate-200",
 };
 
 export default function UiOverlay() {
@@ -14,22 +14,22 @@ export default function UiOverlay() {
 
   return (
     <>
-      <div className="pointer-events-none fixed right-4 top-4 z-[120] flex w-full max-w-sm flex-col gap-3">
+      <div className="pointer-events-none fixed left-1/2 top-20 z-[9999] flex w-[min(100vw-1.5rem,30rem)] -translate-x-1/2 flex-col gap-3">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto rounded-2xl border px-4 py-3 shadow-lg ${TOAST_TONE_CLASS[toast.tone]}`}
+            className={`pointer-events-auto rounded-2xl border-l-4 px-4 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.18)] ${TOAST_TONE_CLASS[toast.tone]}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 {toast.title ? (
-                  <div className="text-sm font-semibold">{toast.title}</div>
+                  <div className="text-sm font-black uppercase tracking-[0.12em]">{toast.title}</div>
                 ) : null}
                 <div className="text-sm font-medium leading-5">{toast.message}</div>
                 {toast.details && toast.details.length > 0 ? (
                   <div className="mt-2 space-y-1">
                     {toast.details.slice(0, 4).map((detail, index) => (
-                      <div key={`${toast.id}-detail-${index}`} className="text-xs leading-4 opacity-80">
+                      <div key={`${toast.id}-detail-${index}`} className="text-xs leading-4 opacity-90">
                         {detail}
                       </div>
                     ))}
@@ -38,9 +38,9 @@ export default function UiOverlay() {
               </div>
               <button
                 onClick={() => dismissToast(toast.id)}
-                className="rounded-full px-2 py-1 text-xs opacity-60 hover:opacity-100"
+                className="rounded-full px-2 py-1 text-xs font-black opacity-70 hover:opacity-100"
               >
-                Ã—
+                ×
               </button>
             </div>
           </div>

@@ -9,8 +9,8 @@ import {
   Plus,
   Power,
   Rocket,
-  Send,
   ShieldCheck,
+  Settings2,
   Trash2,
 } from "lucide-react";
 
@@ -20,6 +20,7 @@ import DashboardLayout from "../components/layout/DashboardLayout";
 import BotCreationModal from "../components/forms/BotCreationModal";
 import BotCopyModal from "../components/forms/BotCopyModal";
 import EditBotModal from "../components/forms/EditBotModal";
+import SystemBotsModal from "../components/forms/SystemBotsModal";
 import { useVisibility } from "../hooks/useVisibility";
 import { botService } from "../services/botService";
 import { projectService } from "../services/projectService";
@@ -53,6 +54,7 @@ export default function BotsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSystemBotsModalOpen, setIsSystemBotsModalOpen] = useState(false);
   const [editingBot, setEditingBot] = useState<any>(null);
   const [copyingBot, setCopyingBot] = useState<any>(null);
   const [hydratedWorkspaceId, setHydratedWorkspaceId] = useState<string | null>(null);
@@ -301,7 +303,7 @@ export default function BotsPage() {
             : "border-border-main bg-surface hover:-translate-y-1 hover:border-primary/30"
         } ${!isLive ? "grayscale-[0.6] opacity-75" : ""}`}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.08),transparent_60%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.08),transparent_60%)]" />
         <div
           className={`absolute right-0 top-0 flex items-center gap-1.5 rounded-bl-2xl px-4 py-1.5 text-[9px] font-black uppercase tracking-widest shadow-sm ${
             isUnlocked
@@ -375,12 +377,13 @@ export default function BotsPage() {
             </RequirePermission>
             <button
               onClick={() => {
-                notify("Manual bot testing is not wired to a backend route in this build.", "info");
+                setIsSystemBotsModalOpen(true);
               }}
               className="rounded-xl border border-border-main bg-canvas p-2 text-text-main transition-colors hover:border-primary/30 hover:bg-surface hover:text-primary"
-              title="Manual bot testing is currently unavailable"
+              title="Open global trigger settings"
+              aria-label="Open global trigger settings"
             >
-              <Send size={16} />
+              <Settings2 size={16} />
             </button>
           </div>
 
@@ -498,13 +501,26 @@ export default function BotsPage() {
           </div>
           <RequirePermission permissionKey="create_bots">
           {canCreateProjectBots ? (
-            <button
-              onClick={() => setIsModalOpen(true)}
-              disabled={!activeWorkspace?.workspace_id || !activeProject?.id}
-              className="flex items-center justify-center gap-2 rounded-xl border border-primary bg-primary px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-sm transition-all active:scale-95 disabled:opacity-50"
-            >
-              <Plus size={14} /> Provision Bot
-            </button>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setIsModalOpen(true)}
+                disabled={!activeWorkspace?.workspace_id || !activeProject?.id}
+                className="flex items-center justify-center gap-2 rounded-xl border border-primary bg-primary px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-sm transition-all active:scale-95 disabled:opacity-50"
+              >
+                <Plus size={14} /> Provision Bot
+              </button>
+              <button
+                onClick={() => {
+                  setIsSystemBotsModalOpen(true);
+                }}
+                disabled={!resolvedWorkspaceId}
+                className="flex items-center justify-center gap-2 rounded-xl border border-border-main bg-canvas px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-main shadow-sm transition-all active:scale-95 disabled:opacity-50 hover:border-primary/30 hover:bg-primary-fade hover:text-primary"
+                title="Open global trigger settings"
+                aria-label="Open global trigger settings"
+              >
+                <Settings2 size={14} />
+              </button>
+            </div>
           ) : null}
           </RequirePermission>
         </div>
@@ -606,6 +622,14 @@ export default function BotsPage() {
           }}
           bot={editingBot}
           onSuccess={load}
+        />
+        <SystemBotsModal
+          isOpen={isSystemBotsModalOpen}
+          onClose={() => {
+            setIsSystemBotsModalOpen(false);
+          }}
+          workspaceId={resolvedWorkspaceId}
+          projectId={activeProject?.id || hydratedProjectId}
         />
       </div>
       </div>

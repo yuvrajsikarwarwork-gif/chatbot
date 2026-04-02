@@ -235,9 +235,9 @@ export default function IntegrationsConsole() {
     smtpFrom: "",
     smtpPass: "",
   });
-  const metaSignupReady = false;
+  const metaSignupReady = true;
   const metaSignupHint =
-    "Embedded signup is optional and disabled in this environment. Use the manual integration form below.";
+    "Embedded signup is optional. You can connect Meta here or use the manual integration form below.";
 
   const activeWorkspaceId = activeWorkspace?.workspace_id || "";
   const selectedProjectRole = getProjectRole(selectedProjectId);
@@ -451,11 +451,6 @@ export default function IntegrationsConsole() {
       badge: "bg-violet-100 text-violet-900",
       card: "bg-gradient-to-br from-violet-50 via-white to-violet-50",
     },
-    sms: {
-      active: "bg-indigo-700 text-white shadow-sm",
-      badge: "bg-indigo-100 text-indigo-900",
-      card: "bg-gradient-to-br from-indigo-50 via-white to-indigo-50",
-    },
     website: {
       active: "bg-primary text-white shadow-sm",
       badge: "bg-canvas text-text-main",
@@ -471,7 +466,7 @@ export default function IntegrationsConsole() {
     canManageSelectedProjectIntegrations &&
     ["whatsapp", "facebook", "instagram"].includes(activePlatform) &&
     Boolean(selectedBotId) &&
-    metaSignupReady !== false;
+    metaSignupReady;
 
   const resetForm = () => {
     setEditingId(null);
@@ -558,7 +553,10 @@ export default function IntegrationsConsole() {
         status: form.status,
         metadata:
           form.platformType === "whatsapp"
-            ? { metaBusinessId: form.metaBusinessId.trim() || null }
+            ? {
+                metaBusinessId: form.metaBusinessId.trim() || null,
+                legacyBotId: selectedBotId || null,
+              }
             : undefined,
       };
 
@@ -616,13 +614,6 @@ export default function IntegrationsConsole() {
   const handleStartMetaConnect = async () => {
     if (!selectedBotId) {
       setError("Select a project with at least one bot before connecting Meta.");
-      return;
-    }
-
-    if (metaSignupReady === false) {
-      setError(
-        "Embedded signup is not configured here. Add the WhatsApp integration manually using the form below."
-      );
       return;
     }
 
@@ -1208,7 +1199,7 @@ export default function IntegrationsConsole() {
                       className="flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-600 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <Radio size={14} />
-                      {isMetaBusy ? "Connecting Meta..." : metaSignupReady === false ? "Embedded Signup Unavailable" : "Connect with Meta"}
+                      {isMetaBusy ? "Connecting Meta..." : "Connect with Meta"}
                     </button>
                   ) : null}
                   {activePlatform !== "email" && canManageSelectedProjectIntegrations ? (

@@ -174,27 +174,27 @@ export default function CampaignCreateConsole() {
     <DashboardLayout>
       <div className="mx-auto max-w-4xl space-y-6">
         <BackButtonStrip href="/campaigns" label="Back to campaigns" />
-        <section className="rounded-[1.75rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--shadow-soft)]">
-          <h1 className="text-[1.6rem] font-semibold tracking-tight text-[var(--text)]">
+        <section className="rounded-[2rem] border border-border-main bg-surface p-8 shadow-sm">
+          <h1 className="text-[1.6rem] font-semibold tracking-tight text-text-main">
             Create campaign
           </h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          <p className="mt-2 text-sm leading-6 text-text-muted">
             Choose the project first. Integrations, flows, and future routing should stay inside that project context from the start.
           </p>
         </section>
 
         {!activeWorkspaceId ? (
-          <section className="rounded-[1.5rem] border border-dashed border-[var(--line)] bg-[var(--surface)] p-8 text-sm text-[var(--muted)]">
+          <section className="rounded-[2rem] border border-dashed border-border-main bg-surface p-8 text-sm text-text-muted">
             Select a workspace before creating a campaign.
           </section>
         ) : (
-          <section className="rounded-[1.5rem] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-sm">
+          <section className="flex h-auto min-h-[500px] flex-col rounded-[2rem] border border-border-main bg-surface p-8 shadow-sm">
             {!canCreateProjectCampaign ? (
-              <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 Campaign creation is not available for this access level.
               </div>
             ) : null}
-            <div className="mb-5 rounded-2xl border border-[var(--line)] bg-[var(--surface-muted)] p-4 text-sm text-[var(--muted)]">
+            <div className="mb-5 rounded-2xl border border-border-main bg-canvas p-4 text-sm text-text-muted">
               Workspace: <strong>{activeWorkspace?.workspace_name || activeWorkspaceId}</strong>
               <br />
               Project: <strong>{selectedProject?.name || "Select one below"}</strong>
@@ -202,9 +202,9 @@ export default function CampaignCreateConsole() {
 
             <fieldset disabled={!canCreateProjectCampaign} className={`grid gap-4 md:grid-cols-2 ${!canCreateProjectCampaign ? "opacity-70" : ""}`}>
               <div>
-                <FormHelpHint label="Campaign name" hint="Internal name used in lists, launch, and reporting." />
+                <FormHelpHint label="Campaign name" hint="A clear, unique name to identify this campaign internally." />
                 <input
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-sm text-[var(--text)]"
+                  className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                   placeholder="Example: Summer lead capture"
                   value={form.name}
                   onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
@@ -213,7 +213,7 @@ export default function CampaignCreateConsole() {
               <div>
                 <FormHelpHint label="Project" hint="Everything in this campaign stays scoped to the selected project." />
                 <select
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-sm text-[var(--text)]"
+                  className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                   value={form.projectId}
                   onChange={(event) => {
                     const nextProjectId = event.target.value;
@@ -243,18 +243,18 @@ export default function CampaignCreateConsole() {
                 </select>
               </div>
               <div className="md:col-span-2">
-                <FormHelpHint label="Description" hint="Short note for operators. This does not control routing." />
+                <FormHelpHint label="Description" hint="Internal notes about the campaign's goals or audience." />
                 <textarea
-                  className="min-h-[120px] w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-sm text-[var(--text)]"
+                  className="min-h-[120px] w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                   placeholder="What is this campaign for?"
                   value={form.description}
                   onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                 />
               </div>
               <div>
-                <FormHelpHint label="Status" hint="Draft keeps setup in progress. Active means ready to operate." />
+                <FormHelpHint label="Status" hint="Drafts are inactive. Active campaigns process entries. Archived campaigns are read-only." />
                 <select
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-sm text-[var(--text)]"
+                  className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                   value={form.status}
                   onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
                 >
@@ -267,7 +267,7 @@ export default function CampaignCreateConsole() {
               <div>
                 <FormHelpHint label="Default flow" hint="Optional fallback flow used when no channel or entry-specific flow overrides it." />
                 <select
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-sm text-[var(--text)]"
+                  className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                   value={form.defaultFlowId}
                   onChange={(event) => setForm((prev) => ({ ...prev, defaultFlowId: event.target.value }))}
                   disabled={!form.projectId}
@@ -285,19 +285,19 @@ export default function CampaignCreateConsole() {
                 </select>
               </div>
               <div>
-                <FormHelpHint label="Start date" hint="Optional schedule boundary for reporting or launch planning." />
+                <FormHelpHint label="Start date" hint="When this campaign should begin processing users." />
                 <input
                   type="date"
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-sm text-[var(--text)]"
+                  className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                   value={form.startDate}
                   onChange={(event) => setForm((prev) => ({ ...prev, startDate: event.target.value }))}
                 />
               </div>
               <div>
-                <FormHelpHint label="End date" hint="Optional end date for campaign tracking." />
+                <FormHelpHint label="End date" hint="When this campaign automatically stops. Leave blank to run indefinitely." />
                 <input
                   type="date"
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-sm text-[var(--text)]"
+                  className="w-full rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50"
                   value={form.endDate}
                   onChange={(event) => setForm((prev) => ({ ...prev, endDate: event.target.value }))}
                 />
@@ -313,7 +313,7 @@ export default function CampaignCreateConsole() {
               ].map(([label, key]) => (
                 <label
                   key={key}
-                  className="flex items-center justify-between rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-[var(--text)]"
+                  className="flex items-center justify-between rounded-xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main transition-colors hover:border-primary/30 hover:bg-primary/5"
                 >
                   <span className="flex items-center gap-2">
                     {label}
@@ -328,7 +328,7 @@ export default function CampaignCreateConsole() {
                               ? "Allow a lead to enter the flow again after an earlier run."
                               : "Store lead data from this campaign for later routing and reporting."
                       }
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--surface)] text-[10px] text-[var(--muted)]"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border-main bg-surface text-[10px] text-text-muted"
                     >
                       ?
                     </button>
@@ -339,17 +339,18 @@ export default function CampaignCreateConsole() {
                     onChange={(event) =>
                       setForm((prev) => ({ ...prev, [key]: event.target.checked }))
                     }
+                    className="h-5 w-5 rounded border-border-main text-primary focus:ring-primary"
                   />
                 </label>
               ))}
             </fieldset>
 
-            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <div className="mt-4 rounded-2xl border border-primary/20 bg-primary-fade px-4 py-3 text-sm text-primary">
               After you create the campaign, add channels and integrations from the detail page.
             </div>
 
             {error ? (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 {error}
               </div>
             ) : null}
@@ -358,8 +359,7 @@ export default function CampaignCreateConsole() {
               <button
                 onClick={handleCreate}
                 disabled={!canCreateProjectCampaign}
-                className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-strong)] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-sm"
-                style={{ color: "#ffffff" }}
+                className="inline-flex items-center gap-2 rounded-2xl border border-primary bg-primary py-3 px-6 text-[10px] font-black uppercase tracking-[0.15em] text-white shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
               >
                 <Plus size={14} />
                 Create And Continue

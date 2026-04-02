@@ -11,6 +11,7 @@ import {
   sendTemplateOnce,
   submitTemplateToMeta,
   syncTemplateFromMeta,
+  previewMetaTemplates,
   importTemplatesFromMeta
 } from "../controllers/templateController";
 import { authMiddleware } from "../middleware/authMiddleware";
@@ -31,6 +32,7 @@ router.use(resolveProjectContext);
 router.post("/launch-campaign", launchCampaign);
 router.post("/:id/send-once", sendTemplateOnce);
 router.get("/logs", getTemplateLogs);
+router.post("/import-meta/preview", previewMetaTemplates);
 router.post("/import-meta", importTemplatesFromMeta);
 router.post("/:id/submit-meta", submitTemplateToMeta);
 router.post("/:id/sync-meta", syncTemplateFromMeta);

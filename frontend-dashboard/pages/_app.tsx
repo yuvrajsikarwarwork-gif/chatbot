@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { permissionService } from '../services/permissionService';
 import { sessionService } from '../services/sessionService';
 import { useAuthStore } from '../store/authStore';
+import UiOverlay from '../components/ui/UiOverlay';
 import '../styles/globals.css';
 
 export default function App({ Component, pageProps }: AppProps) {
@@ -264,5 +265,10 @@ export default function App({ Component, pageProps }: AppProps) {
     return null;
   }
 
-  return getLayout(<Component {...pageProps} />);
+  return (
+    <>
+      {getLayout(<Component {...pageProps} />)}
+      <UiOverlay />
+    </>
+  );
 }
