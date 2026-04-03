@@ -374,8 +374,7 @@ export default function SystemBotsModal({ isOpen, onClose, workspaceId, projectI
                     <div className="flex h-full flex-col rounded-[1.35rem] border border-border-main bg-surface p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="flex items-center gap-2 text-lg font-black uppercase tracking-tight text-text-main">
-                            <Headphones size={18} className="text-primary" />
+                          <div className="text-lg font-black uppercase tracking-tight text-text-main">
                             Global: Human Handoff
                           </div>
                           <p className="mt-2 text-sm leading-6 text-text-muted">
@@ -383,13 +382,22 @@ export default function SystemBotsModal({ isOpen, onClose, workspaceId, projectI
                           </p>
                         </div>
                         <div className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-emerald-700">
-                          Trigger
+                          Default Bot
                         </div>
+                      </div>
+
+                      <div className="mt-5 rounded-2xl border border-border-main bg-canvas px-4 py-3">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">
+                          Default Bot Section
+                        </div>
+                        <p className="mt-1 text-[11px] leading-5 text-text-muted">
+                          This is the campaign-level handoff route that stays active until a global trigger keyword is matched.
+                        </p>
                       </div>
 
                       <div className="mt-5">
                         <label className="text-[10px] font-black uppercase tracking-widest text-text-muted">
-                          Trigger Keywords
+                          Global Trigger Keywords
                         </label>
                         <input
                           type="text"
@@ -435,8 +443,7 @@ export default function SystemBotsModal({ isOpen, onClose, workspaceId, projectI
                     <div className="flex h-full flex-col rounded-[1.35rem] border border-border-main bg-surface p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="flex items-center gap-2 text-lg font-black uppercase tracking-tight text-text-main">
-                            <Sparkles size={18} className="text-primary" />
+                          <div className="text-lg font-black uppercase tracking-tight text-text-main">
                             Post-Handoff CSAT
                           </div>
                           <p className="mt-2 text-sm leading-6 text-text-muted">

@@ -92,6 +92,14 @@ export const clearUserTimers = (botId: string, platformUserId: string) => {
 
 const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
 
+const normalizeSafeFlowId = (value: any) => {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.startsWith("00000000-0000") ? null : trimmed;
+};
+
 const buildConversationContextPayload = (resolvedContext: any) =>
   JSON.stringify({
     userId: resolvedContext.userId,
@@ -211,6 +219,7 @@ const findLatestConversationForBotContact = async (
 
 const resolveInboundCampaignId = async (input: {
   botId: string;
+  channel: string;
   explicitCampaignId?: string | null;
 }) => {
   const explicitCampaignId = String(input.explicitCampaignId || "").trim();
@@ -222,34 +231,43 @@ const resolveInboundCampaignId = async (input: {
     return "";
   }
 
-  const botRes = await query(
-    `SELECT workspace_id, project_id, campaign_id, settings_json
-     FROM bots
-     WHERE id = $1
-     LIMIT 1`,
-    [input.botId]
-  );
-  if (botRes.rows.length > 0) {
-    const botData = botRes.rows[0] || {};
-    const settings =
-      typeof botData.settings_json === "string"
-        ? (() => {
-            try {
-              return JSON.parse(botData.settings_json);
-            } catch {
-              return {};
-            }
-          })()
-        : (botData.settings_json || {});
-    const botCampaignId = String(
-      botData.campaign_id ||
-        settings.campaignId ||
-        settings.campaign_id ||
-        ""
-    ).trim();
-    if (botCampaignId) {
-      return botCampaignId;
+  try {
+    const campaignChannels = await findCampaignChannelsByBotAndPlatform(
+      input.botId,
+      input.channel
+    );
+    const campaignChannel = Array.isArray(campaignChannels)
+      ? campaignChannels.find((row: any) => String(row?.campaign_id || "").trim())
+      : null;
+    if (campaignChannel && campaignChannel.campaign_id) {
+      return String(campaignChannel.campaign_id).trim();
     }
+  } catch (err) {
+    console.warn("[FlowEngine] Campaign channel lookup failed:", err);
+  }
+
+  // 2. Fallback: Native Bot Column & Settings JSON
+  try {
+    const botRes = await query(
+      `SELECT campaign_id, settings_json FROM bots WHERE id = $1 LIMIT 1`,
+      [input.botId]
+    );
+    if (botRes.rows.length > 0) {
+      const botData = botRes.rows[0] || {};
+      const settings =
+        typeof botData.settings_json === "string"
+          ? JSON.parse(botData.settings_json)
+          : (botData.settings_json || {});
+      const botCampaignId = String(
+        botData.campaign_id ||
+          settings.campaignId ||
+          settings.campaign_id ||
+          ""
+      ).trim();
+      if (botCampaignId) return botCampaignId;
+    }
+  } catch (err) {
+    // ignore fallback errors
   }
 
   return "";
@@ -871,11 +889,10 @@ const keywordMatchesText = (keyword: string, text: string) => {
   const normalizedKeyword = String(keyword || "").trim().toLowerCase();
   const normalizedText = String(text || "").trim().toLowerCase();
 
-  if (!normalizedKeyword || !normalizedText) {
-    return false;
-  }
+  if (!normalizedKeyword || !normalizedText) return false;
 
-  return new RegExp(`(^|\\b)${escapeRegex(normalizedKeyword)}(\\b|$)`, "i").test(normalizedText);
+  // STRICT MATCH: The message must be EXACTLY the keyword
+  return normalizedText === normalizedKeyword;
 };
 
 const persistConversationVariables = async (
@@ -1530,7 +1547,7 @@ const performGotoHandoff = async (input: {
       throw new Error("Target flow has no runnable entry node.");
     }
 
-    await query(
+      await query(
       `UPDATE conversations
        SET flow_id = $1,
            current_node = $2,
@@ -1540,7 +1557,7 @@ const performGotoHandoff = async (input: {
            updated_at = NOW()
        WHERE id = $4`,
       [
-        targetFlow.id,
+        normalizeSafeFlowId(targetFlow.id),
         targetNode.id,
         buildHandoffContextPatch({
           handoffType: "flow",
@@ -1638,7 +1655,7 @@ const performGotoHandoff = async (input: {
         resolvedContext.campaignId,
         resolvedContext.channelId,
         resolvedContext.entryPointId,
-        targetFlow.id,
+        normalizeSafeFlowId(targetFlow.id),
         resolvedContext.listId,
         resolvedContext.platform || input.normalizedChannel,
         resolvedContext.platformAccountId,
@@ -1695,8 +1712,11 @@ type CampaignSystemFlowType = "handoff" | "csat";
 
 const normalizeCampaignSystemFlowType = (value: any): CampaignSystemFlowType | null => {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "handoff" || normalized === "csat") {
-    return normalized;
+  if (normalized === "handoff" || normalized === "00000000-0000-0000-0000-000000000001") {
+    return "handoff";
+  }
+  if (normalized === "csat" || normalized === "00000000-0000-0000-0000-000000000002") {
+    return "csat";
   }
 
   return null;
@@ -1723,7 +1743,9 @@ const loadCampaignSystemFlowRuntime = async (
   }
 
   return {
-    id: flowType,
+    id: flowType === "handoff"
+      ? "00000000-0000-0000-0000-000000000001"
+      : "00000000-0000-0000-0000-000000000002",
     flow_json: {
       ...normalizeRuntimeFlowJson(flowJson),
       system_flow_type: flowType,
@@ -1774,10 +1796,7 @@ const findCampaignHandoffTriggerFlowMatch = async (
     .map((k) => k.trim().toLowerCase())
     .filter((k) => k.length > 0);
 
-  const isMatch = keywords.some((keyword) => {
-    const regex = new RegExp(`\\b${escapeRegex(keyword)}\\b`, "i");
-    return regex.test(normalizedText);
-  });
+  const isMatch = keywords.some((keyword) => keywordMatchesText(keyword, normalizedText));
 
   if (keywords.length === 0 || !isMatch) {
     return null;
@@ -1937,7 +1956,9 @@ export const executeFlowFromNode = async (
       await query(
         `UPDATE conversations
          SET current_node = NULL,
-             status = 'closed',
+             flow_id = NULL,
+             variables = '{}'::jsonb,
+             status = 'active',
              retry_count = 0,
              updated_at = NOW()
          WHERE id = $1`,
@@ -1962,35 +1983,18 @@ export const executeFlowFromNode = async (
           [conversationId]
         );
         await cancelPendingJobsByConversation(conversationId, FLOW_WAIT_JOB_TYPES);
-
-        if (io) {
-          io.emit("dashboard_update", {
-            conversationId,
-            botId: activeBotId,
-            channel: normalizedChannel,
-            platformUserId,
-            text: data.text || "User routed to human agent via flow.",
-            isBot: false,
-            priorityAlert: true,
-            status: "agent_pending",
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        clearUserTimers(activeBotId, platformUserId);
-        if (!isSystemHandoffFlow) {
-          const systemFlowActions = await runSystemFlowMapping("handoff");
-          if (systemFlowActions) {
-            generatedActions.push(...systemFlowActions);
-            endedByTerminalNode = true;
-            break;
-          }
-        }
+        // Capture the specific text from your "Yes" branch or node data
+        const messageText = data.text || data.label || "Connecting you to a human agent...";
 
         payload = {
           type: "system",
-          text: data.text || "Bot paused. An agent will be with you shortly.",
+          text: messageText,
         };
+
+        // Ensure this message actually goes out before we break the loop
+        generatedActions.push(payload);
+        endedByTerminalNode = true;
+        break;
       } else if (currentNodeType === "message" || currentNodeType === "input") {
         const delayMs = Number(data.delayMs || 0);
         if (delayMs > 0) {
@@ -2009,56 +2013,49 @@ export const executeFlowFromNode = async (
               ? { text: replaceVariables(String(data.caption || data.text || ""), variables) }
               : {}),
           };
-          nextHandles = ["next", "response"];
+          generatedActions.push(payload);
+          // Move to next node immediately for media
+          const nextNode = findNextNode(
+            currentNode.id,
+            activeNodes,
+            activeEdges,
+            ["next", "response", null, undefined]
+          );
+          if (nextNode) {
+            currentNode = nextNode;
+            continue;
+          } else {
+            break;
+          }
         } else {
           let text = replaceVariables(data.text || data.label || "...", variables);
-
           if (currentNodeType === "input") {
             text += "\n\n_(Type 'reset' to restart)_";
           }
 
-          payload = {
-            type: "text",
-            text,
-          };
+          payload = { type: "text", text };
 
-          // When a plain text message is immediately followed by an input node,
-          // collapse them into a single outbound prompt and wait on the input node.
           if (currentNodeType === "message") {
-            const immediateNextNode = findNextNode(
+            const nextNode = findNextNode(
               currentNode.id,
               activeNodes,
               activeEdges,
               ["response", "next", null, undefined]
             );
-            const immediateNextType = normalizeRuntimeNodeType(immediateNextNode?.type);
+            const nextType = normalizeRuntimeNodeType(nextNode?.type);
 
-            if (immediateNextNode && immediateNextType === "input") {
-              const nextData = immediateNextNode.data || {};
-              const promptText = replaceVariables(
-                nextData.text || nextData.label || "...",
-                variables
-              );
-
-              payload = {
-                type: "text",
-                text: [text, `${promptText}\n\n_(Type 'reset' to restart)_`]
-                  .filter(Boolean)
-                  .join("\n\n"),
-              };
-
+            // COLLAPSE: Message + Input
+            if (nextNode && nextType === "input") {
+              const nextData = nextNode.data || {};
+              const promptText = replaceVariables(nextData.text || nextData.label || "...", variables);
+              payload.text = [text, `${promptText}\n\n_(Type 'reset' to restart)_`].filter(Boolean).join("\n\n");
               generatedActions.push(payload);
-
-              await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [
-                immediateNextNode.id,
-                conversationId,
-              ]);
-
+              await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [nextNode.id, conversationId]);
               await scheduleWaitingNodeInactivity({
                 conversationId,
                 botId: activeBotId,
                 platformUserId,
-                waitingNodeId: String(immediateNextNode.id),
+                waitingNodeId: String(nextNode.id),
                 channel,
                 io,
                 reminderDelaySeconds: Number(nextData.reminderDelay || 0),
@@ -2066,10 +2063,37 @@ export const executeFlowFromNode = async (
                 timeoutSeconds: Number(nextData.timeout || 0),
                 timeoutFallback: nextData.timeoutFallback,
               });
-
               endedByInputWait = true;
               break;
             }
+
+            // TRAVERSE: Message + Any other node
+            generatedActions.push(payload);
+            if (nextNode) {
+              currentNode = nextNode;
+              continue;
+            }
+          } else {
+            // Standard Input Node (Wait for user)
+            generatedActions.push(payload);
+            await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [
+              currentNode.id,
+              conversationId,
+            ]);
+            await scheduleWaitingNodeInactivity({
+              conversationId,
+              botId: activeBotId,
+              platformUserId,
+              waitingNodeId: String(currentNode.id),
+              channel,
+              io,
+              reminderDelaySeconds: Number(data.reminderDelay || 0),
+              reminderText: data.reminderText,
+              timeoutSeconds: Number(data.timeout || 0),
+              timeoutFallback: data.timeoutFallback,
+            });
+            endedByInputWait = true;
+            break;
           }
         }
       } else if (currentNodeType === "menu") {
@@ -2295,7 +2319,7 @@ export const executeFlowFromNode = async (
                WHERE id = $4`,
               [
                 currentNode.id,
-                bookmarkedState.flowId || null,
+                normalizeSafeFlowId(bookmarkedState.flowId),
                 JSON.stringify(variables || {}),
                 conversationId,
               ]
@@ -2323,7 +2347,7 @@ export const executeFlowFromNode = async (
                WHERE id = $3`,
               [
                 currentNode.id,
-                conversationRes.rows[0]?.flow_id || null,
+                normalizeSafeFlowId(conversationRes.rows[0]?.flow_id),
                 conversationId,
               ]
             );
@@ -2343,7 +2367,7 @@ export const executeFlowFromNode = async (
                WHERE id = $3`,
               [
                 currentNode.id,
-                conversationRes.rows[0]?.flow_id || null,
+                normalizeSafeFlowId(conversationRes.rows[0]?.flow_id),
                 conversationId,
               ]
             );
@@ -2365,57 +2389,13 @@ export const executeFlowFromNode = async (
         }
         nextHandles = ["next", "response"];
       } else if (currentNodeType === "end") {
-        endedByTerminalNode = true;
-        const latestConversationRes = await query(
-          `SELECT context_json
-           FROM conversations
-           WHERE id = $1
-           LIMIT 1`,
-          [conversationId]
-        );
-        const latestContext = parseJsonObject(latestConversationRes.rows[0]?.context_json);
-        const bookmarkedState = readConversationBookmark(latestContext);
-
-        if (bookmarkedState) {
-          await clearConversationBookmark(conversationId);
-          await query(
-            `UPDATE conversations
-             SET current_node = $2,
-                 flow_id = $3,
-                 variables = $4::jsonb,
-                 retry_count = 0,
-                 status = 'active',
-                 context_json = COALESCE(context_json, '{}'::jsonb)
-                   - 'restart_required'
-                   - 'termination_reason',
-                 updated_at = NOW()
-             WHERE id = $1`,
-            [
-              conversationId,
-              bookmarkedState.nodeId || null,
-              bookmarkedState.flowId || null,
-              JSON.stringify(bookmarkedState.variables || {}),
-            ]
-          );
-
-          await cancelPendingJobsByConversation(conversationId, FLOW_WAIT_JOB_TYPES);
-          clearUserTimers(activeBotId, platformUserId);
-          generatedActions.push({
-            type: "system",
-            text: bookmarkedState.resumeText || "Let's pick up where we left off...",
-          });
-          break;
-        }
-
+        // ATOMIC RESET: Wipe everything so the next message is a brand new start
         await query(
           `UPDATE conversations
            SET current_node = NULL,
                flow_id = NULL,
                variables = '{}'::jsonb,
-               retry_count = 0,
-               status = 'closed',
-               context_json = COALESCE(context_json, '{}'::jsonb)
-                 || '{"restart_required": true, "termination_reason": "end_node"}'::jsonb,
+               status = 'active',
                updated_at = NOW()
            WHERE id = $1`,
           [conversationId]
@@ -2423,21 +2403,8 @@ export const executeFlowFromNode = async (
 
         await cancelPendingJobsByConversation(conversationId, FLOW_WAIT_JOB_TYPES);
         clearUserTimers(activeBotId, platformUserId);
-        await closePlatformUserRunnableConversations(
-          conversationId,
-          platformUserId,
-          normalizedChannel
-        );
-        const systemFlowActions = await runSystemFlowMapping("conversation_close");
-        if (systemFlowActions) {
-          generatedActions.push(...systemFlowActions);
-          break;
-        }
-        payload = {
-          type: "text",
-          text: data.text || "Session completed.",
-        };
-        generatedActions.push(payload);
+        endedByTerminalNode = true;
+        console.log(`[FlowEngine] atomic_reset: Conversation ${conversationId} cleared via End Node.`);
         break;
       } else if (currentNodeType === "api") {
         try {
@@ -2607,7 +2574,7 @@ export const executeFlowFromNode = async (
 
         await query(
           "UPDATE conversations SET current_node = $1, flow_id = COALESCE($2, flow_id) WHERE id = $3",
-          [currentNode?.id || null, conversationRes.rows[0]?.flow_id || null, conversationId]
+          [currentNode?.id || null, normalizeSafeFlowId(conversationRes.rows[0]?.flow_id), conversationId]
         );
         continue;
       } else if (currentNodeType === "condition") {
@@ -2718,6 +2685,8 @@ export const executeFlowFromNode = async (
           botId: activeBotId,
           platform: normalizedChannel,
           variables,
+          workspaceId: conversationWorkspaceId,
+          projectId: conversationProjectId,
           sourcePayload: {
             platformUserId,
             conversationId,
@@ -2864,13 +2833,50 @@ export const processIncomingMessage = async (
 
     const campaignId = await resolveInboundCampaignId({
       botId,
+      channel: normalizedChannel,
       explicitCampaignId: options.campaignId || resolvedContext.campaignId || null,
     });
+    const isAtInputNode = Boolean(latestConversation?.current_node);
 
-    const campaignMatchedTriggerFlow = campaignId
-      ? await findCampaignHandoffTriggerFlowMatch(campaignId, incomingText)
-      : null;
-    let matchedTriggerFlow: any = campaignMatchedTriggerFlow;
+    // --- UNIFIED TRIGGER SHIELD ---
+    let campaignMatchedTriggerFlow: any = null;
+    let matchedTriggerFlow: any = null;
+
+    // ONLY search for triggers if NOT at an input node OR user typed 'reset'
+    if (!isAtInputNode || String(text || "").trim().toLowerCase() === "reset") {
+      // A. Campaign Triggers
+      const campaignMatched = campaignId
+        ? await findCampaignHandoffTriggerFlowMatch(campaignId, incomingText)
+        : null;
+
+      campaignMatchedTriggerFlow = campaignMatched;
+
+      // B. Bot Keyword Triggers
+      const botKeywordMatched = !campaignMatched
+        ? await findBotStoredTriggerFlowMatch(botId, availableFlows, text, resolvedContext.projectId || null)
+        : null;
+
+      // C. Universal Rule Match
+      const universalMatch =
+        !campaignMatched && !botKeywordMatched
+          ? await findBotUniversalRuleMatch(botId, text)
+          : null;
+      const universalMatchedFlow = universalMatch?.flowId
+        ? availableFlows.find((f) => String(f.id) === String(universalMatch.flowId)) || null
+        : null;
+
+      // Resolve the winner
+      matchedTriggerFlow =
+        campaignMatched ||
+        botKeywordMatched ||
+        (universalMatch && universalMatchedFlow
+          ? {
+              flow: universalMatchedFlow,
+              node: null,
+              source: "universal" as const,
+            }
+          : null);
+    }
     const shouldBypassCurrentNodeHandling = false;
     const shouldPreferActiveConversation =
       !matchedTriggerFlow &&
@@ -2907,7 +2913,7 @@ export const processIncomingMessage = async (
             resolvedContext.campaignId,
             resolvedContext.channelId,
             resolvedContext.entryPointId,
-            resolvedContext.flowId,
+            normalizeSafeFlowId(resolvedContext.flowId),
             resolvedContext.listId,
             resolvedContext.platform,
             resolvedContext.platformAccountId,
@@ -2951,7 +2957,7 @@ export const processIncomingMessage = async (
           resolvedContext.campaignId,
           resolvedContext.channelId,
           resolvedContext.entryPointId,
-          resolvedContext.flowId,
+          normalizeSafeFlowId(resolvedContext.flowId),
           resolvedContext.listId,
           resolvedContext.platform,
           resolvedContext.platformAccountId,
@@ -2987,11 +2993,11 @@ export const processIncomingMessage = async (
       const updatedConversationRes = await query(
         `UPDATE conversations
          SET
-           workspace_id = COALESCE(workspace_id, $1),
-           project_id = COALESCE(project_id, $2),
-           campaign_id = COALESCE(campaign_id, $3),
-           channel_id = COALESCE(channel_id, $4),
-           entry_point_id = COALESCE(entry_point_id, $5),
+          workspace_id = COALESCE(workspace_id, $1),
+          project_id = COALESCE(project_id, $2),
+          campaign_id = COALESCE(campaign_id, $3),
+          channel_id = COALESCE(channel_id, $4),
+          entry_point_id = COALESCE(entry_point_id, $5),
           flow_id = COALESCE(flow_id, $6),
           list_id = COALESCE(list_id, $7),
           platform = COALESCE(platform, $8),
@@ -3006,7 +3012,7 @@ export const processIncomingMessage = async (
           resolvedContext.campaignId,
           resolvedContext.channelId,
           resolvedContext.entryPointId,
-          resolvedContext.flowId,
+          normalizeSafeFlowId(resolvedContext.flowId),
           resolvedContext.listId,
           resolvedContext.platform,
           resolvedContext.platformAccountId,
@@ -3052,11 +3058,16 @@ export const processIncomingMessage = async (
          SET current_node = NULL,
              flow_id = $2,
              variables = '{}'::jsonb,
-             status = 'agent_pending',
+             status = 'active',
              retry_count = 0,
-             updated_at = NOW()
+             updated_at = NOW(),
+             context_json = context_json || jsonb_build_object('active_system_flow', $3::text)
          WHERE id = $1`,
-        [conversation.id, campaignMatchedTriggerFlow.flow.id]
+        [
+          conversation.id,
+          null,
+          campaignMatchedTriggerFlow.flow.flow_json?.system_flow_type || "handoff",
+        ]
       );
       const actions = await executeFlowFromNode(
         campaignMatchedTriggerFlow.node,
@@ -3088,6 +3099,17 @@ export const processIncomingMessage = async (
       [conversation.id]
     );
     conversation = refreshedConversationRes.rows[0] || conversation;
+
+    if (conversation?.updated_at && conversation.current_node) {
+      const lastUpdate = new Date(conversation.updated_at).getTime();
+      const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+      if (Number.isFinite(lastUpdate) && lastUpdate < twentyFourHoursAgo) {
+        await query("UPDATE conversations SET current_node = NULL WHERE id = $1", [
+          conversation.id,
+        ]);
+        conversation.current_node = null;
+      }
+    }
 
     // --- 1. EXPLICIT RESET & ESCAPE INTERCEPTION ---
     const isReset = RESET_KEYWORDS.includes(text) || text === "reset";
@@ -3150,39 +3172,6 @@ export const processIncomingMessage = async (
     const conversationContext = parseJsonObject(conversation.context_json);
     const resolvedCsatRating = resolveCsatRating(buttonId, text);
     const requireExplicitTrigger = options.requireExplicitTrigger === true;
-    if (!matchedTriggerFlow) {
-      const botKeywordMatchedTriggerFlow = text
-        ? await findBotStoredTriggerFlowMatch(botId, availableFlows, text, resolvedContext.projectId || null)
-        : null;
-      const universalRuleMatch =
-        text && !botKeywordMatchedTriggerFlow
-          ? await findBotUniversalRuleMatch(botId, text)
-          : null;
-      const universalRuleMatchedFlow =
-        universalRuleMatch?.flowId
-          ? availableFlows.find((flow) => String(flow.id) === String(universalRuleMatch.flowId))
-          : null;
-      const universalMatchedTriggerFlow = (() => {
-        if (!universalRuleMatchedFlow) {
-          return null;
-        }
-
-        const startNode =
-          findTriggerNodeTargetInFlow(universalRuleMatchedFlow.flow_json) ||
-          findStartNodeTargetInFlow(universalRuleMatchedFlow.flow_json);
-        if (!startNode) {
-          return null;
-        }
-
-        return {
-          flow: universalRuleMatchedFlow,
-          node: startNode,
-          source: "universal" as const,
-        };
-      })();
-      matchedTriggerFlow = botKeywordMatchedTriggerFlow || universalMatchedTriggerFlow;
-    }
-
     if (conversationContext.csat_pending && resolvedCsatRating) {
       await createSupportSurvey({
         conversationId: conversation.id,
@@ -3310,10 +3299,10 @@ export const processIncomingMessage = async (
                variables = '{}'::jsonb,
                status = 'active',
                retry_count = 0,
-               updated_at = NOW()
+           updated_at = NOW()
            WHERE id = $1
            RETURNING *`,
-          [conversation.id, systemOverrideMatch.flow.id]
+          [conversation.id, normalizeSafeFlowId(systemOverrideMatch.flow.id)]
         )
       ).rows[0] || conversation;
       await closeSiblingRunnableConversations(
@@ -3417,18 +3406,21 @@ export const processIncomingMessage = async (
     await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
     clearUserTimers(botId, platformUserId);
 
-    const conversationSystemFlowType = normalizeCampaignSystemFlowType(conversation.flow_id);
-    const campaignConversationFlow =
-      conversationSystemFlowType && conversation.campaign_id
-        ? await loadCampaignSystemFlowRuntime(String(conversation.campaign_id), conversationSystemFlowType)
-        : null;
-    const conversationFlow =
-      campaignConversationFlow ||
-      (conversation.flow_id
-        ? availableFlows.find((flow) => String(flow.id) === String(conversation.flow_id)) || null
-        : null);
+    // Prioritize Virtual System Flow from context
+    const activeSystemFlow = conversationContext?.active_system_flow;
+    let flowRecord: FlowRuntimeRecord | null = null;
+
+    if (activeSystemFlow && campaignId) {
+      flowRecord = await loadCampaignSystemFlowRuntime(campaignId, activeSystemFlow as any);
+    }
+
+    // Fallback to standard flow_id if no system flow is active
+    if (!flowRecord && conversation.flow_id) {
+      flowRecord =
+        availableFlows.find((flow) => String(flow.id) === String(conversation.flow_id)) || null;
+    }
     const fallbackFlow = availableFlows.find((flow) => flow.is_default) || availableFlows[0] || null;
-    const activeFlow = conversationFlow || fallbackFlow;
+    const activeFlow = flowRecord || fallbackFlow;
     let activeFlowId = activeFlow?.id || null;
     let flowData = activeFlow?.flow_json || { nodes: [], edges: [] };
     let nodes = flowData.nodes || [];
@@ -3459,7 +3451,7 @@ export const processIncomingMessage = async (
              retry_count = 0,
              updated_at = NOW()
          WHERE id = $1`,
-        [conversation.id, activeFlowId]
+        [conversation.id, normalizeSafeFlowId(activeFlowId)]
       );
       await closeSiblingRunnableConversations(
         conversation.id,
@@ -3568,6 +3560,8 @@ export const processIncomingMessage = async (
               botId,
               platform: normalizedChannel,
               variables: updatedVariables,
+              workspaceId: conversation.workspace_id || resolvedContext.workspaceId || null,
+              projectId: conversation.project_id || resolvedContext.projectId || null,
               sourcePayload: {
                 platformUserId,
                 conversationId: conversation.id,
@@ -3727,7 +3721,7 @@ export const processIncomingMessage = async (
                status = 'active',
                retry_count = 0
            WHERE id = $1`,
-          [conversation.id, activeFlowId]
+          [conversation.id, normalizeSafeFlowId(activeFlowId)]
         );
         await closeSiblingRunnableConversations(
           conversation.id,
@@ -3927,7 +3921,7 @@ export const triggerFlowExternally = async (input: {
           resolvedContext.campaignId,
           resolvedContext.channelId,
           resolvedContext.entryPointId,
-          resolvedContext.flowId,
+          normalizeSafeFlowId(resolvedContext.flowId),
           resolvedContext.listId,
           normalizedChannel,
           resolvedContext.platformAccountId,
@@ -4003,7 +3997,7 @@ export const triggerFlowExternally = async (input: {
       botId,
       resolvedContext.workspaceId,
       resolvedContext.projectId,
-      targetFlow.id,
+      normalizeSafeFlowId(targetFlow.id),
       JSON.stringify(mergedVariables),
       resolvedContext.campaignId,
       resolvedContext.channelId,
@@ -4013,7 +4007,7 @@ export const triggerFlowExternally = async (input: {
       resolvedContext.platformAccountId,
       buildConversationContextPayload({
         ...resolvedContext,
-        flowId: targetFlow.id,
+        flowId: normalizeSafeFlowId(targetFlow.id),
       }),
       conversation.id,
     ]

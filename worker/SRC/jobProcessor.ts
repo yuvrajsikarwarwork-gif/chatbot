@@ -18,6 +18,11 @@ import {
 import {
   logEvent,
 } from "./analyticsRepo";
+import path from "path";
+
+const { sendWaitingNodeReminder, handleWaitingNodeTimeout } = require(
+  path.resolve(process.cwd(), "../backend-api/dist/services/flowEngine")
+);
 
 
 export const processJob = async (
@@ -59,6 +64,27 @@ export const processJob = async (
       return handleAgentHandoff(
         payload
       );
+
+    case "flow_wait_reminder":
+      await sendWaitingNodeReminder({
+        conversationId: payload.conversationId,
+        waitingNodeId: payload.waitingNodeId,
+        reminderText: payload.reminderText,
+        io: (global as any).io,
+      });
+      break;
+
+    case "flow_wait_timeout":
+      await handleWaitingNodeTimeout({
+        conversationId: payload.conversationId,
+        botId: payload.botId,
+        platformUserId: payload.platformUserId,
+        waitingNodeId: payload.waitingNodeId,
+        channel: payload.channel,
+        timeoutFallback: payload.timeoutFallback,
+        io: (global as any).io,
+      });
+      break;
 
     default: {
       const err: any = new Error(

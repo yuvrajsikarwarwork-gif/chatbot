@@ -101,39 +101,52 @@ export async function upsertLeadCapture(options: {
   nodeData: Record<string, any>;
   contactId?: string | null;
   sourcePayload?: Record<string, unknown>;
+  workspaceId?: string | null;
+  projectId?: string | null;
 }) {
   const context = await getLeadCaptureConversationContext(options.conversationId);
-  if (!context) {
+  const workspaceId = context?.workspace_id || options.workspaceId || options.nodeData?.workspaceId;
+  const projectId = context?.project_id || options.projectId || options.nodeData?.projectId;
+
+  if (!workspaceId) {
     return null;
   }
 
   const platform = normalizePlatform(
-    context.platform || context.context_json?.platform || options.platform
+    context?.platform || context?.context_json?.platform || options.platform
   );
   const linkedFieldKey = String(options.sourcePayload?.linkedFieldKey || "").trim() || null;
 
-  const userId = context.context_json?.userId || null;
+  const userId = context?.context_json?.userId || null;
 
   const name = pickValue(
     options.variables,
     options.nodeData.nameVariable,
     "name",
     "full_name",
-    "user_name"
-  ) || context.contact_name || null;
+    "user_name",
+    "userName",
+    "customer_name"
+  ) || context?.contact_name || null;
 
   const phone = pickValue(
     options.variables,
     options.nodeData.phoneVariable,
     "phone",
     "mobile",
-    "wa_number"
-  ) || context.platform_user_id || null;
+    "wa_number",
+    "contact_number",
+    "user_phone"
+  ) || context?.platform_user_id || null;
 
   const email = pickValue(
     options.variables,
     options.nodeData.emailVariable,
-    "email"
+    "lead_email",
+    "email",
+    "work_email",
+    "user_email",
+    "customer_email"
   );
   const companyName = pickValue(
     options.variables,
@@ -176,11 +189,11 @@ export async function upsertLeadCapture(options: {
      LIMIT 1`,
     [
       options.conversationId,
-      context.contact_id,
+      context?.contact_id || options.contactId || null,
       options.botId,
-      context.campaign_id,
-      context.channel_id,
-      context.entry_point_id,
+      context?.campaign_id,
+      context?.channel_id,
+      context?.entry_point_id,
       leadFormId,
     ]
   );
@@ -230,10 +243,10 @@ export async function upsertLeadCapture(options: {
        WHERE id = $18
        RETURNING *`,
       [
-        context.workspace_id || null,
-        context.context_json?.projectId || context.project_id || null,
-        context.flow_id,
-        context.list_id,
+    workspaceId,
+    context?.context_json?.projectId || projectId || context?.project_id || null,
+    context?.flow_id,
+    context?.list_id,
         platform,
         name,
         phone,
@@ -262,14 +275,14 @@ export async function upsertLeadCapture(options: {
      RETURNING *`,
     [
       userId,
-      context.workspace_id || null,
-      context.context_json?.projectId || context.project_id || null,
+      workspaceId,
+      context?.context_json?.projectId || projectId || context?.project_id || null,
       options.botId,
-      context.contact_id,
-      context.campaign_id,
-      context.channel_id,
-      context.entry_point_id,
-      context.flow_id,
+      context?.contact_id || options.contactId || null,
+      context?.campaign_id,
+      context?.channel_id,
+      context?.entry_point_id,
+      context?.flow_id,
       platform,
       context.list_id,
       name,
@@ -304,14 +317,16 @@ export async function maybeAutoCaptureLead(options: {
   platform: string;
   variables: Record<string, any>;
   sourcePayload?: Record<string, unknown>;
+  workspaceId?: string | null;
+  projectId?: string | null;
 }) {
   const variables = options.variables || {};
   const nameVariable =
-    detectVariableKey(variables, ["name", "full_name", "user_name"]) || undefined;
+    detectVariableKey(variables, ["name", "full_name", "user_name", "userName", "customer_name"]) || undefined;
   const emailVariable =
-    detectVariableKey(variables, ["lead_email", "email", "work_email"]) || undefined;
+    detectVariableKey(variables, ["lead_email", "email", "work_email", "user_email", "customer_email"]) || undefined;
   const phoneVariable =
-    detectVariableKey(variables, ["phone", "mobile", "wa_number"]) || undefined;
+    detectVariableKey(variables, ["phone", "mobile", "wa_number", "contact_number", "user_phone"]) || undefined;
 
   const hasLeadSignal = Boolean(nameVariable || emailVariable || phoneVariable);
   if (!hasLeadSignal) {
@@ -329,6 +344,8 @@ export async function maybeAutoCaptureLead(options: {
       nameVariable,
       emailVariable,
       phoneVariable,
+      workspaceId: options.workspaceId || null,
+      projectId: options.projectId || null,
     },
     sourcePayload: {
       autoCaptured: true,
@@ -347,14 +364,16 @@ export async function upsertLeadCaptureFromConversationVariables(options: {
   sourceLabel?: string;
   sourcePayload?: Record<string, unknown>;
   statusValue?: string;
+  workspaceId?: string | null;
+  projectId?: string | null;
 }) {
   const variables = options.variables || {};
   const nameVariable =
-    detectVariableKey(variables, ["name", "full_name", "user_name"]) || undefined;
+    detectVariableKey(variables, ["name", "full_name", "user_name", "userName", "customer_name"]) || undefined;
   const emailVariable =
-    detectVariableKey(variables, ["lead_email", "email", "work_email"]) || undefined;
+    detectVariableKey(variables, ["lead_email", "email", "work_email", "user_email", "customer_email"]) || undefined;
   const phoneVariable =
-    detectVariableKey(variables, ["phone", "mobile", "wa_number"]) || undefined;
+    detectVariableKey(variables, ["phone", "mobile", "wa_number", "contact_number", "user_phone"]) || undefined;
   const leadFormId = String(options.leadFormId || "").trim() || undefined;
   const linkedFieldKey = String(options.linkedFieldKey || "").trim() || undefined;
   const hasLinkedFieldSignal =
@@ -376,6 +395,8 @@ export async function upsertLeadCaptureFromConversationVariables(options: {
       nameVariable,
       emailVariable,
       phoneVariable,
+      workspaceId: options.workspaceId || null,
+      projectId: options.projectId || null,
     },
     sourcePayload: {
       triggeredBy: "engine_input_hook",

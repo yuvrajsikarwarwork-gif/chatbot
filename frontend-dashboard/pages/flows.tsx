@@ -351,6 +351,23 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
   const hasOutgoingHandle = (nodeId: string, handleId: string) =>
     (outgoingByNode.get(nodeId) || []).some((edge) => String(edge?.sourceHandle || "") === handleId);
 
+  const getOutboundEdges = (nodeId: string) => outgoingByNode.get(nodeId) || [];
+  const hasNextConnection = (nodeId: string) =>
+    getOutboundEdges(nodeId).some((edge) => {
+      const handle = edge?.sourceHandle;
+      return (
+        handle === null ||
+        handle === undefined ||
+        !String(handle || "").trim() ||
+        String(handle || "").trim() === "next"
+      );
+    });
+  const isMessageTerminalSafe = (nodeId: string) =>
+    getOutboundEdges(nodeId).some((edge) => {
+      const targetNode = normalizedNodes.find((node: any) => String(node?.id || "") === String(edge?.target || ""));
+      return normalizeCanvasNodeType(targetNode?.type, targetNode?.data) === "end";
+    });
+
   const hasOutgoing = (nodeId: string) => (outgoingByNode.get(nodeId) || []).length > 0;
   const outgoingHandleCount = (nodeId: string, handleId: string) =>
     (outgoingByNode.get(nodeId) || []).filter((edge) => String(edge?.sourceHandle || "") === handleId).length;
@@ -456,7 +473,7 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
     if (nodeType === "save") {
       if (incomingCount === 0) {
         markInvalid(nodeId, "Save nodes need an incoming connection.");
-      } else if (outgoingCount !== 1 || outgoingHandleCount(nodeId, "next") !== 1) {
+      } else if (!getOutboundEdges(nodeId).length) {
         markInvalid(nodeId, "Save nodes need exactly one Next connection.");
       }
       continue;
@@ -465,7 +482,9 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
     if (nodeType === "message") {
       if (incomingCount === 0) {
         markInvalid(nodeId, "Message nodes need an incoming connection.");
-      } else if (outgoingCount !== 1 || outgoingHandleCount(nodeId, "next") !== 1) {
+      } else if (isMessageTerminalSafe(nodeId)) {
+        continue;
+      } else if (!getOutboundEdges(nodeId).length) {
         markInvalid(nodeId, "Message nodes need exactly one Next connection.");
       }
       continue;
@@ -483,7 +502,7 @@ function validateFlowGraph(nodes: Node[], edges: Edge[]): FlowValidationResult {
     if (nodeType === "assign_agent") {
       if (incomingCount === 0) {
         markInvalid(nodeId, "Assign agent nodes need an incoming connection.");
-      } else if (outgoingCount !== 1 || outgoingHandleCount(nodeId, "next") !== 1) {
+      } else if (!getOutboundEdges(nodeId).length) {
         markInvalid(nodeId, "Assign agent nodes need exactly one Next connection.");
       }
       continue;
@@ -2520,7 +2539,7 @@ function FlowBuilderCanvas() {
           data: {
             label: "Lead Name",
             text: "What's your name?",
-            variable: "lead_name",
+            variable: "full_name",
             linkedFieldKey: "lead_name",
             leadField: "lead_name",
             field: "lead_name",
@@ -2540,7 +2559,7 @@ function FlowBuilderCanvas() {
           position: { x: 1340, y: 40 },
           data: {
             label: "Lead Email",
-            text: "What's your email address?",
+            text: "Step 2: Great, {{full_name}}. Now provide your Email...",
             variable: "lead_email",
             linkedFieldKey: "lead_email",
             leadField: "lead_email",
@@ -2697,7 +2716,7 @@ function FlowBuilderCanvas() {
     );
   }
 
-  if (isLoading) return <div className="fixed inset-0 z-50 flex h-screen w-screen items-center justify-center bg-canvas text-text-main font-black animate-pulse tracking-tighter uppercase">Loading Workflow...</div>;
+  if (isLoading) return <div className="flex min-h-full w-full items-center justify-center bg-canvas text-text-main font-black animate-pulse tracking-tighter uppercase">Loading Workflow...</div>;
 
   if ((!botId && !campaignId) || (!isCampaignSystemFlowEditor && !isUnlocked)) {
     return (
