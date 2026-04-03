@@ -21,15 +21,7 @@ import { logAuditSafe } from "./auditLogService";
 import { getEffectiveWorkspaceBilling, resolveWorkspacePlanLimit } from "./billingService";
 import { getAiProvidersSettingsService } from "./platformSettingsService";
 import { updateWorkspaceBot } from "../models/botModel";
-
-function mergeSettingsSources(...sources: any[]) {
-  return sources.reduce((acc, source) => {
-    if (!source || typeof source !== "object" || Array.isArray(source)) {
-      return acc;
-    }
-    return { ...acc, ...source };
-  }, {});
-}
+import { mergeSettingsSources } from "../utils/settingsUtils";
 
 function inferSystemFlowType(flow: any) {
   const flowJson = flow?.flow_json && typeof flow.flow_json === "object" ? flow.flow_json : {};

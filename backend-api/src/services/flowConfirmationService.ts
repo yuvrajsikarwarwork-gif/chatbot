@@ -51,6 +51,26 @@ const parseJsonObject = (value: any): JsonRecord => {
 
 const normalizeText = (value: any) => String(value || "").trim().toLowerCase();
 
+export const buildTriggerConfirmationTarget = (
+  match: { flow: { id: string; flow_json?: any }; node: any; source?: string },
+  campaignId: string | null,
+  incomingText: string
+): TriggerTarget => ({
+  source: (String(match?.source || "bot").trim().toLowerCase() as TriggerSource) || "bot",
+  flowId: String(match?.flow?.id || "").trim() || null,
+  flowName: String(match?.flow?.flow_json?.flow_name || match?.flow?.flow_json?.name || "").trim() || null,
+  nodeId: String(match?.node?.id || "").trim() || null,
+  nodeLabel: String(
+    match?.node?.data?.label ||
+      match?.node?.data?.text ||
+      match?.node?.data?.name ||
+      ""
+  ).trim() || null,
+  campaignId: campaignId || null,
+  promptText: null,
+  matchedText: incomingText,
+});
+
 export const readTriggerConfirmation = (contextJson: any): TriggerConfirmationState | null => {
   const context = parseJsonObject(contextJson);
   const pending = parseJsonObject(context[CONFIRMATION_KEY] || context.triggerConfirmationPending);

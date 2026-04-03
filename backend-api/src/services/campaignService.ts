@@ -51,6 +51,7 @@ import { encryptSecret } from "../utils/encryption";
 import { recordAnalyticsEvent } from "./runtimeAnalyticsService";
 import { logAuditSafe } from "./auditLogService";
 import { DEFAULT_CSAT_FLOW, DEFAULT_HANDOFF_FLOW } from "../config/systemFlowTemplates";
+import { mergeSettingsSources } from "../utils/settingsUtils";
 
 function slugify(value: string) {
   return value
@@ -63,15 +64,6 @@ function slugify(value: string) {
 
 function deepCloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
-}
-
-function mergeSettingsSources(...sources: any[]) {
-  return sources.reduce((acc, source) => {
-    if (!source || typeof source !== "object" || Array.isArray(source)) {
-      return acc;
-    }
-    return { ...acc, ...source };
-  }, {});
 }
 
 function buildCampaignSystemFlows(currentSettings: any) {
@@ -1233,7 +1225,7 @@ export async function createEntryPointService(userId: string, payload: any) {
 
   if (!payload.flowId) {
     const availableFlows = await findFlowSummariesByBot(botId);
-    const fallbackFlow = availableFlows.find((flow: any) => flow.is_default) || availableFlows[0];
+    const fallbackFlow = availableFlows.find((flow: any) => flow.is_default) || null;
     if (!fallbackFlow) {
       throw { status: 400, message: "No flow is available for this bot" };
     }

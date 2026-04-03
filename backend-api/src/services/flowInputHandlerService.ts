@@ -1,4 +1,8 @@
 import { GenericMessage } from "./messageRouter";
+import {
+  setConversationCurrentNode,
+  updateConversationRuntimeState,
+} from "./conversationRuntimeStateService";
 
 type HandleValidationErrorResult = {
   step: string | null;
@@ -146,18 +150,19 @@ export const handleActiveConversationNode = async (
     return { actions: outgoingActions, nextNode: null };
   }
 
-  await query("UPDATE conversations SET retry_count = 0 WHERE id = $1", [
-    conversation.id,
-  ]);
+  await updateConversationRuntimeState({
+    conversationId: conversation.id,
+    retryCount: 0,
+  });
 
   if (lastNodeType === "input") {
     const updatedVariables = parseVariables(conversation.variables);
     updatedVariables[lastNode.data?.variable || "input"] = incomingText;
 
-    await query("UPDATE conversations SET variables = $1::jsonb WHERE id = $2", [
-      JSON.stringify(updatedVariables),
-      conversation.id,
-    ]);
+    await updateConversationRuntimeState({
+      conversationId: conversation.id,
+      variables: updatedVariables,
+    });
 
     try {
       await maybeAutoCaptureLead({
@@ -192,9 +197,7 @@ export const handleActiveConversationNode = async (
   ]);
 
   if (!nextNode) {
-    await query("UPDATE conversations SET current_node = NULL WHERE id = $1", [
-      conversation.id,
-    ]);
+    await setConversationCurrentNode(conversation.id, null);
   }
 
   return {

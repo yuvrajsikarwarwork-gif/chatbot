@@ -1,8 +1,13 @@
 import { GenericMessage } from "./messageRouter";
 import { patchConversationContext } from "./conversationContextPatchService";
 import {
+  resetConversationRuntimeState,
+  updateConversationRuntimeState,
+} from "./conversationRuntimeStateService";
+import {
   buildTriggerConfirmationState,
   buildTriggerConfirmationText,
+  buildTriggerConfirmationTarget,
   parseTriggerConfirmationDecision,
   TriggerConfirmationState,
 } from "./flowConfirmationService";
@@ -32,10 +37,8 @@ type HandleTriggerConfirmationInput = {
   platformUserId: string;
   channel: string;
   io: any;
-  normalizeSafeFlowId: (value: any) => string | null;
   persistConversationBookmark: (conversationId: string, bookmark: any) => Promise<void>;
   clearConversationBookmark: (conversationId: string) => Promise<void>;
-  query: (sql: string, params?: any[]) => Promise<any>;
   executeFlowFromNode: (
     node: any,
     conversationId: string,
@@ -71,10 +74,8 @@ export const handleTriggerConfirmation = async (
     platformUserId,
     channel,
     io,
-    normalizeSafeFlowId,
     persistConversationBookmark,
     clearConversationBookmark,
-    query,
     executeFlowFromNode,
     loadCampaignSystemFlowRuntime,
     findTriggerNodeTargetInFlow,
@@ -90,25 +91,11 @@ export const handleTriggerConfirmation = async (
   const confirmationDecision = parseTriggerConfirmationDecision(text);
 
   if (lockedTriggerMatch?.matchedTriggerFlow && confirmationDecision === "unknown") {
-    const replacementTarget = {
-      source: (lockedTriggerMatch.matchedTriggerFlow as any).source || "bot",
-      flowId: String(lockedTriggerMatch.matchedTriggerFlow.flow.id || "").trim() || null,
-      flowName: String(
-        lockedTriggerMatch.matchedTriggerFlow.flow.flow_json?.flow_name ||
-          lockedTriggerMatch.matchedTriggerFlow.flow.flow_json?.name ||
-          ""
-      ).trim() || null,
-      nodeId: String(lockedTriggerMatch.matchedTriggerFlow.node?.id || "").trim() || null,
-      nodeLabel: String(
-        lockedTriggerMatch.matchedTriggerFlow.node?.data?.label ||
-          lockedTriggerMatch.matchedTriggerFlow.node?.data?.text ||
-          lockedTriggerMatch.matchedTriggerFlow.node?.data?.name ||
-          ""
-      ).trim() || null,
-      campaignId: campaignId || null,
-      matchedText: incomingText,
-      promptText: null,
-    };
+    const replacementTarget = buildTriggerConfirmationTarget(
+      lockedTriggerMatch.matchedTriggerFlow,
+      campaignId,
+      incomingText
+    );
     const replacementState = buildTriggerConfirmationState({
       target: replacementTarget as any,
       bookmark: confirmationState.bookmark,
@@ -189,23 +176,13 @@ export const handleTriggerConfirmation = async (
     }
 
     await clearConversationBookmark(conversation.id);
-    await query(
-      `UPDATE conversations
-       SET current_node = NULL,
-           flow_id = $2,
-           variables = '{}'::jsonb,
-           status = 'active',
-           retry_count = 0,
-           updated_at = NOW()
-       WHERE id = $1`,
-      [
-        conversation.id,
-        normalizeSafeFlowId(confirmedFlow.id),
-        confirmedTarget.source === "campaign"
-          ? String(confirmedFlow.flow_json?.system_flow_type || "handoff").trim() || "handoff"
-          : null,
-      ]
-    );
+    await resetConversationRuntimeState({
+      conversationId: conversation.id,
+      flowId: confirmedFlow.id,
+      variables: {},
+      status: "active",
+      retryCount: 0,
+    });
     await patchConversationContext({
       conversationId: conversation.id,
       removeKeys: ["trigger_confirmation_pending", "bookmarked_state"],
@@ -239,22 +216,15 @@ export const handleTriggerConfirmation = async (
   if (confirmationDecision === "no") {
     const bookmark = confirmationState.bookmark;
     await clearConversationBookmark(conversation.id);
-    await query(
-      `UPDATE conversations
-       SET current_node = $2,
-           flow_id = COALESCE($3, flow_id),
-           variables = $4::jsonb,
-           status = 'active',
-           retry_count = 0,
-           updated_at = NOW()
-       WHERE id = $1`,
-      [
-        conversation.id,
-        bookmark.nodeId || conversation.current_node || null,
-        normalizeSafeFlowId(bookmark.flowId),
-        JSON.stringify(bookmark.variables || {}),
-      ]
-    );
+    await updateConversationRuntimeState({
+      conversationId: conversation.id,
+      currentNodeId: bookmark.nodeId || conversation.current_node || null,
+      flowId: bookmark.flowId || undefined,
+      variables: bookmark.variables || {},
+      status: "active",
+      retryCount: 0,
+      touchUpdatedAt: true,
+    });
     await patchConversationContext({
       conversationId: conversation.id,
       removeKeys: ["trigger_confirmation_pending", "bookmarked_state"],
@@ -272,25 +242,11 @@ export const handleTriggerConfirmation = async (
   }
 
   if (lockedTriggerMatch?.matchedTriggerFlow) {
-    const replacementTarget = {
-      source: (lockedTriggerMatch.matchedTriggerFlow as any).source || "bot",
-      flowId: String(lockedTriggerMatch.matchedTriggerFlow.flow.id || "").trim() || null,
-      flowName: String(
-        lockedTriggerMatch.matchedTriggerFlow.flow.flow_json?.flow_name ||
-          lockedTriggerMatch.matchedTriggerFlow.flow.flow_json?.name ||
-          ""
-      ).trim() || null,
-      nodeId: String(lockedTriggerMatch.matchedTriggerFlow.node?.id || "").trim() || null,
-      nodeLabel: String(
-        lockedTriggerMatch.matchedTriggerFlow.node?.data?.label ||
-          lockedTriggerMatch.matchedTriggerFlow.node?.data?.text ||
-          lockedTriggerMatch.matchedTriggerFlow.node?.data?.name ||
-          ""
-      ).trim() || null,
-      campaignId: campaignId || null,
-      matchedText: incomingText,
-      promptText: null,
-    };
+    const replacementTarget = buildTriggerConfirmationTarget(
+      lockedTriggerMatch.matchedTriggerFlow,
+      campaignId,
+      incomingText
+    );
     const replacementState = buildTriggerConfirmationState({
       target: replacementTarget as any,
       bookmark: confirmationState.bookmark,

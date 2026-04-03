@@ -33,11 +33,19 @@ import { fitSectionsToTokenBudget } from "../utils/tokenBudget";
 import { resolveFallbackActions } from "./flowFallbackService";
 import { handleActiveConversationNode } from "./flowInputHandlerService";
 import { handleTriggerConfirmation } from "./flowConfirmationHandlerService";
+import {
+  activateConversationRuntimeState,
+  resetConversationRuntimeState,
+  setConversationAgentPendingState,
+  setConversationCurrentNode,
+  updateConversationRuntimeState,
+} from "./conversationRuntimeStateService";
 import { isLifecycleResetOrEscape, isResetCommand } from "./flowCommandService";
 import { patchConversationContext } from "./conversationContextPatchService";
 import {
   buildTriggerConfirmationState,
   buildTriggerConfirmationText,
+  buildTriggerConfirmationTarget,
   readTriggerConfirmation,
 } from "./flowConfirmationService";
 import { resolveUnifiedTriggerMatch } from "./flowTriggerRouterService";
@@ -76,7 +84,6 @@ const activeTimeouts = globalAny.activeTimeouts;
 
 interface IncomingMessageOptions {
   entryKey?: string;
-  requireExplicitTrigger?: boolean;
   workspaceId?: string | null;
   projectId?: string | null;
   platformAccountId?: string | null;
@@ -1511,7 +1518,7 @@ const selectTransferFlow = (
     );
   }
 
-  return flows[0] || null;
+  return flows.find((flow) => flow.is_default) || null;
 };
 
 const buildHandoffContextPatch = (input: {
@@ -1975,17 +1982,13 @@ export const executeFlowFromNode = async (
     };
 
     const closeConversationNaturally = async () => {
-      await query(
-        `UPDATE conversations
-         SET current_node = NULL,
-             flow_id = NULL,
-             variables = '{}'::jsonb,
-             status = 'active',
-             retry_count = 0,
-             updated_at = NOW()
-         WHERE id = $1`,
-        [conversationId]
-      );
+      await resetConversationRuntimeState({
+        conversationId,
+        flowId: null,
+        variables: {},
+        status: "active",
+        retryCount: 0,
+      });
 
       await cancelPendingJobsByConversation(conversationId, FLOW_WAIT_JOB_TYPES);
       clearUserTimers(activeBotId, platformUserId);
@@ -2001,10 +2004,7 @@ export const executeFlowFromNode = async (
       let nextHandles: Array<string | null | undefined> = ["response"];
 
       if (currentNodeType === "assign_agent") {
-        await query(
-          "UPDATE conversations SET status = 'agent_pending', current_node = NULL WHERE id = $1",
-          [conversationId]
-        );
+        await setConversationAgentPendingState(conversationId);
         await cancelPendingJobsByConversation(conversationId, FLOW_WAIT_JOB_TYPES);
         // Capture the specific text from your "Yes" branch or node data
         const messageText = data.text || data.label || "Connecting you to a human agent...";
@@ -2073,7 +2073,7 @@ export const executeFlowFromNode = async (
               const promptText = replaceVariables(nextData.text || nextData.label || "...", variables);
               payload.text = [text, `${promptText}\n\n_(Type 'reset' to restart)_`].filter(Boolean).join("\n\n");
               generatedActions.push(payload);
-              await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [nextNode.id, conversationId]);
+              await setConversationCurrentNode(conversationId, String(nextNode.id));
               await scheduleWaitingNodeInactivity({
                 conversationId,
                 botId: activeBotId,
@@ -2099,10 +2099,7 @@ export const executeFlowFromNode = async (
           } else {
             // Standard Input Node (Wait for user)
             generatedActions.push(payload);
-            await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [
-              currentNode.id,
-              conversationId,
-            ]);
+            await setConversationCurrentNode(conversationId, String(currentNode.id));
             await scheduleWaitingNodeInactivity({
               conversationId,
               botId: activeBotId,
@@ -2180,10 +2177,7 @@ export const executeFlowFromNode = async (
 
         if (targetNode) {
           currentNode = targetNode;
-          await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [
-            currentNode.id,
-            conversationId,
-          ]);
+          await setConversationCurrentNode(conversationId, String(currentNode.id));
           continue;
         }
 
@@ -2202,10 +2196,7 @@ export const executeFlowFromNode = async (
         const targetNode = findNextNode(currentNode.id, activeNodes, activeEdges, [branchHandle]);
         if (targetNode) {
           currentNode = targetNode;
-          await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [
-            currentNode.id,
-            conversationId,
-          ]);
+          await setConversationCurrentNode(conversationId, String(currentNode.id));
           continue;
         }
 
@@ -2287,10 +2278,7 @@ export const executeFlowFromNode = async (
           const fallbackNode = activeNodes.find((node: any) => String(node.id) === fallbackNodeId);
           if (fallbackNode) {
             currentNode = fallbackNode;
-            await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [
-              currentNode.id,
-              conversationId,
-            ]);
+            await setConversationCurrentNode(conversationId, String(currentNode.id));
             continue;
           }
         }
@@ -2328,25 +2316,19 @@ export const executeFlowFromNode = async (
               ...parseVariables(latestConversationRes.rows[0]?.variables),
               ...bookmarkedState.variables,
             };
-            await query(
-              `UPDATE conversations
-               SET current_node = $1,
-                   flow_id = COALESCE($2, flow_id),
-                   variables = $3::jsonb,
-                   status = 'active',
-                   retry_count = 0,
-                   context_json = COALESCE(context_json, '{}'::jsonb)
-                     - 'restart_required'
-                     - 'termination_reason',
-                   updated_at = NOW()
-               WHERE id = $4`,
-              [
-                currentNode.id,
-                normalizeSafeFlowId(bookmarkedState.flowId),
-                JSON.stringify(variables || {}),
-                conversationId,
-              ]
-            );
+            await updateConversationRuntimeState({
+              conversationId,
+              currentNodeId: String(currentNode.id),
+              flowId: bookmarkedState.flowId || undefined,
+              variables,
+              status: "active",
+              retryCount: 0,
+              touchUpdatedAt: true,
+            });
+            await patchConversationContext({
+              conversationId,
+              removeKeys: ["restart_required", "termination_reason"],
+            });
 
             generatedActions.push({
               type: "system",
@@ -2360,40 +2342,28 @@ export const executeFlowFromNode = async (
           const entryNode = findImplicitEntryNode({ nodes: activeNodes, edges: activeEdges });
           if (entryNode) {
             currentNode = entryNode;
-            await query(
-              `UPDATE conversations
-               SET current_node = $1,
-                   flow_id = COALESCE($2, flow_id),
-                   status = 'active',
-                   retry_count = 0,
-                   updated_at = NOW()
-               WHERE id = $3`,
-              [
-                currentNode.id,
-                normalizeSafeFlowId(conversationRes.rows[0]?.flow_id),
-                conversationId,
-              ]
-            );
+            await updateConversationRuntimeState({
+              conversationId,
+              currentNodeId: String(currentNode.id),
+              flowId: conversationRes.rows[0]?.flow_id || undefined,
+              status: "active",
+              retryCount: 0,
+              touchUpdatedAt: true,
+            });
             continue;
           }
         } else if (referenceNodeId) {
           const referenceNode = activeNodes.find((node: any) => String(node.id) === referenceNodeId);
           if (referenceNode) {
             currentNode = referenceNode;
-            await query(
-              `UPDATE conversations
-               SET current_node = $1,
-                   flow_id = COALESCE($2, flow_id),
-                   status = 'active',
-                   retry_count = 0,
-                   updated_at = NOW()
-               WHERE id = $3`,
-              [
-                currentNode.id,
-                normalizeSafeFlowId(conversationRes.rows[0]?.flow_id),
-                conversationId,
-              ]
-            );
+            await updateConversationRuntimeState({
+              conversationId,
+              currentNodeId: String(currentNode.id),
+              flowId: conversationRes.rows[0]?.flow_id || undefined,
+              status: "active",
+              retryCount: 0,
+              touchUpdatedAt: true,
+            });
             continue;
           }
         }
@@ -2422,16 +2392,13 @@ export const executeFlowFromNode = async (
           text: finalMessage,
         });
 
-        await query(
-          `UPDATE conversations
-           SET current_node = NULL,
-               flow_id = NULL,
-               variables = '{}'::jsonb,
-               status = 'active',
-               updated_at = NOW()
-           WHERE id = $1`,
-          [conversationId]
-        );
+        await resetConversationRuntimeState({
+          conversationId,
+          flowId: null,
+          variables: {},
+          status: "active",
+          retryCount: 0,
+        });
 
         await cancelPendingJobsByConversation(conversationId, FLOW_WAIT_JOB_TYPES);
         clearUserTimers(activeBotId, platformUserId);
@@ -2604,10 +2571,11 @@ export const executeFlowFromNode = async (
           currentNode = activeNodes.find((node: any) => String(node.id) === targetNodeId);
         }
 
-        await query(
-          "UPDATE conversations SET current_node = $1, flow_id = COALESCE($2, flow_id) WHERE id = $3",
-          [currentNode?.id || null, normalizeSafeFlowId(conversationRes.rows[0]?.flow_id), conversationId]
-        );
+        await updateConversationRuntimeState({
+          conversationId,
+          currentNodeId: currentNode?.id || null,
+          flowId: conversationRes.rows[0]?.flow_id || undefined,
+        });
         continue;
       } else if (currentNodeType === "condition") {
         const parsedRules = Array.isArray(data.rules)
@@ -2652,10 +2620,7 @@ export const executeFlowFromNode = async (
 
         currentNode = activeNodes.find((node: any) => String(node.id) === nextNodeId);
 
-        await query(
-          "UPDATE conversations SET current_node = $1 WHERE id = $2",
-          [currentNode?.id || null, conversationId]
-        );
+        await setConversationCurrentNode(conversationId, currentNode?.id ? String(currentNode.id) : null);
 
         continue;
       }
@@ -2664,10 +2629,7 @@ export const executeFlowFromNode = async (
         generatedActions.push(payload);
       }
 
-      await query("UPDATE conversations SET current_node = $1 WHERE id = $2", [
-        currentNode.id,
-        conversationId,
-      ]);
+      await setConversationCurrentNode(conversationId, String(currentNode.id));
 
       if (isInputNode(currentNodeType) || currentNodeType === "menu") {
         await scheduleWaitingNodeInactivity({
@@ -2873,7 +2835,6 @@ export const processIncomingMessage = async (
       latestConversation?.current_node &&
       String(latestConversation.status || "").toLowerCase() === "active"
     );
-    const isAtInputNode = isConversationLocked;
     const isResetCommandText = String(text || "").trim().toLowerCase() === "reset";
 
     let campaignMatchedTriggerFlow: any = null;
@@ -2900,9 +2861,9 @@ export const processIncomingMessage = async (
       "current_node:", latestConversation?.current_node,
       "message:", text
     );
-    if (!isAtInputNode || isResetCommandText) {
+    if (!isConversationLocked || isResetCommandText) {
       const triggerMatch = await resolveUnifiedTriggerMatch({
-        campaignId: isAtInputNode ? null : campaignId,
+        campaignId: isConversationLocked ? null : campaignId,
         incomingText,
         text,
         botId,
@@ -3070,22 +3031,21 @@ export const processIncomingMessage = async (
 
     if (campaignMatchedTriggerFlow && conversation && conversation.status !== "agent_pending") {
       if (conversation.status === "closed" || conversation.status === "resolved") {
-        const reopenedConversationRes = await query(
-          `UPDATE conversations
-           SET current_node = NULL,
-               retry_count = 0,
-               status = 'active',
-               variables = '{}'::jsonb,
-               context_json = COALESCE(context_json, '{}'::jsonb)
-                 - 'restart_required'
-                 - 'termination_reason',
-               updated_at = NOW()
-           WHERE id = $1
-           RETURNING *`,
-          [conversation.id]
-        );
-
-        conversation = reopenedConversationRes.rows[0] || conversation;
+        await updateConversationRuntimeState({
+          conversationId: conversation.id,
+          currentNodeId: null,
+          variables: {},
+          status: "active",
+          retryCount: 0,
+          touchUpdatedAt: true,
+        });
+        conversation = {
+          ...conversation,
+          current_node: null,
+          retry_count: 0,
+          status: "active",
+          variables: {},
+        };
         await closeSiblingRunnableConversations(
           conversation.id,
           botId,
@@ -3097,21 +3057,13 @@ export const processIncomingMessage = async (
 
       await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
       clearUserTimers(botId, platformUserId);
-      await query(
-        `UPDATE conversations
-         SET current_node = NULL,
-             flow_id = $2,
-             variables = '{}'::jsonb,
-             status = 'active',
-             retry_count = 0,
-             updated_at = NOW()
-         WHERE id = $1`,
-        [
-          conversation.id,
-          null,
-          campaignMatchedTriggerFlow.flow.flow_json?.system_flow_type || "handoff",
-        ]
-      );
+      await resetConversationRuntimeState({
+        conversationId: conversation.id,
+        flowId: null,
+        variables: {},
+        status: "active",
+        retryCount: 0,
+      });
       await patchConversationContext({
         conversationId: conversation.id,
         set: {
@@ -3153,22 +3105,20 @@ export const processIncomingMessage = async (
       const lastUpdate = new Date(conversation.updated_at).getTime();
       const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
       if (Number.isFinite(lastUpdate) && lastUpdate < twentyFourHoursAgo) {
-        await query("UPDATE conversations SET current_node = NULL WHERE id = $1", [
-          conversation.id,
-        ]);
+        await setConversationCurrentNode(conversation.id, null);
         conversation.current_node = null;
       }
     }
 
     // --- EMERGENCY ESCAPE PRIORITY ---
     if (isLifecycleResetOrEscape(text)) {
-      await query(
-        `UPDATE conversations 
-         SET current_node = NULL, flow_id = NULL, variables = '{}'::jsonb, 
-             status = 'active', updated_at = NOW() 
-         WHERE id = $1`,
-        [conversation.id]
-      );
+      await resetConversationRuntimeState({
+        conversationId: conversation.id,
+        flowId: null,
+        variables: {},
+        status: "active",
+        retryCount: 0,
+      });
       return {
         conversationId: conversation.id,
         actions: [{
@@ -3209,7 +3159,6 @@ export const processIncomingMessage = async (
     const outgoingActions: GenericMessage[] = [];
     const conversationContext = parseJsonObject(conversation.context_json);
     const resolvedCsatRating = resolveCsatRating(buttonId, text);
-    const requireExplicitTrigger = options.requireExplicitTrigger === true;
     const confirmationState = readTriggerConfirmation(conversationContext);
     const currentFlowForConfirmation =
       latestConversation?.current_node && latestConversation?.campaign_id && latestConversationContext?.active_system_flow
@@ -3303,15 +3252,13 @@ export const processIncomingMessage = async (
 
       if (!wantsReopen) {
         if (conversation?.id) {
-          await query(
-            `UPDATE conversations
-             SET current_node = NULL,
-                 retry_count = 0,
-                 status = 'active',
-                 updated_at = NOW()
-             WHERE id = $1`,
-            [conversation.id]
-          );
+          await updateConversationRuntimeState({
+            conversationId: conversation.id,
+            currentNodeId: null,
+            status: "active",
+            retryCount: 0,
+            touchUpdatedAt: true,
+          });
         }
         if (text) {
           outgoingActions.push({
@@ -3325,19 +3272,21 @@ export const processIncomingMessage = async (
         };
       }
 
-      const reopenedConversationRes = await query(
-        `UPDATE conversations
-         SET current_node = NULL,
-             retry_count = 0,
-             status = 'active',
-             variables = '{}'::jsonb,
-              updated_at = NOW()
-         WHERE id = $1
-         RETURNING *`,
-        [conversation.id]
-      );
-
-      conversation = reopenedConversationRes.rows[0] || conversation;
+      await updateConversationRuntimeState({
+        conversationId: conversation.id,
+        currentNodeId: null,
+        variables: {},
+        status: "active",
+        retryCount: 0,
+        touchUpdatedAt: true,
+      });
+      conversation = {
+        ...conversation,
+        current_node: null,
+        retry_count: 0,
+        status: "active",
+        variables: {},
+      };
       await patchConversationContext({
         conversationId: conversation.id,
         removeKeys: ["restart_required", "termination_reason"],
@@ -3352,25 +3301,11 @@ export const processIncomingMessage = async (
     }
 
     if (isConversationLocked && !isResetCommandText && !confirmationState && lockedTriggerMatch?.matchedTriggerFlow) {
-      const pendingTarget = {
-        source: ((lockedTriggerMatch.matchedTriggerFlow as any).source || "bot") as any,
-        flowId: String(lockedTriggerMatch.matchedTriggerFlow.flow.id || "").trim() || null,
-        flowName: String(
-          lockedTriggerMatch.matchedTriggerFlow.flow.flow_json?.flow_name ||
-          lockedTriggerMatch.matchedTriggerFlow.flow.flow_json?.name ||
-          ""
-        ).trim() || null,
-        nodeId: String(lockedTriggerMatch.matchedTriggerFlow.node?.id || "").trim() || null,
-        nodeLabel: String(
-          lockedTriggerMatch.matchedTriggerFlow.node?.data?.label ||
-          lockedTriggerMatch.matchedTriggerFlow.node?.data?.text ||
-          lockedTriggerMatch.matchedTriggerFlow.node?.data?.name ||
-          ""
-        ).trim() || null,
-        campaignId: campaignId || null,
-        matchedText: incomingText,
-        promptText: null,
-      };
+      const pendingTarget = buildTriggerConfirmationTarget(
+        lockedTriggerMatch.matchedTriggerFlow,
+        campaignId,
+        incomingText
+      );
 
       const pendingState = buildTriggerConfirmationState({
         target: pendingTarget,
@@ -3415,20 +3350,13 @@ export const processIncomingMessage = async (
 
     if (systemOverrideMatch) {
       await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
-      conversation = (
-        await query(
-          `UPDATE conversations
-           SET current_node = NULL,
-               flow_id = $2,
-               variables = '{}'::jsonb,
-               status = 'active',
-               retry_count = 0,
-           updated_at = NOW()
-           WHERE id = $1
-           RETURNING *`,
-          [conversation.id, normalizeSafeFlowId(systemOverrideMatch.flow.id)]
-        )
-      ).rows[0] || conversation;
+      await activateConversationRuntimeState({
+        conversationId: conversation.id,
+        flowId: systemOverrideMatch.flow.id,
+        variables: {},
+        status: "active",
+        retryCount: 0,
+      });
       await closeSiblingRunnableConversations(
         conversation.id,
         botId,
@@ -3470,12 +3398,12 @@ export const processIncomingMessage = async (
     if (isResetCommand(text)) {
       const hadCurrentNode = !!conversation.current_node;
       await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
-      await query(
-        `UPDATE conversations
-         SET current_node = NULL, retry_count = 0, status = 'active'
-         WHERE id = $1`,
-        [conversation.id]
-      );
+      await updateConversationRuntimeState({
+        conversationId: conversation.id,
+        currentNodeId: null,
+        status: "active",
+        retryCount: 0,
+      });
       await closeSiblingRunnableConversations(
         conversation.id,
         botId,
@@ -3547,10 +3475,8 @@ export const processIncomingMessage = async (
       platformUserId,
       channel,
       io,
-      normalizeSafeFlowId,
       persistConversationBookmark,
       clearConversationBookmark,
-      query,
       executeFlowFromNode,
       loadCampaignSystemFlowRuntime,
       findTriggerNodeTargetInFlow,
@@ -3566,18 +3492,19 @@ export const processIncomingMessage = async (
     }
 
     if (
-      !isAtInputNode &&
-      text &&
-      conversation.status !== "agent_pending" &&
-      (await shouldTriggerHumanTakeover(conversation, incomingText))
+      !isConversationLocked &&
+        text &&
+        conversation.status !== "agent_pending" &&
+        (await shouldTriggerHumanTakeover(conversation, incomingText))
     ) {
       await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
-      await query(
-        `UPDATE conversations
-         SET current_node = NULL, retry_count = 0, status = 'agent_pending', updated_at = NOW()
-         WHERE id = $1`,
-        [conversation.id]
-      );
+      await updateConversationRuntimeState({
+        conversationId: conversation.id,
+        currentNodeId: null,
+        status: "agent_pending",
+        retryCount: 0,
+        touchUpdatedAt: true,
+      });
 
       if (io) {
         io.emit("dashboard_update", {
@@ -3602,24 +3529,6 @@ export const processIncomingMessage = async (
         conversationId: conversation.id,
         actions: outgoingActions,
       };
-    }
-
-    await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
-    clearUserTimers(botId, platformUserId);
-
-    if (!matchedTriggerFlow && !isAtInputNode && conversation.status !== "agent_pending") {
-      return await resolveFallbackActions({
-        conversationId: conversation.id,
-        conversationFlowId: conversation.flow_id || null,
-        availableFlows,
-        globalFallbackNodeId,
-        botFallbackMessage: botSettings.fallbackMessage,
-        executeFlowFromNode,
-        botId,
-        platformUserId,
-        channel,
-        io,
-      });
     }
 
     // Prioritize Virtual System Flow from context
@@ -3657,17 +3566,13 @@ export const processIncomingMessage = async (
         );
       }
 
-      await query(
-        `UPDATE conversations
-         SET current_node = NULL,
-             flow_id = $2,
-             variables = '{}'::jsonb,
-             status = 'active',
-             retry_count = 0,
-             updated_at = NOW()
-         WHERE id = $1`,
-        [conversation.id, normalizeSafeFlowId(activeFlowId)]
-      );
+      await activateConversationRuntimeState({
+        conversationId: conversation.id,
+        flowId: activeFlowId,
+        variables: {},
+        status: "active",
+        retryCount: 0,
+      });
       await closeSiblingRunnableConversations(
         conversation.id,
         botId,
@@ -3738,32 +3643,14 @@ export const processIncomingMessage = async (
 
     if (shouldSendFallbackMessage) {
       if (conversation?.id) {
-        await query(
-          `UPDATE conversations
-           SET current_node = NULL,
-               flow_id = NULL,
-               variables = '{}'::jsonb,
-               retry_count = 0,
-               status = 'active',
-               updated_at = NOW()
-           WHERE id = $1`,
-          [conversation.id]
-        );
+        await resetConversationRuntimeState({
+          conversationId: conversation.id,
+          flowId: null,
+          variables: {},
+          status: "active",
+          retryCount: 0,
+        });
       }
-
-      return await resolveFallbackActions({
-        conversationId: conversation.id,
-        conversationFlowId: conversation.flow_id || null,
-        availableFlows,
-        globalFallbackNodeId,
-        botFallbackMessage: botSettings.fallbackMessage,
-        executeFlowFromNode,
-        botId,
-        platformUserId,
-        channel,
-        io,
-      });
-
     }
 
     if (!currentNode) {
@@ -3799,16 +3686,13 @@ export const processIncomingMessage = async (
       currentNode = selectedNode;
 
       if (currentNode) {
-        await query(
-          `UPDATE conversations
-           SET current_node = NULL,
-               flow_id = COALESCE($2, flow_id),
-               variables = '{}'::jsonb,
-               status = 'active',
-               retry_count = 0
-           WHERE id = $1`,
-          [conversation.id, normalizeSafeFlowId(activeFlowId)]
-        );
+        await activateConversationRuntimeState({
+          conversationId: conversation.id,
+          flowId: activeFlowId,
+          variables: {},
+          status: "active",
+          retryCount: 0,
+        });
         await closeSiblingRunnableConversations(
           conversation.id,
           botId,
@@ -4031,14 +3915,13 @@ export const triggerFlowExternally = async (input: {
     botId,
     conversation.project_id || bot.project_id || null
   );
-  const targetFlow =
-    (requestedFlowId
-      ? availableFlows.find((flow: FlowRuntimeRecord) => String(flow.id) === requestedFlowId)
-      : null) ||
-    availableFlows.find((flow: FlowRuntimeRecord) => String(flow.id) === String(conversation.flow_id || "")) ||
-    availableFlows.find((flow: FlowRuntimeRecord) => flow.is_default) ||
-    availableFlows[0] ||
-    null;
+    const targetFlow =
+      (requestedFlowId
+        ? availableFlows.find((flow: FlowRuntimeRecord) => String(flow.id) === requestedFlowId)
+        : null) ||
+      availableFlows.find((flow: FlowRuntimeRecord) => String(flow.id) === String(conversation.flow_id || "")) ||
+      availableFlows.find((flow: FlowRuntimeRecord) => flow.is_default) ||
+      null;
 
   if (!targetFlow) {
     throw { status: 404, message: "No runnable flow was found for the target bot." };
