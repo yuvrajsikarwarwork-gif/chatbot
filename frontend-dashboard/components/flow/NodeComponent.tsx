@@ -1,5 +1,5 @@
 import { Handle, Position, useReactFlow } from "reactflow";
-import { X, Hash, Headset, Bot, AlertTriangle, MessageSquare, Clock, Split, List, Play, LogOut, ArrowRight } from "lucide-react";
+import { X, Hash, Headset, Bot, BrainCircuit, AlertTriangle, MessageSquare, Clock, Split, List, Play, LogOut, ArrowRight } from "lucide-react";
 
 import { useFlowValidationContext } from "./FlowValidationContext";
 
@@ -42,10 +42,14 @@ export default function NodeComponent({
   const isAgentNode = type === "assign_agent";
   const isInputNode = normalizedType === "input";
   const isAiNode = type === "ai_generate";
+  const isAiIntentNode = normalizedType === "ai_intent";
+  const isAiExtractNode = normalizedType === "ai_extract";
   const isBusinessHoursNode = type === "business_hours";
   const isSplitTrafficNode = type === "split_traffic";
   const isApiNode = type === "api";
   const isWaitingNode = isInputNode || isMenuNode;
+  const aiIntents = Array.isArray(data?.intents) ? data.intents.filter(Boolean) : [];
+  const fallbackHandle = String(data?.fallback || "fallback").trim() || "fallback";
 
   const contextValidationMessage = flowValidation.invalidNodeReasons[String(id || "")] || "";
   const resolvedValidationMessage = validationMessage || contextValidationMessage;
@@ -97,10 +101,22 @@ export default function NodeComponent({
           {isBusinessHoursNode ? <Clock size={10} className="text-primary" /> : null}
           {isSplitTrafficNode ? <Split size={10} className="text-primary" /> : null}
           {isAgentNode ? <Headset size={10} className="text-primary" /> : null}
+          {isAiIntentNode ? <BrainCircuit size={10} className="text-primary" /> : null}
+          {isAiExtractNode ? <BrainCircuit size={10} className="text-primary" /> : null}
           {isAiNode ? <Bot size={10} className="text-primary" /> : null}
           <span className="text-[10px] font-black uppercase tracking-widest truncate text-text-muted">
             {data.label || normalizedType.replace("_", " ")}
           </span>
+          {isAiIntentNode ? (
+            <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-violet-700">
+              {aiIntents.length} intents
+            </span>
+          ) : null}
+          {isAiExtractNode ? (
+            <span className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-cyan-700">
+              {(Array.isArray(data?.requiredFields) ? data.requiredFields.length : 0) + (Array.isArray(data?.optionalFields) ? data.optionalFields.length : 0)} fields
+            </span>
+          ) : null}
           {resolvedInvalid ? (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.16em] text-rose-700"
@@ -191,6 +207,81 @@ export default function NodeComponent({
               {data.url || "https://api.example.com"}
             </p>
             <p className="text-[9px] text-text-muted">Save to: {data.saveTo || "api_response"}</p>
+          </div>
+        ) : isAiIntentNode ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1 text-[9px] text-violet-700 font-black uppercase tracking-tight">
+              <BrainCircuit size={10} /> Intent Router
+            </div>
+            <p className="truncate max-w-[180px] text-text-main">{data.prompt || data.text || "Classify user intent..."}</p>
+            <div className="flex flex-wrap items-center gap-1 text-[9px] font-bold">
+              <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700 border border-violet-200">
+                Save to: {data.saveTo || "detected_intent"}
+              </span>
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 border border-amber-200">
+                Fallback: {fallbackHandle}
+              </span>
+            </div>
+            <div className="space-y-2 pt-1">
+              {aiIntents.map((intent: any, index: number) => {
+                const intentHandle = String(intent?.handle || `intent_${index + 1}`).trim() || `intent_${index + 1}`;
+                const intentLabel = String(intent?.label || intentHandle).trim() || intentHandle;
+                return (
+                  <div
+                    key={intentHandle}
+                    className="relative flex items-center justify-end gap-2 rounded-lg border border-emerald-100 bg-emerald-50/70 px-2.5 py-1.5 pr-5"
+                  >
+                    <div className="min-w-0 text-right">
+                      <p className="truncate text-[10px] font-black uppercase tracking-widest text-emerald-800">
+                        {intentLabel}
+                      </p>
+                      <p className="truncate text-[9px] text-emerald-700/80 font-mono">{intentHandle}</p>
+                    </div>
+                    <Handle
+                      type="source"
+                      position={Position.Right}
+                      id={intentHandle}
+                      className={`${handleClassName} !bg-emerald-500 !border-white`}
+                      style={{ ...baseHandleStyle, right: handleOffset, background: "#10B981" }}
+                    />
+                  </div>
+                );
+              })}
+
+              <div className="relative flex items-center justify-end gap-2 rounded-lg border border-amber-100 bg-amber-50/80 px-2.5 py-1.5 pr-5">
+                <div className="min-w-0 text-right">
+                  <p className="truncate text-[10px] font-black uppercase tracking-widest text-amber-800">
+                    Fallback
+                  </p>
+                  <p className="truncate text-[9px] text-amber-700/80 font-mono">{fallbackHandle}</p>
+                </div>
+                <Handle
+                  type="source"
+                  position={Position.Right}
+                  id={fallbackHandle}
+                  className={`${handleClassName} !bg-amber-500 !border-white`}
+                  style={{ ...baseHandleStyle, right: handleOffset, background: "#F59E0B" }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : isAiExtractNode ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1 text-[9px] text-cyan-700 font-black uppercase tracking-tight">
+              <BrainCircuit size={10} /> Data Extractor
+            </div>
+            <p className="truncate max-w-[180px] text-text-main">{data.prompt || data.text || "Extract variables..."}</p>
+            <div className="flex flex-wrap items-center gap-1 text-[9px] font-bold">
+              <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-cyan-700 border border-cyan-200">
+                Req: {Array.isArray(data.requiredFields) ? data.requiredFields.length : 0}
+              </span>
+              <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700 border border-sky-200">
+                Opt: {Array.isArray(data.optionalFields) ? data.optionalFields.length : 0}
+              </span>
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 border border-amber-200">
+                Incomplete: {String(data.onIncomplete || "incomplete")}
+              </span>
+            </div>
           </div>
         ) : isAiNode ? (
           <div className="space-y-1">
@@ -354,10 +445,37 @@ export default function NodeComponent({
         </div>
       )}
 
+      {isAiExtractNode && (
+        <div className="border-t border-border-main bg-surface flex flex-col">
+          <div className="relative p-2 text-[10px] font-bold text-center border-b border-border-main text-cyan-700">
+            <span>Success</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="next"
+              className={sideHandleClassName}
+              style={{ ...sideHandleStyle, background: "#06B6D4" }}
+            />
+          </div>
+          <div className="relative p-2 text-[10px] font-bold text-center text-amber-700">
+            <span>{String(data.onIncomplete || "incomplete").trim() || "incomplete"}</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={String(data.onIncomplete || "incomplete").trim() || "incomplete"}
+              className={sideHandleClassName}
+              style={{ ...sideHandleStyle, background: "#F59E0B" }}
+            />
+          </div>
+        </div>
+      )}
+
       {!isEndNode &&
       !isGotoNode &&
       !isInputNode &&
       !isMenuNode &&
+      !isAiIntentNode &&
+      !isAiExtractNode &&
       !isAiNode &&
       !isBusinessHoursNode &&
       !isSplitTrafficNode &&

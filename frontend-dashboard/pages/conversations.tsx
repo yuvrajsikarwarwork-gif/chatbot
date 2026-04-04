@@ -1,10 +1,14 @@
 ﻿import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import { Download, MessageSquareMore, SlidersHorizontal } from "lucide-react";
+import { useRouter } from "next/router";
+import { Download, SlidersHorizontal, Shield, Lock } from "lucide-react";
+import { Variable } from "lucide-react";
 
 import PageAccessNotice from "../components/access/PageAccessNotice";
+import ControlTowerShell from "../components/admin/ControlTowerShell";
 import ChatWindow from "../components/chat/ChatWindow";
 import ConversationList from "../components/chat/ConversationList";
+import VariablesSidebar from "../components/simulator/VariablesSidebar";
 import { API_URL } from "../config/apiConfig";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import GlobalBackStrip from "../components/navigation/GlobalBackStrip";
@@ -228,12 +232,87 @@ function safeFilenamePart(value: unknown) {
   return slug || "conversation";
 }
 
+function getCleanVariablesForExport(value: unknown) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, any>) : {};
+  const cleanVariables: Record<string, any> = {};
+
+  for (const [key, entryValue] of Object.entries(source)) {
+    if (!key || key.startsWith("_")) {
+      continue;
+    }
+    cleanVariables[key] = entryValue;
+  }
+
+  return cleanVariables;
+}
+
+function getVariableProvenanceForExport(variables: Record<string, any>) {
+  const provenance = variables && typeof variables === "object" ? variables._variable_provenance : null;
+  if (!provenance || typeof provenance !== "object" || Array.isArray(provenance)) {
+    return {};
+  }
+  return provenance as Record<
+    string,
+    {
+      value?: any;
+      updatedAt?: string;
+      nodeId?: string | null;
+      nodeType?: string | null;
+      method?: string | null;
+      sourceLabel?: string | null;
+      confidence?: number | null;
+      history?: Array<any>;
+    }
+  >;
+}
+
+function formatConversationAuditTrail(
+  variables: Record<string, any>,
+  provenance: Record<string, any>
+) {
+  return Object.entries(provenance)
+    .filter(([key]) => Boolean(key) && !key.startsWith("_"))
+    .map(([key, meta]) => ({
+      variable: key,
+      value: variables[key] ?? null,
+      source: {
+        nodeId: meta?.nodeId || null,
+        nodeType: meta?.nodeType || null,
+        method: meta?.method || null,
+        confidence:
+          meta?.confidence === null || meta?.confidence === undefined
+            ? null
+            : Number(meta.confidence),
+        timestamp: meta?.updatedAt || null,
+        sourceLabel: meta?.sourceLabel || null,
+      },
+      history: Array.isArray(meta?.history)
+        ? meta.history.map((entry: any) => ({
+            value: entry?.value ?? null,
+            source: {
+              nodeId: entry?.nodeId || null,
+              nodeType: entry?.nodeType || null,
+              method: entry?.method || null,
+              confidence:
+                entry?.confidence === null || entry?.confidence === undefined
+                  ? null
+                  : Number(entry.confidence),
+              timestamp: entry?.updatedAt || null,
+              sourceLabel: entry?.sourceLabel || null,
+            },
+          }))
+        : [],
+    }));
+}
+
 export default function ConversationsPage() {
+  const router = useRouter();
   const selectedBotId = useBotStore((state) => state.selectedBotId);
   const syncSelectedBot = useBotStore((state) => state.syncSelectedBot);
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const activeProject = useAuthStore((state) => state.activeProject);
   const user = useAuthStore((state) => state.user);
+  const organizationImpersonation = useAuthStore((state) => state.organizationImpersonation);
   const hasWorkspaceRole = useAuthStore((state) => state.hasWorkspaceRole);
   const hasWorkspacePermission = useAuthStore((state) => state.hasWorkspacePermission);
   const { canViewPage } = useVisibility();
@@ -290,6 +369,7 @@ export default function ConversationsPage() {
   const [selectedListId, setSelectedListId] = useState("");
   const [metaError, setMetaError] = useState("");
   const [isSavingMeta, setIsSavingMeta] = useState(false);
+  const [showVariablesSidebar, setShowVariablesSidebar] = useState(true);
 
   const activeConvoRef = useRef<any>(null);
 
@@ -303,6 +383,32 @@ export default function ConversationsPage() {
   const canManageAssignments = isWorkspaceManager ||
     (isWorkspaceAgent && (conversationSettings?.allow_agent_takeover ?? true));
   const canViewConversationsPage = canViewPage("conversations");
+  const liveVariables = useMemo(() => {
+    const context = activeConversation?.context_json && typeof activeConversation.context_json === "object"
+      ? activeConversation.context_json
+      : {};
+    const variables = activeConversation?.variables && typeof activeConversation.variables === "object"
+      ? activeConversation.variables
+      : {};
+    return { ...context, ...variables };
+  }, [activeConversation?.context_json, activeConversation?.variables]);
+
+  const handleJumpToNode = async (nodeId: string) => {
+    const flowId = String(activeConversation?.flow_id || "").trim();
+    const botId = String(activeConversation?.bot_id || validatedBotId || selectedBotId || "").trim();
+    if (!flowId || !nodeId) {
+      return;
+    }
+
+    await router.push({
+      pathname: "/flows",
+      query: {
+        ...(botId ? { botId } : {}),
+        flowId,
+        nodeId,
+      },
+    });
+  };
 
   const assignableMembers = useMemo(
     () =>
@@ -951,6 +1057,9 @@ export default function ConversationsPage() {
       return;
     }
 
+    const exportVariables = getCleanVariablesForExport(activeConversation.variables);
+    const provenance = getVariableProvenanceForExport(activeConversation.variables || {});
+
     const contact = {
       lead: activeConversation.display_name || activeConversation.contact_name || "",
       phone: activeConversation.contact_phone_resolved || activeConversation.external_id || "",
@@ -1009,8 +1118,13 @@ export default function ConversationsPage() {
         inbox_status: activeConversation.inbox_status || activeConversation.status || null,
         platform_account_name: activeConversation.platform_account_name || null,
       },
+      data: exportVariables,
+      audit_trail: formatConversationAuditTrail(exportVariables, provenance),
       messages,
       timeline,
+      legacy: {
+        contact,
+      },
     };
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -1045,21 +1159,17 @@ export default function ConversationsPage() {
     dateToFilter,
   ].filter(Boolean).length;
 
-  const shellClassName =
-    "flex h-screen flex-col overflow-hidden bg-canvas text-text-main";
-  const topBarClassName =
-    "border-b border-border-main bg-surface px-6 py-2 md:px-8";
   const pageShellClassName =
-    "flex h-full min-h-0 overflow-x-auto overflow-y-hidden rounded-[1.75rem] border border-border-main bg-surface shadow-sm";
-  const sidebarClassName = "flex w-[280px] min-w-[260px] max-w-[320px] shrink-0 flex-col bg-surface";
+    "overflow-hidden border border-border-main bg-bg-main shadow-sm";
+  const sidebarClassName = "flex min-w-0 flex-col border-r border-border-main bg-bg-card";
   const controlClassName =
-    "rounded-xl border border-border-main bg-canvas px-3 py-2 text-sm text-text-main outline-none shadow-sm placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary";
+    "rounded-xl border border-border-main bg-bg-muted px-3 py-2 text-sm text-text-main outline-none shadow-sm placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary";
   const controlButtonClassName =
-    "inline-flex items-center gap-2 rounded-xl border border-border-main bg-canvas px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary";
+    "inline-flex items-center gap-2 rounded-xl border border-border-main bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary";
   const secondaryButtonClassName =
-    "rounded-xl border border-border-main bg-canvas px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary disabled:cursor-not-allowed disabled:opacity-50";
+    "rounded-xl border border-border-main bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-main transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary disabled:cursor-not-allowed disabled:opacity-50";
   const detailCardClassName =
-    "rounded-xl border border-border-main bg-canvas px-4 py-3 shadow-sm";
+    "rounded-xl border border-border-main bg-bg-card px-4 py-3 shadow-sm";
   const detailHeadingClassName =
     "text-[10px] font-semibold uppercase tracking-[0.16em] text-text-muted";
   const detailTextClassName = "break-words text-sm font-medium text-text-main";
@@ -1088,47 +1198,50 @@ export default function ConversationsPage() {
         />
       </DashboardLayout>
     ) : (
-    <div className={shellClassName}>
-      <div className={topBarClassName}>
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border-main bg-surface text-primary shadow-sm">
-                <MessageSquareMore className="h-4.5 w-4.5" />
-              </div>
-              <div>
-                <h1 className="text-[1.45rem] font-black tracking-tight text-text-main">Inbox</h1>
-                <p className="mt-0.5 max-w-2xl text-sm leading-5 text-text-muted">
-                  Manage live conversations, assignments, agent takeover, and automation state from one inbox.
-                </p>
-              </div>
-            </div>
-          </div>
+      <ControlTowerShell
+        orgCount={conversations.length}
+        title="Inbox"
+        breadcrumb="Support / Conversations"
+        utilitySlot={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-[170px] items-center justify-between gap-3 rounded-2xl border border-border-main bg-surface px-3 py-2 shadow-sm">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
-                Open Threads
-              </div>
-              <div className="text-base font-semibold text-text-main">
-                {conversations.length}
-              </div>
+            <div className="flex items-center gap-2 rounded-xl border border-border-main bg-bg-card px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
+              <span>Open Threads</span>
+              <span className="font-mono text-text-main">{conversations.length}</span>
             </div>
-            <div className="flex min-w-[260px] items-center justify-between gap-3 rounded-2xl border border-border-main bg-surface px-3 py-2 shadow-sm">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
-                Active Context
-              </div>
-              <div className="truncate text-sm font-medium text-text-main">
+            <div className="flex items-center gap-2 rounded-xl border border-border-main bg-bg-card px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">
+              <span>Active Context</span>
+              <span className="truncate font-mono text-text-main">
                 {activeWorkspace?.workspace_name || validatedBotId || selectedBotId || "Global view"}
-              </div>
+              </span>
             </div>
           </div>
-        </div>
-      </div>
-
+        }
+        safetyBanner={
+          organizationImpersonation?.active ? (
+            <div
+              className={`flex h-[var(--banner-h)] items-center justify-between gap-3 border-b border-warning px-4 text-[10px] font-black uppercase tracking-[0.24em] text-white ${
+                organizationImpersonation.readOnly ? "bg-warning" : "bg-danger"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Shield size={14} />
+                <span>
+                  Security Context: {organizationImpersonation.readOnly ? "Read-Only" : "Elevated"} support session for{" "}
+                  {organizationImpersonation.organizationName}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 rounded-xs bg-black px-3 py-1 text-white">
+                <Lock size={12} />
+                Exit session
+              </div>
+            </div>
+          ) : null
+        }
+      >
       <div className="min-h-0 flex-1 px-4 pb-4 pt-2 md:px-6 md:pb-6 md:pt-2">
         <GlobalBackStrip className="mb-2" labelOverride="Inbox" />
         <div className={pageShellClassName}>
-          <div className="flex h-full min-w-[900px] flex-1 xl:min-w-0">
+          <div className="grid h-full min-h-[72vh] min-w-0 grid-cols-[280px_minmax(0,1fr)_320px]">
           <div className={sidebarClassName}>
             <div className="px-5 pb-3 pt-4">
               <div>
@@ -1276,11 +1389,11 @@ export default function ConversationsPage() {
             </div>
           </div>
 
-          <div className="min-w-[360px] flex-1 bg-canvas xl:min-w-0">
-            <div className="h-full p-3 md:p-4">
-              <ChatWindow
-                messages={messages}
-                activeConversation={activeConversation}
+            <div className="min-h-0 min-w-0 border-x border-border-main bg-bg-main">
+              <div className="flex h-full min-h-0 flex-col p-3 md:p-4">
+                <ChatWindow
+                  messages={messages}
+                  activeConversation={activeConversation}
                 onResumeBot={handleResumeBot}
                 onReconnectConversation={handleReconnectConversation}
                 onMessageSent={handleMessageSent}
@@ -1293,8 +1406,32 @@ export default function ConversationsPage() {
             </div>
           </div>
 
-          <aside className="hidden w-[280px] shrink-0 border-l border-border-main bg-surface xl:block 2xl:w-[320px]">
-            <div className="h-full overflow-y-auto p-5 [scrollbar-gutter:stable]">
+          <aside className="hidden shrink-0 border-l border-border-main bg-bg-card xl:block">
+            <div className="flex h-full flex-col gap-4 overflow-y-auto p-5 [scrollbar-gutter:stable]">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                    Variables
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowVariablesSidebar((current) => !current)}
+                    className="inline-flex items-center gap-1 rounded-full border border-border-main bg-canvas px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-text-muted"
+                  >
+                    <Variable size={10} />
+                    {showVariablesSidebar ? "Hide" : "Show"}
+                  </button>
+                </div>
+                {showVariablesSidebar ? (
+                  <VariablesSidebar
+                    variables={liveVariables}
+                    currentNodeId={String(activeConversation?.current_node || "").trim() || null}
+                    flowName={activeConversation?.flow_name || null}
+                    onJumpToNode={handleJumpToNode}
+                  />
+                ) : null}
+              </div>
+
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Conversation Details
               </div>
@@ -1760,7 +1897,7 @@ export default function ConversationsPage() {
           </div>
         </div>
       </div>
-    </div>
+      </ControlTowerShell>
     )
   );
 }

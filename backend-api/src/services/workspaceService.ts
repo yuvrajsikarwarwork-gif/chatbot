@@ -45,6 +45,10 @@ import {
   WORKSPACE_PERMISSIONS,
 } from "./workspaceAccessService";
 import { logAuditSafe } from "./auditLogService";
+import {
+  assertOrganizationAccessService,
+  isOrganizationSchemaAvailable,
+} from "./organizationService";
 import { getWorkspaceWalletSummary } from "./walletService";
 import { createWalletAdjustment } from "./walletService";
 import { ingestDocumentEmbeddings } from "./documentIngestionService";
@@ -1044,9 +1048,12 @@ export async function createWorkspaceService(userId: string, payload: any) {
   try {
     await client.query("BEGIN");
 
+    const organizationSchemaReady = await isOrganizationSchemaAvailable().catch(() => false);
+
     let ownerUserId = String(payload.ownerUserId || "").trim() || null;
     let ownerUser: any = null;
     let createdNewOwner = false;
+    let organizationId: string | null = String(payload.organizationId || payload.organization_id || "").trim() || null;
 
     if (ownerUserId) {
       const ownerRes = await client.query(
@@ -1095,22 +1102,80 @@ export async function createWorkspaceService(userId: string, payload: any) {
       ownerUserId = ownerUser.id;
     }
 
+    if (organizationSchemaReady) {
+      if (organizationId) {
+        await assertOrganizationAccessService(userId, organizationId, ["owner", "admin"]);
+      } else {
+        const orgSlugBase = String(payload.organizationSlug || companyName)
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/-{2,}/g, "-")
+          .replace(/^-+|-+$/g, "");
+        const orgSlug = `${orgSlugBase || "organization"}-${Date.now().toString(36).slice(-6)}`;
+        const organizationRes = await client.query(
+          `INSERT INTO organizations (
+             name,
+             slug,
+             plan_tier,
+             quota_ai_tokens,
+             quota_messages,
+             is_active
+           ) VALUES ($1, $2, $3, $4, $5, true)
+           RETURNING id`,
+          [
+            `${companyName} Organization`,
+            orgSlug,
+            payload.planId || "free",
+            Number.isFinite(Number(payload.quotaAiTokens)) ? Number(payload.quotaAiTokens) : 50000,
+            Number.isFinite(Number(payload.quotaMessages)) ? Number(payload.quotaMessages) : 1000,
+          ]
+        );
+        organizationId = organizationRes.rows[0]?.id || null;
+      }
+    }
+
+    const workspaceInsertColumns = organizationSchemaReady && organizationId
+      ? `(name, owner_user_id, organization_id, plan_id, status, company_website, industry, tax_id)`
+      : `(name, owner_user_id, plan_id, status, company_website, industry, tax_id)`;
+    const workspaceInsertValues = organizationSchemaReady && organizationId
+      ? [
+          companyName,
+          ownerUserId,
+          organizationId,
+          payload.planId || "starter",
+          normalizeWorkspaceStatus(payload.status),
+          String(payload.companyWebsite || "").trim() || null,
+          String(payload.industry || payload.category || "").trim() || null,
+          String(payload.taxId || payload.gstin || "").trim() || null,
+        ]
+      : [
+          companyName,
+          ownerUserId,
+          payload.planId || "starter",
+          normalizeWorkspaceStatus(payload.status),
+          String(payload.companyWebsite || "").trim() || null,
+          String(payload.industry || payload.category || "").trim() || null,
+          String(payload.taxId || payload.gstin || "").trim() || null,
+        ];
     const workspaceRes = await client.query(
       `INSERT INTO workspaces
-         (name, owner_user_id, plan_id, status, company_website, industry, tax_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ${workspaceInsertColumns}
+       VALUES ($1, ${organizationSchemaReady && organizationId ? "$2, $3, $4, $5, $6, $7, $8" : "$2, $3, $4, $5, $6, $7"})
        RETURNING *`,
-      [
-        companyName,
-        ownerUserId,
-        payload.planId || "starter",
-        normalizeWorkspaceStatus(payload.status),
-        String(payload.companyWebsite || "").trim() || null,
-        String(payload.industry || payload.category || "").trim() || null,
-        String(payload.taxId || payload.gstin || "").trim() || null,
-      ]
+      workspaceInsertValues
     );
     const workspace = workspaceRes.rows[0];
+
+    if (organizationSchemaReady && organizationId) {
+      await client.query(
+        `INSERT INTO organization_memberships (organization_id, user_id, role)
+         VALUES ($1, $2, 'owner')
+         ON CONFLICT (organization_id, user_id)
+         DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
+        [organizationId, ownerUserId]
+      );
+    }
 
     await client.query(
       `INSERT INTO workspace_memberships (workspace_id, user_id, role, status, created_by)

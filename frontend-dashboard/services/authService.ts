@@ -1,5 +1,6 @@
 import apiClient from "./apiClient";
 import { sessionService } from "./sessionService";
+import { useAuthStore } from "../store/authStore";
 
 export const authService = {
   pricingCheckout: async (payload: {
@@ -56,6 +57,107 @@ export const authService = {
   me: async () => {
     const res = await apiClient.get("/auth/me");
     return res.data;
+  },
+
+  switchOrganization: async (organizationId: string) => {
+    const store = useAuthStore.getState();
+    const targetOrganization = store.organizations.find((organization) => organization.id === organizationId) || null;
+
+    if (!targetOrganization) {
+      throw new Error("Organization not found");
+    }
+
+    store.clearOrganizationImpersonation();
+    store.setActiveOrganization(targetOrganization, null);
+
+    const data = await authService.me();
+    const currentStore = useAuthStore.getState();
+    currentStore.setPermissionSnapshot({
+      user: data.user || currentStore.user,
+      memberships: data.memberships || currentStore.memberships,
+      activeWorkspace: null,
+      projectAccesses: data.projectAccesses || currentStore.projectAccesses,
+      activeProject: null,
+      resolvedAccess: data.resolvedAccess || null,
+      organizations: data.organizations || currentStore.organizations,
+      activeOrganization: data.activeOrganization || targetOrganization,
+      activeOrganizationMembership:
+        data.activeOrganizationMembership || currentStore.activeOrganizationMembership || null,
+      organizationImpersonation: null,
+    });
+
+    return data;
+  },
+
+  startOrganizationImpersonation: async (organizationId: string) => {
+    const store = useAuthStore.getState();
+    const response = await apiClient.post(`/admin/impersonate/organization/${organizationId}`, {});
+    const data = response.data?.data || {};
+    const targetOrganization =
+      store.organizations.find((organization) => organization.id === organizationId) ||
+      data.activeOrganization ||
+      null;
+
+    if (targetOrganization) {
+      store.setActiveOrganization(targetOrganization, data.activeOrganizationMembership || null);
+    }
+    store.setOrganizationImpersonation(
+      data.organizationImpersonation || {
+        active: true,
+        mode: "organization",
+        organizationId,
+        organizationName: targetOrganization?.name || organizationId,
+        impersonatorId: store.user?.id || "",
+        readOnly: true,
+        startedAt: new Date().toISOString(),
+        expiresAt: null,
+      }
+    );
+
+    const refreshed = await authService.me();
+    const currentStore = useAuthStore.getState();
+    currentStore.setPermissionSnapshot({
+      user: refreshed.user || currentStore.user,
+      memberships: refreshed.memberships || currentStore.memberships,
+      activeWorkspace: null,
+      projectAccesses: refreshed.projectAccesses || currentStore.projectAccesses,
+      activeProject: null,
+      resolvedAccess: refreshed.resolvedAccess || null,
+      organizations: refreshed.organizations || currentStore.organizations,
+      activeOrganization: refreshed.activeOrganization || targetOrganization,
+      activeOrganizationMembership:
+        refreshed.activeOrganizationMembership ||
+        data.activeOrganizationMembership ||
+        currentStore.activeOrganizationMembership ||
+        null,
+      organizationImpersonation: currentStore.organizationImpersonation,
+    });
+
+    return { ...response.data, context: refreshed };
+  },
+
+  endOrganizationImpersonation: async (organizationId?: string | null) => {
+    const response = await apiClient.post("/admin/impersonate/organization/exit", {
+      organizationId: organizationId || undefined,
+    });
+    const data = response.data?.data || {};
+    const currentStore = useAuthStore.getState();
+
+    currentStore.clearOrganizationImpersonation();
+    currentStore.setPermissionSnapshot({
+      user: data.user || currentStore.user,
+      memberships: data.memberships || currentStore.memberships,
+      activeWorkspace: null,
+      projectAccesses: data.projectAccesses || currentStore.projectAccesses,
+      activeProject: null,
+      resolvedAccess: data.resolvedAccess || null,
+      organizations: data.organizations || currentStore.organizations,
+      activeOrganization: null,
+      activeOrganizationMembership: null,
+      organizationImpersonation: null,
+    });
+
+    return response.data;
   },
 
   startSupportSession: async (payload: {

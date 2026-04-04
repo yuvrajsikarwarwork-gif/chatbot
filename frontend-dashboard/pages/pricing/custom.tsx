@@ -358,7 +358,10 @@ export default function CustomPricingPage() {
             session.memberships || [],
             session.activeWorkspace || null,
             session.projectAccesses || [],
-            session.resolvedAccess || null
+            session.resolvedAccess || null,
+            session.organizations || [],
+            session.activeOrganization || null,
+            session.activeOrganizationMembership || null
           );
           window.sessionStorage.removeItem(CHECKOUT_STORAGE_KEY);
           router.push("/");
@@ -537,7 +540,10 @@ export default function CustomPricingPage() {
                 session.memberships || [],
                 session.activeWorkspace || null,
                 session.projectAccesses || [],
-                session.resolvedAccess || null
+                session.resolvedAccess || null,
+                session.organizations || [],
+                session.activeOrganization || null,
+                session.activeOrganizationMembership || null
               );
               router.push("/");
             } catch (confirmError: any) {
@@ -597,7 +603,10 @@ export default function CustomPricingPage() {
         session.memberships || [],
         session.activeWorkspace || null,
         session.projectAccesses || [],
-        session.resolvedAccess || null
+        session.resolvedAccess || null,
+        session.organizations || [],
+        session.activeOrganization || null,
+        session.activeOrganizationMembership || null
       );
       router.push("/");
     } catch (err: any) {

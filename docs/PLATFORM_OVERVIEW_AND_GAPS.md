@@ -15,6 +15,10 @@ This overview is based on the current repository state and supporting requiremen
 - `docs/PHASE-17_SETTINGS_FILE.md`
 - `docs/REQUIREMENTS_CHECKLIST.md`
 
+For the more detailed industrial-standard comparison, see:
+
+- [docs/INDUSTRIAL_STANDARD_GAP_ANALYSIS.md](D:/projects/chatbot/docs/INDUSTRIAL_STANDARD_GAP_ANALYSIS.md)
+
 ## 1. Platform Summary
 
 The platform is now structured around workspace-scoped, project-scoped chatbot operations with campaign-aware acquisition, lead capture, multi-platform conversations, human assignment, and workspace-level conversation policy controls.

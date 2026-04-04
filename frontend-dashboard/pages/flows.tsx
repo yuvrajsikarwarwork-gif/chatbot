@@ -3,20 +3,25 @@ import { useRouter } from "next/router";
 import { startTransition } from "react";
 import ReactFlow, { 
   useNodesState, useEdgesState, addEdge, Connection, Node, Edge, 
-  Background, Controls, SelectionMode, Panel, ReactFlowProvider, useReactFlow
+  Background, Controls, SelectionMode, ReactFlowProvider, useReactFlow
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { X, ShieldAlert, Headset, MessageCircle, ListTodo, Smile } from "lucide-react";
+import { LayoutGrid, MessageSquareMore, Radar, ShieldAlert, SlidersHorizontal, Variable, X } from "lucide-react";
 
 import NodeEditor from "../components/flow/NodeEditor";
 import NodeComponent from "../components/flow/NodeComponent";
 import FlowPortal from "../components/flow/FlowPortal";
 import FlowHeader from "../components/flow/FlowHeader";
 import FlowSidebar from "../components/flow/FlowSidebar";
+import FlowVersionHistoryModal from "../components/flow/FlowVersionHistoryModal";
 import GlobalRulesInfoPanel from "../components/flow/GlobalRulesInfoPanel";
+import CommandRailHint from "../components/flow/CommandRailHint";
+import OptimizerTab from "../components/flow/OptimizerTab";
+import SimulationModePanel from "../components/flow/SimulationModePanel";
 import RequirePermission from "../components/access/RequirePermission";
 import { useVisibility } from "../hooks/useVisibility";
 import { flowService } from "../services/flowService";
+import { analyticsService } from "../services/analyticsService";
 import { campaignService } from "../services/campaignService";
 import { projectService } from "../services/projectService";
 import { workspaceService } from "../services/workspaceService";
@@ -30,6 +35,7 @@ import { confirmAction, notify } from "../store/uiStore";
 import { NODE_CATEGORIES, AUTO_SAVE_DELAY, formatDefaultLabel } from "../config/flowConstants";
 import { useFlowHistory } from "../hooks/useFlowHistory";
 import { FlowValidationProvider } from "../components/flow/FlowValidationContext";
+import type { FlowVersionComparison } from "../components/flow/VersionCompareFeed";
 
 const staticNodeTypes = {
   default: NodeComponent,
@@ -39,6 +45,7 @@ const staticNodeTypes = {
   menu: NodeComponent,
   send_template: NodeComponent,
   ai_generate: NodeComponent,
+  ai_extract: NodeComponent,
   business_hours: NodeComponent,
   split_traffic: NodeComponent,
   api: NodeComponent,
@@ -51,6 +58,7 @@ const staticNodeTypes = {
   save: NodeComponent,
   trigger: NodeComponent,
   resume_bot: NodeComponent,
+  ai_intent: NodeComponent,
 } as const;
 
 type FlowValidationResult = {
@@ -162,6 +170,34 @@ function normalizeCanvasNodeType(type: any, data?: any) {
   return normalized;
 }
 
+function normalizeIntentHandle(value: any) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizeIntentList(intents: any[]) {
+  const seen = new Set<string>();
+  return (Array.isArray(intents) ? intents : [])
+    .map((intent, index) => {
+      const handle = normalizeIntentHandle(intent?.handle || intent?.value || `intent_${index + 1}`);
+      if (!handle || seen.has(handle)) {
+        return null;
+      }
+      seen.add(handle);
+      return {
+        handle,
+        label: String(intent?.label || intent?.name || handle).trim(),
+        description: String(intent?.description || intent?.prompt || "").trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
 function normalizeCanvasNodeData(type: any, data: any) {
   const normalizedType = normalizeCanvasNodeType(type, data);
   const next = data && typeof data === "object" && !Array.isArray(data) ? { ...data } : {};
@@ -237,6 +273,54 @@ function normalizeCanvasNodeData(type: any, data: any) {
     next.reminderDelay = Number.isFinite(Number(next.reminderDelay)) ? Number(next.reminderDelay) : 300;
     next.reminderText = String(next.reminderText || "").trim();
     next.timeoutFallback = String(next.timeoutFallback || "").trim();
+  }
+
+  if (normalizedType === "ai_intent") {
+    next.provider = String(next.provider || "auto").trim().toLowerCase() || "auto";
+    next.model = String(next.model || "").trim();
+    next.prompt = String(next.prompt || next.systemPrompt || next.instructions || "").trim();
+    next.saveTo = String(next.saveTo || next.outputVariable || "detected_intent").trim() || "detected_intent";
+    next.fallback = normalizeIntentHandle(next.fallback || next.fallbackHandle || "fallback") || "fallback";
+    next.text = String(next.text || "Thinking...").trim();
+    next.intents = normalizeIntentList(next.intents);
+  }
+
+  if (normalizedType === "ai_extract") {
+    const normalizeField = (field: any) => ({
+      key: String(field?.key || field?.name || "").trim(),
+      type: String(field?.type || "string").trim().toLowerCase() || "string",
+      description: String(field?.description || field?.prompt || "").trim(),
+    });
+    const normalizeFieldList = (fields: any[]) =>
+      (Array.isArray(fields) ? fields : [])
+        .map(normalizeField)
+        .filter((field) => Boolean(field.key));
+    const requiredFields = normalizeFieldList(next.requiredFields);
+    const optionalFields = normalizeFieldList(next.optionalFields);
+    const fallbackFields = requiredFields.length + optionalFields.length > 0 ? [] : normalizeFieldList(next.fields);
+    const seen = new Set<string>();
+    const dedupe = (fields: Array<{ key: string; type: string; description: string }>) =>
+      fields.filter((field) => {
+        const key = String(field.key || "").trim().toLowerCase();
+        if (!key || seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+    const normalizedRequiredFields = dedupe(requiredFields);
+    const normalizedOptionalFields = dedupe(optionalFields);
+    const normalizedFallbackFields = dedupe(fallbackFields);
+    next.requiredFields = normalizedRequiredFields.length > 0 ? normalizedRequiredFields : normalizedFallbackFields;
+    next.optionalFields = normalizedOptionalFields;
+    next.fields = dedupe([...normalizedRequiredFields, ...normalizedOptionalFields, ...normalizedFallbackFields]);
+    next.provider = String(next.provider || "auto").trim().toLowerCase() || "auto";
+    next.model = String(next.model || "").trim();
+    next.prompt = String(next.prompt || next.systemPrompt || next.instructions || "").trim();
+    next.text = String(next.text || "Updating...").trim();
+    next.minConfidence = Number.isFinite(Number(next.minConfidence)) ? Number(next.minConfidence) : 0.7;
+    next.onIncomplete = String(next.onIncomplete || "incomplete").trim().toLowerCase() || "incomplete";
+    next.saveConfidenceTo = String(next.saveConfidenceTo || next.confidenceVariable || "").trim();
   }
 
   return next;
@@ -829,13 +913,13 @@ function buildSystemFlowBlueprint(flowType: "handoff" | "csat") {
           id: "handoff-trigger",
           type: "trigger",
           position: { x: 120, y: 100 },
-          data: {
-            label: "Support Trigger",
-            triggerType: "keyword",
-            triggerKeywords: "human, support, agent, help desk",
-            entryKey: "human",
+            data: {
+              label: "Support Trigger",
+              triggerType: "keyword",
+              triggerKeywords: "human, agent, help desk, live agent",
+              entryKey: "human",
+            },
           },
-        },
         {
           id: "handoff-confirm",
           type: "menu",
@@ -980,6 +1064,439 @@ function buildLeadQualificationFlowBlueprint(botName?: string) {
   };
 }
 
+function applySuggestionToNodeData(
+  nodeData: any,
+  nodeType: string,
+  suggestion: {
+    reasoning: string;
+    suggested_prompt: string;
+    fieldUpdates?: Array<{ key: string; description: string }>;
+    notes?: string[];
+  }
+) {
+  const next = nodeData && typeof nodeData === "object" && !Array.isArray(nodeData) ? { ...nodeData } : {};
+  const suggestedPrompt = String(suggestion?.suggested_prompt || "").trim();
+  if (suggestedPrompt) {
+    next.prompt = suggestedPrompt;
+    if (String(next.systemPrompt || "").trim()) {
+      next.systemPrompt = suggestedPrompt;
+    }
+    if (String(next.instructions || "").trim()) {
+      next.instructions = suggestedPrompt;
+    }
+    if (String(nodeType || "").trim().toLowerCase() === "ai_generate") {
+      next.text = suggestedPrompt;
+    }
+  }
+
+  if (Array.isArray(suggestion.fieldUpdates) && suggestion.fieldUpdates.length > 0) {
+    const fieldMap = new Map<string, string>();
+    for (const field of suggestion.fieldUpdates) {
+      const key = String(field?.key || "").trim();
+      const description = String(field?.description || "").trim();
+      if (key && description) {
+        fieldMap.set(key.toLowerCase(), description);
+      }
+    }
+
+    const updateFieldCollection = (fields: any[]) =>
+      (Array.isArray(fields) ? fields : []).map((field: any) => {
+        const key = String(field?.key || field?.name || "").trim();
+        const description = String(field?.description || "").trim();
+        const nextDescription = key ? fieldMap.get(key.toLowerCase()) : null;
+        if (!key || !nextDescription) {
+          return field;
+        }
+        return {
+          ...field,
+          key,
+          description: nextDescription || description,
+        };
+      });
+
+    if (Array.isArray(next.requiredFields)) {
+      next.requiredFields = updateFieldCollection(next.requiredFields);
+    }
+    if (Array.isArray(next.optionalFields)) {
+      next.optionalFields = updateFieldCollection(next.optionalFields);
+    }
+    if (Array.isArray(next.fields)) {
+      next.fields = updateFieldCollection(next.fields);
+    }
+  }
+
+  if (Array.isArray(suggestion.notes) && suggestion.notes.length > 0) {
+    next.optimizationNotes = suggestion.notes;
+  }
+
+  next.optimizationReasoning = suggestion.reasoning;
+  next.optimizationAppliedAt = new Date().toISOString();
+  return next;
+}
+
+type FlowViewMode = "edit" | "audit" | "health" | "simulation";
+
+const COMMAND_RAIL_HINTS: Record<FlowViewMode, string> = {
+  edit: "Refine your logic blocks and node settings here.",
+  audit: "Monitor real-time variables and reasoning details.",
+  health: "Review failures, spikes, and optimization signals.",
+  simulation: "Test the end-user experience in a clean preview.",
+};
+
+function FlowInspectorRail({
+  viewMode,
+  onSelectViewMode,
+  selectedNode,
+  selectedNodeValidation,
+  onCloseNodeEditor,
+  onJumpToNode,
+  onSaveAndClose,
+  onApplySuggestion,
+  getNodeById,
+  workspaceId,
+  currentBotId,
+  currentFlowId,
+  currentFlowName,
+  botMetadata,
+  resolvedLeadFormWorkspaceId,
+  resolvedLeadFormProjectId,
+  activeWorkspaceId,
+  activeProjectId,
+  isSystemFlow,
+  canEditProjectWorkflow,
+  isReadOnly,
+  permissionsReady,
+  isSaving,
+  flowSummaries,
+  handoffBots,
+  flowOptionsByBot,
+  leadForms,
+  flowValidation,
+  alertCount,
+}: {
+  viewMode: FlowViewMode;
+  onSelectViewMode: (mode: FlowViewMode) => void;
+  selectedNode: Node | null;
+  selectedNodeValidation?: string;
+  onCloseNodeEditor: () => void;
+  onJumpToNode: (nodeId: string) => void;
+  onSaveAndClose: (data: any) => boolean | Promise<boolean>;
+  onApplySuggestion: (nodeId: string, suggestion: { reasoning: string; suggested_prompt: string; fieldUpdates?: Array<{ key: string; description: string }>; notes?: string[] }) => void | Promise<void>;
+  getNodeById: (nodeId: string) => Node | null;
+  workspaceId?: string | null;
+  currentBotId: string;
+  currentFlowId: string | null;
+  currentFlowName: string;
+  botMetadata: any;
+  resolvedLeadFormWorkspaceId: string;
+  resolvedLeadFormProjectId: string;
+  activeWorkspaceId?: string | null;
+  activeProjectId?: string | null;
+  isSystemFlow: boolean;
+  canEditProjectWorkflow: boolean;
+  isReadOnly: boolean;
+  permissionsReady: boolean;
+  isSaving: boolean;
+  flowSummaries: any[];
+  handoffBots: any[];
+  flowOptionsByBot: Record<string, any[]>;
+  leadForms: LeadFormRecord[];
+  flowValidation: FlowValidationResult;
+  alertCount: number;
+}) {
+  const selectedNodeData = selectedNode?.data && typeof selectedNode.data === "object" ? selectedNode.data : {};
+  const [dismissedHints, setDismissedHints] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") {
+      return {};
+    }
+
+    try {
+      const raw = window.localStorage.getItem("it_onboarding_hints");
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleDismissHint = useCallback((mode: FlowViewMode) => {
+    setDismissedHints((current) => {
+      const next = { ...current, [mode]: true };
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem("it_onboarding_hints", JSON.stringify(next));
+        } catch (error) {
+          console.warn("Failed to persist onboarding hints", error);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const CommandRailButton = ({
+    mode,
+    label,
+    icon: Icon,
+    disabled = false,
+    badge,
+  }: {
+    mode: FlowViewMode;
+    label: string;
+    icon: any;
+    disabled?: boolean;
+    badge?: number;
+  }) => {
+    const isActive = viewMode === mode;
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          if (!disabled) {
+            onSelectViewMode(mode);
+          }
+        }}
+        disabled={disabled}
+        title={label}
+        className={`relative flex h-11 w-11 items-center justify-center rounded-2xl border transition ${
+          isActive
+            ? "border-primary/30 bg-primary text-white shadow-sm"
+            : "border-border-main bg-surface text-text-muted hover:border-primary/30 hover:bg-primary-fade hover:text-primary"
+        } ${disabled ? "cursor-not-allowed opacity-35 hover:bg-surface hover:text-text-muted" : ""}`}
+      >
+        {isActive ? <div className="absolute left-0 h-6 w-1 rounded-r-full bg-primary" /> : null}
+        <Icon size={16} />
+        {badge && badge > 0 ? (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-white bg-rose-600 px-1 text-[9px] font-black text-white">
+            {badge > 9 ? "9+" : badge}
+          </span>
+        ) : null}
+      </button>
+    );
+  };
+
+  return (
+    <div className="flex h-full min-h-0 overflow-hidden rounded-[1.5rem] border border-border-main bg-surface shadow-sm">
+      <div className="flex w-14 shrink-0 flex-col items-center gap-3 border-r border-border-main bg-canvas py-4">
+        <div className="relative">
+          <CommandRailButton
+            mode="edit"
+            label="Node Settings"
+            icon={SlidersHorizontal}
+            disabled={!selectedNode}
+          />
+          <CommandRailHint
+            text={COMMAND_RAIL_HINTS.edit}
+            isVisible={!dismissedHints.edit && viewMode !== "edit" && !isReadOnly}
+            onDismiss={() => handleDismissHint("edit")}
+          />
+        </div>
+        <div className="relative">
+          <CommandRailButton
+            mode="audit"
+            label="Audit & Memory"
+            icon={Variable}
+          />
+          <CommandRailHint
+            text={COMMAND_RAIL_HINTS.audit}
+            isVisible={!dismissedHints.audit && viewMode !== "audit" && !isReadOnly}
+            onDismiss={() => handleDismissHint("audit")}
+          />
+        </div>
+        <div className="relative">
+          <CommandRailButton
+            mode="health"
+            label="Health & Optimizer"
+            icon={ShieldAlert}
+            badge={alertCount}
+          />
+          <CommandRailHint
+            text={COMMAND_RAIL_HINTS.health}
+            isVisible={!dismissedHints.health && viewMode !== "health" && !isReadOnly}
+            onDismiss={() => handleDismissHint("health")}
+          />
+        </div>
+        <div className="relative mt-auto flex w-full justify-center border-t border-border-main pt-4">
+          <CommandRailButton
+            mode="simulation"
+            label="Simulation Mode"
+            icon={MessageSquareMore}
+          />
+          <CommandRailHint
+            text={COMMAND_RAIL_HINTS.simulation}
+            isVisible={!dismissedHints.simulation && viewMode !== "simulation" && !isReadOnly}
+            onDismiss={() => handleDismissHint("simulation")}
+          />
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {viewMode === "edit" ? (
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex items-start justify-between gap-3 border-b border-border-main bg-surface px-5 py-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-text-muted">
+                  <LayoutGrid size={13} className="text-primary" />
+                  Node Settings
+                </div>
+                <h3 className="mt-2 truncate text-sm font-semibold text-text-main">
+                  {selectedNode ? String(selectedNode.data?.label || selectedNode.data?.text || selectedNode.type || selectedNode.id || "Node") : "No node selected"}
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-text-muted">
+                  Edit the selected node, or switch to the optimizer to review weak spots.
+                </p>
+              </div>
+              {selectedNode ? (
+                <button
+                  type="button"
+                  onClick={onCloseNodeEditor}
+                  className="rounded-full border border-border-main bg-canvas p-2 text-text-muted transition hover:border-primary/30 hover:text-primary"
+                  title="Close node"
+                >
+                  <X size={16} />
+                </button>
+              ) : null}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
+              {selectedNode ? (
+                <NodeEditor
+                  node={selectedNode}
+                  onSaveAndClose={onSaveAndClose}
+                  onClose={onCloseNodeEditor}
+                  isReadOnly={isReadOnly}
+                  permissionsReady={permissionsReady}
+                  canEditWorkflow={canEditProjectWorkflow}
+                  isSaving={isSaving}
+                  currentBotId={currentBotId}
+                  currentWorkspaceId={resolvedLeadFormWorkspaceId || botMetadata?.workspace_id || activeWorkspaceId || undefined}
+                  currentProjectId={resolvedLeadFormProjectId || botMetadata?.project_id || activeProjectId || undefined}
+                  currentFlowId={currentFlowId}
+                  isSystemFlow={isSystemFlow}
+                  flowOptions={flowSummaries}
+                  botOptions={handoffBots}
+                  flowOptionsByBot={flowOptionsByBot}
+                  leadForms={leadForms}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center p-8 text-center">
+                  <div className="max-w-xs">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border-main bg-canvas text-primary">
+                      <LayoutGrid size={18} />
+                    </div>
+                    <div className="mt-4 text-sm font-semibold text-text-main">Select a node to edit it</div>
+                    <div className="mt-2 text-xs leading-5 text-text-muted">
+                      The settings panel appears when a node is selected on the canvas.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {viewMode === "audit" ? (
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="border-b border-border-main bg-surface px-5 py-4">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-text-muted">
+                <Variable size={13} className="text-primary" />
+                Node Context
+              </div>
+              <p className="mt-2 text-xs leading-5 text-text-muted">
+                The builder does not expose live runtime memory here, so this tab shows the selected node's structure and validation context.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar p-5">
+              {selectedNode ? (
+                <div className="space-y-4">
+                  <div className="rounded-3xl border border-border-main bg-canvas p-4">
+                    <div className="text-[9px] font-black uppercase tracking-[0.18em] text-text-muted">Selected Node</div>
+                    <div className="mt-2 text-base font-semibold text-text-main">
+                      {String(selectedNode.data?.label || selectedNode.data?.text || selectedNode.type || selectedNode.id || "Node")}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-text-muted">
+                      <span className="rounded-full border border-border-main bg-surface px-2 py-1">ID {String(selectedNode.id || "").slice(0, 8)}</span>
+                      <span className="rounded-full border border-border-main bg-surface px-2 py-1">{String(selectedNode.type || "node").replace(/_/g, " ")}</span>
+                      {selectedNodeValidation ? (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
+                          Validation issue
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">
+                          No validation issue
+                        </span>
+                      )}
+                    </div>
+                    {selectedNodeValidation ? (
+                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                        {selectedNodeValidation}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-3xl border border-border-main bg-canvas p-4">
+                    <div className="text-[9px] font-black uppercase tracking-[0.18em] text-text-muted">Raw Data</div>
+                    <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words rounded-2xl border border-border-main bg-surface p-3 text-[11px] leading-5 text-text-main">
+                      {JSON.stringify(selectedNodeData, null, 2)}
+                    </pre>
+                  </div>
+
+                  <div className="rounded-3xl border border-border-main bg-canvas p-4">
+                    <div className="text-[9px] font-black uppercase tracking-[0.18em] text-text-muted">Flow Context</div>
+                    <div className="mt-3 grid gap-2 text-sm text-text-main">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-muted">Flow</span>
+                        <span className="font-semibold">{currentFlowName || "Untitled flow"}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-muted">Flow ID</span>
+                        <span className="font-mono text-[11px]">{currentFlowId || "n/a"}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-muted">Canvas Layout</span>
+                        <span className="font-semibold">{flowValidation.isValid ? "Valid" : "Needs review"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-center">
+                  <div className="max-w-xs">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-border-main bg-canvas text-primary">
+                      <Variable size={18} />
+                    </div>
+                    <div className="mt-4 text-sm font-semibold text-text-main">No node selected</div>
+                    <div className="mt-2 text-xs leading-5 text-text-muted">
+                      Pick a node on the canvas to inspect its data and validation state.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {viewMode === "health" ? (
+          <OptimizerTab
+            workspaceId={workspaceId}
+            onJumpToNode={onJumpToNode}
+            selectedNodeId={selectedNode?.id || null}
+            getNodeById={getNodeById}
+            onApplySuggestion={onApplySuggestion}
+          />
+        ) : null}
+
+        {viewMode === "simulation" ? (
+          <SimulationModePanel
+            flowName={currentFlowName}
+            flowId={currentFlowId}
+            selectedNode={selectedNode}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function FlowBuilderCanvas() {
   const router = useRouter();
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
@@ -1106,6 +1623,9 @@ function FlowBuilderCanvas() {
   const [nodes, setNodes, onNodesChangeState] = useNodesState([]);
   const [edges, setEdges, onEdgesChangeState] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [viewMode, setViewMode] = useState<FlowViewMode>("edit");
+  const [isExpertDrawerOpen, setIsExpertDrawerOpen] = useState(false);
+  const [optimizerAlertCount, setOptimizerAlertCount] = useState(0);
   const [botMetadata, setBotMetadata] = useState<any | null>(null);
   const [availableBots, setAvailableBots] = useState<any[]>([]); 
   const [handoffBots, setHandoffBots] = useState<any[]>([]);
@@ -1124,6 +1644,15 @@ function FlowBuilderCanvas() {
   const [flowLayoutLeftToRight, setFlowLayoutLeftToRight] = useState(true);
   const [isGlobalRulesInfoOpen, setIsGlobalRulesInfoOpen] = useState(false);
   const [isPasteJsonOpen, setIsPasteJsonOpen] = useState(false);
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+  const [flowVersions, setFlowVersions] = useState<any[]>([]);
+  const [selectedRollbackVersion, setSelectedRollbackVersion] = useState<number | null>(null);
+  const [versionComparison, setVersionComparison] = useState<FlowVersionComparison | null>(null);
+  const [isLoadingVersionHistory, setIsLoadingVersionHistory] = useState(false);
+  const [isComparingVersions, setIsComparingVersions] = useState(false);
+  const [versionHistoryError, setVersionHistoryError] = useState("");
+  const [versionCompareError, setVersionCompareError] = useState("");
+  const [isRollingBackVersion, setIsRollingBackVersion] = useState(false);
   const [pasteJsonDraft, setPasteJsonDraft] = useState("");
   const [pasteJsonError, setPasteJsonError] = useState("");
   const [isImportingPasteJson, setIsImportingPasteJson] = useState(false);
@@ -1151,6 +1680,130 @@ function FlowBuilderCanvas() {
     () => botMetadata?.global_settings || botMetadata?.settings_json || botMetadata?.settings || null,
     [botMetadata]
   );
+  const latestPublishedVersionNumber = useMemo(
+    () => Number(flowVersions[0]?.version_number || 0) || null,
+    [flowVersions]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOptimizerAlertCount = async () => {
+      const workspaceId = activeWorkspace?.workspace_id;
+      if (!workspaceId) {
+        setOptimizerAlertCount(0);
+        return;
+      }
+
+      try {
+        const data = await analyticsService.getWorkspaceAlerts(workspaceId, "triggered");
+        const alerts = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        if (!cancelled) {
+          setOptimizerAlertCount(alerts.length);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOptimizerAlertCount(0);
+        }
+        console.error("Failed to load optimizer alert count", error);
+      }
+    };
+
+    void loadOptimizerAlertCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspace?.workspace_id]);
+
+  const loadVersionComparison = useCallback(async (flowId: string, leftVersion: number, rightVersion: number) => {
+    setIsComparingVersions(true);
+    setVersionCompareError("");
+
+    try {
+      const comparison = await flowService.compareVersions(flowId, leftVersion, rightVersion);
+      setVersionComparison(comparison);
+    } catch (error) {
+      console.error("Could not compare versions", error);
+      setVersionComparison(null);
+      const info = extractApiErrorInfo(error, "Could not compare flow versions.", "Version Compare Failed");
+      setVersionCompareError(info.message);
+    } finally {
+      setIsComparingVersions(false);
+    }
+  }, []);
+
+  const loadVersionHistory = useCallback(async (flowId = currentFlowId) => {
+    const targetFlowId = String(flowId || "").trim();
+    if (!targetFlowId) {
+      return;
+    }
+
+    setIsLoadingVersionHistory(true);
+    setVersionHistoryError("");
+    setVersionCompareError("");
+
+    try {
+      const versions = await flowService.getVersions(targetFlowId);
+      const normalizedVersions = Array.isArray(versions) ? versions : [];
+      setFlowVersions(normalizedVersions);
+
+      const currentVersionNumber = Number(normalizedVersions[0]?.version_number || 0) || null;
+      const targetVersionNumber = Number(
+        normalizedVersions[1]?.version_number || normalizedVersions[0]?.version_number || 0
+      ) || null;
+      setSelectedRollbackVersion(targetVersionNumber);
+
+      if (currentVersionNumber && targetVersionNumber) {
+        await loadVersionComparison(targetFlowId, currentVersionNumber, targetVersionNumber);
+      } else {
+        setVersionComparison(null);
+      }
+    } catch (error) {
+      console.error("Could not load version history", error);
+      setFlowVersions([]);
+      setVersionComparison(null);
+      const info = extractApiErrorInfo(error, "Could not load flow versions.", "Version History Failed");
+      setVersionHistoryError(info.message);
+    } finally {
+      setIsLoadingVersionHistory(false);
+    }
+  }, [currentFlowId, loadVersionComparison]);
+
+  const handleOpenVersionHistory = useCallback(() => {
+    if (!currentFlowId) {
+      notify("Select a flow before opening version history.", "error");
+      return;
+    }
+
+    setIsVersionHistoryOpen(true);
+  }, [currentFlowId]);
+
+  const handleSelectVersionForRestore = useCallback(async (versionNumber: number) => {
+    if (!currentFlowId) {
+      return;
+    }
+
+    setSelectedRollbackVersion(versionNumber);
+    const currentVersionNumber = latestPublishedVersionNumber;
+    if (!currentVersionNumber || !versionNumber) {
+      return;
+    }
+
+    await loadVersionComparison(currentFlowId, currentVersionNumber, versionNumber);
+  }, [currentFlowId, latestPublishedVersionNumber, loadVersionComparison]);
+
+  useEffect(() => {
+    if (!isVersionHistoryOpen || !currentFlowId) {
+      if (!isVersionHistoryOpen) {
+        setVersionComparison(null);
+        setVersionHistoryError("");
+        setVersionCompareError("");
+      }
+      return;
+    }
+
+    loadVersionHistory(currentFlowId).catch(() => null);
+  }, [currentFlowId, isVersionHistoryOpen, loadVersionHistory]);
 
   const getDefaultFlowId = useCallback((summaries: any[]) => {
     const normalized = Array.isArray(summaries) ? summaries : [];
@@ -1408,6 +2061,38 @@ function FlowBuilderCanvas() {
     }
   }, [isCampaignSystemFlowEditor]);
 
+  const handleRollbackSelectedVersion = useCallback(async () => {
+    if (!currentFlowId || !selectedRollbackVersion) {
+      return;
+    }
+
+    const confirmed = await confirmAction(
+      `Rollback to v${selectedRollbackVersion}?`,
+      "This will restore the selected historical flow snapshot and rebuild the registry triggers from that version.",
+      `Rollback to v${selectedRollbackVersion}`,
+      "Cancel"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsRollingBackVersion(true);
+    try {
+      await flowService.rollbackVersion(currentFlowId, selectedRollbackVersion);
+      notify(`Flow restored to version ${selectedRollbackVersion}.`, "success");
+      const refreshedFlow = await flowService.getFlow(botId, currentFlowId);
+      applyLoadedFlow(refreshedFlow);
+      await refreshFlowSummariesSafe(botId);
+      await loadVersionHistory(currentFlowId);
+    } catch (error) {
+      console.error("Rollback failed", error);
+      notifyApiError(error, "Failed to rollback flow version.", "Rollback Failed");
+    } finally {
+      setIsRollingBackVersion(false);
+    }
+  }, [applyLoadedFlow, botId, currentFlowId, loadVersionHistory, refreshFlowSummariesSafe, selectedRollbackVersion]);
+
   const ensureSystemFlowExists = useCallback(async (targetId: string, flowType: "handoff" | "csat") => {
     if (!targetId) return null;
 
@@ -1448,6 +2133,27 @@ function FlowBuilderCanvas() {
       setSelectedNode(null);
     }
   }, [nodes, selectedNode]);
+
+  useEffect(() => {
+    const requestedNodeId = typeof router.query.nodeId === "string" ? router.query.nodeId.trim() : "";
+    if (!requestedNodeId || !nodes.length) {
+      return;
+    }
+
+    const match = nodes.find((node) => String(node.id) === requestedNodeId) || null;
+    if (!match) {
+      return;
+    }
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => ({
+        ...node,
+        selected: String(node.id) === requestedNodeId,
+      }))
+    );
+    setSelectedNode(match);
+    setViewMode("edit");
+  }, [nodes, router.query.nodeId, setNodes]);
 
   const onNodesChange = useCallback((changes: any) => {
     if (!canEditTopology) return;
@@ -1521,6 +2227,42 @@ function FlowBuilderCanvas() {
         prompt: "",
         saveTo: "ai_output",
         style: "",
+      };
+    }
+
+    if (normalized === "ai_intent") {
+      return {
+        ...base,
+        label: "AI Intent Classifier",
+        provider: "auto",
+        model: "",
+        prompt: "",
+        text: "Thinking...",
+        saveTo: "detected_intent",
+        fallback: "fallback",
+        intents: [
+          { handle: "intent_1", label: "Intent 1", description: "" },
+        ],
+      };
+    }
+
+    if (normalized === "ai_extract") {
+      return {
+        ...base,
+        label: "AI Data Extractor",
+        provider: "auto",
+        model: "",
+        prompt: "",
+        text: "Updating...",
+        minConfidence: 0.7,
+        onIncomplete: "incomplete",
+        saveConfidenceTo: "extraction_confidence",
+        requiredFields: [
+          { key: "email", type: "string", description: "User email address" },
+        ],
+        optionalFields: [
+          { key: "name", type: "string", description: "User name" },
+        ],
       };
     }
 
@@ -2137,6 +2879,41 @@ function FlowBuilderCanvas() {
     }, 600);
   }, []);
 
+  const getNodeById = useCallback((nodeId: string) => {
+    return nodes.find((node) => String(node.id) === String(nodeId)) || null;
+  }, [nodes]);
+
+  const handleJumpToNode = useCallback((nodeId: string) => {
+    const targetNode = getNodeById(nodeId);
+    if (!targetNode) {
+      notify("Could not find that node on the canvas.", "error");
+      return;
+    }
+
+    const wrapperRect = reactFlowWrapper.current?.getBoundingClientRect();
+    const zoom = 1.2;
+    const canvasWidth = Number(wrapperRect?.width || 1200);
+    const canvasHeight = Number(wrapperRect?.height || 800);
+    const nodeCenterX = Number(targetNode.position?.x || 0) + Number((targetNode as any)?.width || 0) / 2;
+    const nodeCenterY = Number(targetNode.position?.y || 0) + Number((targetNode as any)?.height || 0) / 2;
+
+    setViewport({
+      x: canvasWidth / 2 - nodeCenterX * zoom,
+      y: canvasHeight / 2 - nodeCenterY * zoom,
+      zoom,
+    });
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => ({
+        ...node,
+        selected: String(node.id) === String(nodeId),
+      }))
+    );
+    setSelectedNode(targetNode);
+    setViewMode("edit");
+    setIsExpertDrawerOpen(true);
+  }, [getNodeById, setNodes, setViewport]);
+
   const buildPatchedNodeForSave = useCallback((nodeToPatch: Node, nextData: any) => {
     const normalizedType = normalizeCanvasNodeType(nodeToPatch?.type, nextData);
     return {
@@ -2146,6 +2923,63 @@ function FlowBuilderCanvas() {
       data: normalizeCanvasNodeData(normalizedType, nextData),
     };
   }, []);
+
+  const handleApplyOptimizationSuggestion = useCallback(async (
+    nodeId: string,
+    suggestion: {
+      reasoning: string;
+      suggested_prompt: string;
+      fieldUpdates?: Array<{ key: string; description: string }>;
+      notes?: string[];
+    }
+  ) => {
+    if (!permissionsReady) {
+      notify("Loading workspace permissions. Please try again in a moment.", "error");
+      return;
+    }
+    if (!canEditProjectWorkflow) {
+      notify("You do not have permission to edit this workflow.", "error");
+      return;
+    }
+
+    const targetNode = getNodeById(nodeId);
+    if (!targetNode) {
+      notify("Could not find that node on the canvas.", "error");
+      return;
+    }
+
+    takeSnapshot();
+    const patchedNode = buildPatchedNodeForSave(
+      targetNode,
+      applySuggestionToNodeData(targetNode.data, String(targetNode.type || ""), suggestion)
+    );
+    const nextNodes = nodes.map((node) => (String(node.id) === String(nodeId) ? patchedNode : node));
+
+    setNodes(nextNodes);
+    setSelectedNode(patchedNode);
+    setViewMode("edit");
+    setIsExpertDrawerOpen(true);
+    setIsDirty(true);
+    setDraftSaveStatus("Optimization applied locally.");
+
+    const saved = await persistFlow(nextNodes, edges, true);
+    if (saved) {
+      clearFlowDraftSnapshot(flowDraftStorageKey);
+      setDraftSaveStatus("Saved to backend.");
+    }
+  }, [
+    buildPatchedNodeForSave,
+    canEditProjectWorkflow,
+    edges,
+    flowDraftStorageKey,
+    getNodeById,
+    nodes,
+    permissionsReady,
+    persistFlow,
+    setIsDirty,
+    setNodes,
+    takeSnapshot,
+  ]);
 
   const handleNodeSaveAndClose = useCallback(async (newData: any): Promise<boolean> => {
     console.log("3. Reached handleNodeSaveAndClose in flows.tsx");
@@ -2206,6 +3040,7 @@ function FlowBuilderCanvas() {
       selectedNodeType: selectedNode?.type || null,
     });
     suppressNodeReselect();
+    setIsExpertDrawerOpen(false);
     setSelectedNode(null);
   }, [suppressNodeReselect]);
 
@@ -2757,6 +3592,7 @@ function FlowBuilderCanvas() {
               onDeleteFlow={handleDeleteFlow}
               onSave={handleSave}
               onOpenGlobalRulesInfo={handleOpenGlobalRulesInfo}
+              onOpenVersionHistory={handleOpenVersionHistory}
               onCloseBuilder={handleCloseBuilder}
               isDirty={isDirty}
               isSaving={isSaving}
@@ -2796,6 +3632,7 @@ function FlowBuilderCanvas() {
         onDeleteFlow={handleDeleteFlow}
         onSave={handleSave}
         onOpenGlobalRulesInfo={handleOpenGlobalRulesInfo}
+        onOpenVersionHistory={handleOpenVersionHistory}
         onCloseBuilder={handleCloseBuilder}
         isDirty={isDirty}
         isSaving={isSaving}
@@ -2925,6 +3762,23 @@ function FlowBuilderCanvas() {
           onEditGlobalRules={handleOpenBotGlobalRules}
         />
 
+        <FlowVersionHistoryModal
+          isOpen={isVersionHistoryOpen}
+          flowName={currentFlowName}
+          versions={flowVersions}
+          selectedVersionNumber={selectedRollbackVersion}
+          comparison={versionComparison}
+          loadingVersions={isLoadingVersionHistory}
+          comparingVersions={isComparingVersions}
+          versionsError={versionHistoryError}
+          compareError={versionCompareError}
+          canRollback={canEditProjectWorkflow}
+          isRollingBack={isRollingBackVersion}
+          onClose={() => setIsVersionHistoryOpen(false)}
+          onSelectVersion={handleSelectVersionForRestore}
+          onRollback={handleRollbackSelectedVersion}
+        />
+
         <FlowValidationProvider value={{ invalidNodeReasons: flowValidation.invalidNodeReasons, isLockedTopology: isSystemFlow }}>
           <div className="flex-1 relative w-full h-full" ref={reactFlowWrapper} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
             {!canEditProjectWorkflow ? (
@@ -2943,8 +3797,13 @@ function FlowBuilderCanvas() {
                   return;
                 }
                 setSelectedNode(n);
+                setViewMode("edit");
+                setIsExpertDrawerOpen(true);
               }}
-              onPaneClick={() => setSelectedNode(null)}
+              onPaneClick={() => {
+                setSelectedNode(null);
+                setIsExpertDrawerOpen(false);
+              }}
               nodeTypes={nodeTypes}
               panOnDrag={true}
               selectionOnDrag={false}
@@ -2962,42 +3821,71 @@ function FlowBuilderCanvas() {
               <Background color="var(--border)" gap={20} size={1} />
               <Controls className="mb-4 ml-4 shadow-xl border-none" />
               
-              {selectedNode && (
-            <Panel
-                  position="top-right"
-                  className="bg-surface border border-border-main shadow-sm rounded-2xl w-[350px] h-[85%] overflow-hidden flex flex-col mr-6 mt-6 animate-in slide-in-from-right-8 z-50"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="h-14 bg-canvas border-b border-border-main flex items-center justify-between px-5 shrink-0">
-                    <span className="text-xs font-black text-text-main uppercase tracking-widest">Edit Node Data</span>
-                    <button onClick={handleCloseNodeEditor} className="text-text-muted hover:text-primary"><X size={18} /></button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-                    <NodeEditor
-                      node={selectedNode}
-                      onSaveAndClose={handleNodeSaveAndClose}
-                      onClose={handleCloseNodeEditor}
-                      isReadOnly={isReadOnly}
-                      permissionsReady={permissionsReady}
-                      canEditWorkflow={canEditProjectWorkflow}
-                      isSaving={isSaving}
-                      currentBotId={botId}
-                      currentWorkspaceId={resolvedLeadFormWorkspaceId || botMetadata?.workspace_id || activeWorkspace?.workspace_id}
-                      currentProjectId={resolvedLeadFormProjectId || botMetadata?.project_id || activeProject?.id}
-                      currentFlowId={currentFlowId}
-                      isSystemFlow={isSystemFlow}
-                      flowOptions={flowSummaries}
-                      botOptions={handoffBots}
-                      flowOptionsByBot={flowOptionsByBot}
+              <div className="absolute right-4 top-4 z-[60] flex items-center gap-2 pointer-events-none">
+                {!isExpertDrawerOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsExpertDrawerOpen(true)}
+                    className="pointer-events-auto rounded-full border border-border-main bg-surface px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-text-main shadow-lg transition hover:border-primary/30 hover:bg-primary-fade hover:text-primary"
+                  >
+                    Open Expert Drawer
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsExpertDrawerOpen(false)}
+                    className="pointer-events-auto rounded-full border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 shadow-lg transition hover:bg-slate-50"
+                  >
+                    Hide Expert Drawer
+                  </button>
+                )}
+              </div>
+
+              {isExpertDrawerOpen ? (
+                <div className="absolute inset-0 z-[55]">
+                  <button
+                    type="button"
+                    aria-label="Close expert drawer backdrop"
+                    className="absolute inset-0 cursor-default bg-slate-950/20 backdrop-blur-[1px]"
+                    onClick={() => setIsExpertDrawerOpen(false)}
+                  />
+                  <div className="absolute right-0 top-0 h-full w-full max-w-[440px] p-4">
+                    <div className="pointer-events-auto h-full">
+                      <FlowInspectorRail
+                        viewMode={viewMode}
+                        onSelectViewMode={setViewMode}
+                        selectedNode={selectedNode}
+                        selectedNodeValidation={selectedNode ? flowValidation.invalidNodeReasons[String(selectedNode.id || "")] || "" : ""}
+                        onCloseNodeEditor={handleCloseNodeEditor}
+                        onJumpToNode={handleJumpToNode}
+                        onSaveAndClose={handleNodeSaveAndClose}
+                        onApplySuggestion={handleApplyOptimizationSuggestion}
+                        getNodeById={getNodeById}
+                        workspaceId={activeWorkspace?.workspace_id || null}
+                        currentBotId={String(botId || "")}
+                        currentFlowId={currentFlowId}
+                        currentFlowName={currentFlowName}
+                        botMetadata={botMetadata}
+                        resolvedLeadFormWorkspaceId={resolvedLeadFormWorkspaceId}
+                        resolvedLeadFormProjectId={resolvedLeadFormProjectId}
+                        activeWorkspaceId={activeWorkspace?.workspace_id || null}
+                        activeProjectId={activeProject?.id || null}
+                        isSystemFlow={isSystemFlow}
+                        canEditProjectWorkflow={canEditProjectWorkflow}
+                        isReadOnly={isReadOnly}
+                        permissionsReady={permissionsReady}
+                        isSaving={isSaving}
+                        flowSummaries={flowSummaries}
+                        handoffBots={handoffBots}
+                        flowOptionsByBot={flowOptionsByBot}
                       leadForms={leadForms}
+                      flowValidation={flowValidation}
+                      alertCount={optimizerAlertCount}
                     />
-                    {!canEditProjectWorkflow ? (
-                      <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px]" />
-                    ) : null}
+                    </div>
                   </div>
-                </Panel>
-              )}
+                </div>
+              ) : null}
             </ReactFlow>
           </div>
         </FlowValidationProvider>

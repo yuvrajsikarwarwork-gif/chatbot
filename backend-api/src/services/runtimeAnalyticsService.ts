@@ -117,7 +117,8 @@ export async function getWorkspaceAnalyticsOverview(
   userId: string,
   workspaceId: string,
   projectId?: string | null,
-  visibleProjectIds?: string[] | null
+  visibleProjectIds?: string[] | null,
+  sinceHours?: number | null
 ) {
   const analyticsEventsHasProjectId = await hasColumn("analytics_events", "project_id");
   const hasVisibleProjectScope = Array.isArray(visibleProjectIds);
@@ -139,11 +140,15 @@ export async function getWorkspaceAnalyticsOverview(
         ? ` AND project_id = ANY($2)`
         : ` AND 1 = 0`
       : "";
+  const sinceHoursValue = Number(sinceHours || 0);
+  const hasSinceFilter = Number.isFinite(sinceHoursValue) && sinceHoursValue > 0;
+  const timeClause = hasSinceFilter ? ` AND ae.created_at >= NOW() - ($${needsProjectParam ? 3 : 2}::int * INTERVAL '1 hour')` : "";
   const params = projectId
     ? [workspaceId, projectId]
     : needsProjectParam
       ? [workspaceId, visibleProjectIds]
       : [workspaceId];
+  const queryParams = hasSinceFilter ? [...params, sinceHoursValue] : params;
 
   const [eventsRes, campaignRes, leadRes, channelRes] = await Promise.all([
     query(
@@ -154,8 +159,8 @@ export async function getWorkspaceAnalyticsOverview(
          COUNT(*) FILTER (WHERE ae.event_name = 'entry_point_resolved')::int AS entry_resolutions
        FROM analytics_events ae
        LEFT JOIN campaigns c ON c.id = ae.campaign_id
-       WHERE ae.workspace_id = $1${eventProjectClause}`,
-      params
+       WHERE ae.workspace_id = $1${eventProjectClause}${timeClause}`,
+      queryParams
     ),
     query(
       `SELECT COUNT(*)::int AS active_campaigns
@@ -205,7 +210,8 @@ export async function getWorkspaceAnalyticsEvents(
   userId: string,
   workspaceId: string,
   projectId?: string | null,
-  visibleProjectIds?: string[] | null
+  visibleProjectIds?: string[] | null,
+  sinceHours?: number | null
 ) {
   const analyticsEventsHasProjectId = await hasColumn("analytics_events", "project_id");
   const hasVisibleProjectScope = Array.isArray(visibleProjectIds);
@@ -218,6 +224,10 @@ export async function getWorkspaceAnalyticsEvents(
   const eventProjectExpression = analyticsEventsHasProjectId
     ? "ae.project_id"
     : "c.project_id";
+  const sinceHoursValue = Number(sinceHours || 0);
+  const hasSinceFilter = Number.isFinite(sinceHoursValue) && sinceHoursValue > 0;
+  const timeClause = hasSinceFilter ? `AND ae.created_at >= NOW() - ($${needsProjectParam ? 3 : 2}::int * INTERVAL '1 hour')` : "";
+  const queryParams = hasSinceFilter ? [...params, sinceHoursValue] : params;
   const res = await query(
     `SELECT
        ae.id,
@@ -243,9 +253,10 @@ export async function getWorkspaceAnalyticsEvents(
                : "AND 1 = 0"
              : ""
        }
+       ${timeClause}
      ORDER BY ae.created_at DESC
      LIMIT 100`,
-    params
+    queryParams
   );
 
   return res.rows;

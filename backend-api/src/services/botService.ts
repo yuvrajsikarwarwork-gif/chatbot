@@ -335,7 +335,7 @@ function buildHandoffFlowBlueprint() {
         data: {
           label: "Support Trigger",
           triggerType: "keyword",
-          triggerKeywords: "human, support, agent, help desk",
+          triggerKeywords: "human, agent, help desk, live agent",
         },
       },
       {

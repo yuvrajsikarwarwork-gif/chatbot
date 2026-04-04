@@ -1,4 +1,7 @@
+import { resolveTrigger } from "./triggerRouterService";
+import { TriggerOverrideService } from "./triggerOverrideService";
 import { GenericMessage } from "./messageRouter";
+import { patchConversationContext } from "./conversationContextPatchService";
 import {
   setConversationCurrentNode,
   updateConversationRuntimeState,
@@ -92,7 +95,40 @@ export const handleActiveConversationNode = async (
   const outgoingActions: GenericMessage[] = [];
   let isValid = false;
   let matchedHandle = "response";
+
+  const overrideTrigger = await resolveTrigger({
+    text: incomingText,
+    workspaceId: String(resolvedContext.workspaceId || "").trim(),
+    projectId: resolvedContext.projectId || null,
+    botId,
+    conversationStatus: conversation.status,
+    currentNode: conversation.current_node,
+  });
+
+  if (overrideTrigger.type === "OVERRIDE") {
+    const overrideResult = await TriggerOverrideService.execute(overrideTrigger.action, {
+      conversationId: conversation.id,
+    });
+
+    return {
+      actions: [
+        {
+          type: "text",
+          text: overrideResult.message,
+        },
+      ],
+      nextNode: null,
+    };
+  }
+
   const lastNodeType = normalizeRuntimeNodeType(lastNode.type);
+
+  if (lastNodeType === "input") {
+    await patchConversationContext({
+      conversationId: conversation.id,
+      removeKeys: ["trigger_confirmation_pending", "bookmarked_state"],
+    }).catch(() => null);
+  }
 
   if (lastNodeType === "input") {
     const validationType = lastNode.data?.validation || "text";
@@ -140,6 +176,7 @@ export const handleActiveConversationNode = async (
           {
             flowId: String(activeFlowId || "").trim() || null,
             systemFlowType: activeFlowSystemType || null,
+            incomingText,
           }
         );
 

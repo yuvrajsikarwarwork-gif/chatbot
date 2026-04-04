@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, ShieldOff } from "lucide-react";
 import { useRouter } from "next/router";
+
 import { authService } from "../../services/authService";
 import { useAuthStore } from "../../store/authStore";
 import { useVisibility } from "../../hooks/useVisibility";
@@ -30,10 +31,27 @@ export default function ImpersonationBanner() {
   const resolvedAccess = useAuthStore((state) => state.resolvedAccess);
   const memberships = useAuthStore((state) => state.memberships);
   const projectAccesses = useAuthStore((state) => state.projectAccesses);
+  const activeOrganization = useAuthStore((state) => state.activeOrganization);
+  const organizationImpersonation = useAuthStore((state) => state.organizationImpersonation);
   const { supportAccess } = useVisibility();
   const [ending, setEnding] = useState(false);
 
   const banner = useMemo(() => {
+    if (organizationImpersonation?.active && organizationImpersonation.organizationId) {
+      return {
+        mode: "organization" as const,
+        label: "Full Organization Impersonation",
+        name:
+          organizationImpersonation.organizationName ||
+          activeOrganization?.name ||
+          organizationImpersonation.organizationId,
+        expiresAt: formatExpiry(organizationImpersonation.expiresAt),
+        actorName: user?.name || user?.email || "Platform operator",
+        description:
+          "You are viewing the dashboard as this organization. All requests are scoped to the target tenant until you exit.",
+      };
+    }
+
     const supportMode =
       supportAccess &&
       (Boolean(resolvedAccess?.support_access) ||
@@ -43,35 +61,49 @@ export default function ImpersonationBanner() {
     }
 
     return {
-      workspaceName:
+      mode: "workspace" as const,
+      label: "Support Impersonation",
+      name:
         activeWorkspace.workspace_name ||
         (activeWorkspace as unknown as { name?: string })?.name ||
         activeWorkspace.workspace_id,
       expiresAt: formatExpiry(activeWorkspace.permissions_json?.support_expires_at),
       actorName: user?.name || user?.email || "Platform operator",
+      description:
+        "All workspace restrictions are bypassed for this session. You can inspect, edit, archive, or restore the workspace directly.",
     };
-  }, [activeWorkspace, resolvedAccess?.support_access, supportAccess, user?.email, user?.name]);
+  }, [
+    activeOrganization?.name,
+    activeWorkspace,
+    organizationImpersonation,
+    resolvedAccess?.support_access,
+    supportAccess,
+    user?.email,
+    user?.name,
+  ]);
 
   if (!banner) {
     return null;
   }
 
+  const isOrgMode = banner.mode === "organization";
+
   return (
-    <div className="fixed inset-x-0 top-0 z-[90] border-b border-amber-200 bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 px-4 py-3 text-white shadow-[0_18px_40px_rgba(180,83,9,0.28)] backdrop-blur-xl">
+    <div className="sticky inset-x-0 top-0 z-[90] border-b border-amber-200 bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 px-4 py-3 text-white shadow-[0_18px_40px_rgba(180,83,9,0.28)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.28)] bg-[rgba(255,255,255,0.12)]">
-            <ShieldAlert size={18} />
+            {isOrgMode ? <ShieldOff size={18} /> : <ShieldAlert size={18} />}
           </div>
           <div className="min-w-0">
             <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[rgba(255,248,220,0.85)]">
-              Support Impersonation
+              {banner.label}
             </div>
             <div className="truncate text-sm font-semibold text-white">
-              Impersonating {banner.workspaceName} as {banner.actorName}
+              {isOrgMode ? "Viewing" : "Impersonating"} {banner.name} as {banner.actorName}
             </div>
             <div className="mt-1 text-xs leading-5 text-[rgba(255,249,235,0.9)]">
-              All workspace restrictions are bypassed for this session. You can inspect, edit, archive, or restore the workspace directly.
+              {banner.description}
             </div>
           </div>
         </div>
@@ -89,6 +121,30 @@ export default function ImpersonationBanner() {
           onClick={async () => {
             try {
               setEnding(true);
+              if (isOrgMode) {
+                const data = await authService.endOrganizationImpersonation(
+                  organizationImpersonation?.organizationId || activeOrganization?.id || null
+                );
+                useAuthStore.setState((state) => ({
+                  user: data.user || user || state.user,
+                  memberships: Array.isArray(data.memberships) ? data.memberships : memberships,
+                  activeOrganization: null,
+                  activeOrganizationMembership: null,
+                  organizationImpersonation: null,
+                  activeWorkspace: null,
+                  activeProject: null,
+                  projectAccesses: Array.isArray(data.projectAccesses) ? data.projectAccesses : projectAccesses,
+                  resolvedAccess: null,
+                }));
+                notify("Organization impersonation ended.", "success");
+                if (typeof window !== "undefined") {
+                  window.location.assign("/admin/organizations");
+                  return;
+                }
+                router.replace("/admin/organizations").catch(() => undefined);
+                return;
+              }
+
               const data = await authService.endWorkspaceImpersonation({
                 workspaceId: activeWorkspace?.workspace_id || null,
               });
@@ -115,7 +171,7 @@ export default function ImpersonationBanner() {
           }}
           className="rounded-full border border-[rgba(255,255,255,0.26)] bg-[rgba(255,255,255,0.14)] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white transition hover:bg-[rgba(255,255,255,0.22)] disabled:opacity-60"
         >
-          {ending ? "Exiting..." : "Exit Support Mode"}
+          {ending ? "Exiting..." : isOrgMode ? "Exit Org Mode" : "Exit Support Mode"}
         </button>
       </div>
     </div>

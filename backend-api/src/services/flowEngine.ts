@@ -9,7 +9,6 @@ import {
 import { GenericMessage, routeMessage } from "./messageRouter";
 import { normalizePlatform } from "../utils/platform";
 import { applyConversationWorkspacePolicies } from "./conversationAssignmentService";
-import { findConversationSettingsByWorkspace } from "../models/conversationSettingsModel";
 import { upsertContactWithIdentity } from "./contactIdentityService";
 import {
   cancelPendingJobsByConversation,
@@ -17,7 +16,6 @@ import {
 } from "../models/queueJobModel";
 import { findCampaignChannelsByBotAndPlatform } from "../models/campaignModel";
 import { createSupportSurvey } from "../models/supportSurveyModel";
-import { analyzeMessageSentiment } from "./sentimentAnalysisService";
 import { retrieveKnowledgeForWorkspace } from "./ragService";
 import { normalizeWhatsAppPlatformUserId } from "./contactIdentityService";
 import { validateWorkspaceContext } from "./businessValidationService";
@@ -33,22 +31,24 @@ import { fitSectionsToTokenBudget } from "../utils/tokenBudget";
 import { resolveFallbackActions } from "./flowFallbackService";
 import { handleActiveConversationNode } from "./flowInputHandlerService";
 import { handleTriggerConfirmation } from "./flowConfirmationHandlerService";
+import { ErrorHandlerService } from "./errorHandlerService";
+import { RegistryAnalyticsService } from "./registryAnalyticsService";
+import { TriggerOverrideService } from "./triggerOverrideService";
 import {
   activateConversationRuntimeState,
+  updateConversationRuntimeState,
   resetConversationRuntimeState,
   setConversationAgentPendingState,
   setConversationCurrentNode,
-  updateConversationRuntimeState,
 } from "./conversationRuntimeStateService";
+import { executeAiExtractionLogic } from "./aiService";
 import { isLifecycleResetOrEscape, isResetCommand } from "./flowCommandService";
 import { patchConversationContext } from "./conversationContextPatchService";
+import { isTriggerConfirmationExpired, readTriggerConfirmation } from "./flowConfirmationService";
 import {
-  buildTriggerConfirmationState,
-  buildTriggerConfirmationText,
-  buildTriggerConfirmationTarget,
-  readTriggerConfirmation,
-} from "./flowConfirmationService";
-import { resolveUnifiedTriggerMatch } from "./flowTriggerRouterService";
+  handleExpiredTriggerConfirmation,
+} from "./flowConfirmationBookmarkService";
+import { resolveTrigger } from "./triggerRouterService";
 
 const MAX_RETRY_LIMIT = 3;
 const MAX_KNOWLEDGE_LOOKUP_TEXT_TOKENS = 3000;
@@ -593,6 +593,142 @@ const generateAiNodeText = async (data: any, variables: Record<string, any>) => 
   return fullPrompt;
 };
 
+const normalizeIntentHandleLegacy = (value: any) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const generateStructuredIntentLegacy = async (
+  data: any,
+  variables: Record<string, any>,
+  incomingText: string,
+  validHandles: string[],
+  fallbackHandle: string
+) => {
+  const normalizedValidHandles = Array.from(
+    new Set(validHandles.map((handle) => normalizeIntentHandle(handle)).filter(Boolean))
+  );
+  const normalizedFallback = normalizeIntentHandle(fallbackHandle) || "fallback";
+
+  if (!normalizedValidHandles.length) {
+    return normalizedFallback;
+  }
+
+  const branchInstructions = (Array.isArray(data?.intents) ? data.intents : [])
+    .map((intent: any, index: number) => {
+      const handle = normalizeIntentHandle(intent?.handle || intent?.value || `intent_${index + 1}`);
+      if (!handle) {
+        return "";
+      }
+      const label = String(intent?.label || intent?.name || handle).trim();
+      const description = String(intent?.description || intent?.prompt || "").trim();
+      return `- ${handle}${label ? ` (${label})` : ""}${description ? `: ${description}` : ""}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  const classificationPrompt = [
+    "Task: classify the user message into exactly one routing handle.",
+    `Valid handles: ${normalizedValidHandles.join(", ")}`,
+    `Fallback handle: ${normalizedFallback}`,
+    branchInstructions ? `Available branches:\n${branchInstructions}` : "",
+    data?.prompt ? `Classifier guidance: ${String(data.prompt).trim()}` : "",
+    `User message: ${incomingText}`,
+    "Output only the handle value. No explanation. No punctuation.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  try {
+    const rawResult = await generateAiNodeText(
+      {
+        ...data,
+        systemPrompt: "",
+        prompt: classificationPrompt,
+        text: "",
+      },
+      variables
+    );
+    const selectedHandle = normalizeIntentHandle(rawResult);
+    return normalizedValidHandles.includes(selectedHandle) ? selectedHandle : normalizedFallback;
+  } catch (error) {
+    void error;
+    return normalizedFallback;
+  }
+};
+
+const normalizeIntentHandle = (value: any) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const generateStructuredIntent = async (
+  data: any,
+  variables: Record<string, any>,
+  incomingText: string,
+  validHandles: string[],
+  fallbackHandle: string
+) => {
+  const normalizedValidHandles = Array.from(
+    new Set(validHandles.map((handle) => normalizeIntentHandle(handle)).filter(Boolean))
+  );
+  const normalizedFallback = normalizeIntentHandle(fallbackHandle) || "fallback";
+
+  if (!normalizedValidHandles.length) {
+    return normalizedFallback;
+  }
+
+  const branchInstructions = (Array.isArray(data?.intents) ? data.intents : [])
+    .map((intent: any, index: number) => {
+      const handle = normalizeIntentHandle(intent?.handle || intent?.value || `intent_${index + 1}`);
+      if (!handle) {
+        return "";
+      }
+      const label = String(intent?.label || intent?.name || handle).trim();
+      const description = String(intent?.description || intent?.prompt || "").trim();
+      return `- ${handle}${label ? ` (${label})` : ""}${description ? `: ${description}` : ""}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  const classificationPrompt = [
+    "Task: classify the user message into exactly one routing handle.",
+    `Valid handles: ${normalizedValidHandles.join(", ")}`,
+    `Fallback handle: ${normalizedFallback}`,
+    branchInstructions ? `Available branches:\n${branchInstructions}` : "",
+    data?.prompt ? `Classifier guidance: ${String(data.prompt).trim()}` : "",
+    `User message: ${incomingText}`,
+    "Output only the handle value. No explanation. No punctuation.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  try {
+    const rawResult = await generateAiNodeText(
+      {
+        ...data,
+        systemPrompt: classificationPrompt,
+        prompt: "",
+        text: classificationPrompt,
+      },
+      variables
+    );
+    const selectedHandle = normalizeIntentHandle(rawResult);
+    return normalizedValidHandles.includes(selectedHandle) ? selectedHandle : normalizedFallback;
+  } catch (error) {
+    void error;
+    return normalizedFallback;
+  }
+};
+
 const validators: Record<string, (v: string, pattern?: any) => boolean> = {
   text: (v) => v.trim().length > 0,
   email: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
@@ -934,6 +1070,114 @@ const persistConversationVariables = async (
   ]);
 };
 
+const VARIABLE_PROVENANCE_KEY = "_variable_provenance";
+const VARIABLE_PROVENANCE_HISTORY_LIMIT = 10;
+
+type VariableProvenanceContext = {
+  nodeId?: string | null;
+  nodeType?: string | null;
+  method?: string | null;
+  sourceLabel?: string | null;
+  confidence?: number | null;
+};
+
+type VariableProvenanceEntry = {
+  value: any;
+  updatedAt: string;
+  nodeId: string | null;
+  nodeType: string | null;
+  method: string | null;
+  sourceLabel: string | null;
+  confidence: number | null;
+  history: Array<{
+    value: any;
+    updatedAt: string;
+    nodeId: string | null;
+    nodeType: string | null;
+    method: string | null;
+    sourceLabel: string | null;
+    confidence: number | null;
+  }>;
+};
+
+const cloneVariableValue = (value: any) => {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value === "object") {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+};
+
+const getVariableProvenanceStore = (variables: Record<string, any>) => {
+  const store = variables[VARIABLE_PROVENANCE_KEY];
+  if (store && typeof store === "object" && !Array.isArray(store)) {
+    return store as Record<string, VariableProvenanceEntry>;
+  }
+
+  const nextStore: Record<string, VariableProvenanceEntry> = {};
+  variables[VARIABLE_PROVENANCE_KEY] = nextStore;
+  return nextStore;
+};
+
+const recordVariableProvenance = (
+  variables: Record<string, any>,
+  updates: Record<string, any>,
+  context: VariableProvenanceContext
+) => {
+  const store = getVariableProvenanceStore(variables);
+  const updatedAt = new Date().toISOString();
+
+  for (const [key, rawValue] of Object.entries(updates || {})) {
+    if (!key || key.startsWith("_")) {
+      continue;
+    }
+
+    const value = cloneVariableValue(rawValue);
+    const existing = store[key];
+    const currentEntry = {
+      value,
+      updatedAt,
+      nodeId: context.nodeId ?? existing?.nodeId ?? null,
+      nodeType: context.nodeType ?? existing?.nodeType ?? null,
+      method: context.method ?? existing?.method ?? null,
+      sourceLabel: context.sourceLabel ?? existing?.sourceLabel ?? null,
+      confidence: context.confidence ?? existing?.confidence ?? null,
+    };
+    const previousHistory = Array.isArray(existing?.history) ? existing.history.slice(-VARIABLE_PROVENANCE_HISTORY_LIMIT) : [];
+    const nextHistory = existing
+      ? [
+          ...previousHistory,
+          {
+            value: cloneVariableValue(existing.value),
+            updatedAt: existing.updatedAt || updatedAt,
+            nodeId: existing.nodeId ?? null,
+            nodeType: existing.nodeType ?? null,
+            method: existing.method ?? null,
+            sourceLabel: existing.sourceLabel ?? null,
+            confidence: existing.confidence ?? null,
+          },
+        ].slice(-VARIABLE_PROVENANCE_HISTORY_LIMIT)
+      : previousHistory;
+
+    store[key] = {
+      ...currentEntry,
+      history: nextHistory,
+    };
+  }
+};
+
 const getDurationMs = (data: any) => {
   if (data?.delayMs !== undefined && data?.delayMs !== null && data?.delayMs !== "") {
     return Math.max(0, Number(data.delayMs || 0));
@@ -991,6 +1235,8 @@ const AUTO_ADVANCE_WAIT_NODE_TYPES = new Set([
   "msg_media",
   "send_template",
   "ai_generate",
+  "ai_intent",
+  "ai_extract",
   "api",
   "save",
   "action",
@@ -1054,6 +1300,8 @@ const findImplicitEntryNode = (flowJson: any) => {
     "action",
     "save",
     "ai_generate",
+    "ai_intent",
+    "ai_extract",
     "api",
     "knowledge_lookup",
     "business_hours",
@@ -1157,11 +1405,26 @@ const findBotStoredTriggerFlowMatch = async (
   text: string,
   projectId?: string | null
 ) => {
-  if (!(await hasBotStoredTriggerKeywordMatch(botId, text, projectId))) {
+  const normalizedText = String(text || "").trim().toLowerCase();
+  if (!normalizedText) {
     return null;
   }
 
-    const selectedFlow = flows.find((flow) => flow.is_default) || null;
+  const keywords = await getBotTriggerKeywords(botId, projectId);
+  const matchedKeyword = keywords.find((keyword) => keywordMatchesText(keyword, normalizedText));
+  if (!matchedKeyword) {
+    return null;
+  }
+
+  const selectedFlow =
+    flows.find((flow) =>
+      extractDerivedFlowTriggerKeywords(flow.flow_json).some((keyword) =>
+        keywordMatchesText(keyword, normalizedText)
+      )
+    ) ||
+    flows.find((flow) => flow.is_default) ||
+    null;
+
   if (!selectedFlow) {
     return null;
   }
@@ -1170,6 +1433,13 @@ const findBotStoredTriggerFlowMatch = async (
   if (!startNode) {
     return null;
   }
+
+  console.log(
+    "[FLOW DEBUG] Bot trigger keyword matched:",
+    matchedKeyword,
+    "flow:",
+    String(selectedFlow.id || "")
+  );
 
   return {
     flow: selectedFlow,
@@ -1421,51 +1691,6 @@ const extractStartNodeKeywords = (node: any) => {
     .split(",")
     .map((keyword) => keyword.trim().toLowerCase())
     .filter(Boolean);
-};
-
-const findSystemOverrideMatch = (
-  flows: FlowRuntimeRecord[],
-  conversationFlowId: string | null | undefined,
-  text: string
-) => {
-  if (!text) {
-    return null;
-  }
-
-  if (conversationFlowId) {
-    const activeFlow = flows.find((flow) => String(flow.id) === String(conversationFlowId));
-    const activeNodes = Array.isArray(activeFlow?.flow_json?.nodes) ? activeFlow!.flow_json.nodes : [];
-    const endNode = activeNodes.find(
-      (node: any) =>
-        normalizeRuntimeNodeType(node.type) === "end" &&
-        extractNodeKeywords(node).some((keyword) => keywordMatchesText(keyword, text))
-    );
-
-    if (activeFlow && endNode) {
-      return { flow: activeFlow, node: endNode };
-    }
-  }
-
-  for (const flow of flows) {
-    const flowNodes = Array.isArray(flow?.flow_json?.nodes) ? flow.flow_json.nodes : [];
-    const overrideNode = flowNodes.find((node: any) => {
-      const normalizedType = normalizeRuntimeNodeType(node.type);
-      const isKeywordAgentNode =
-        normalizedType === "assign_agent" && extractNodeKeywords(node).length > 0;
-
-      if (!isKeywordAgentNode) {
-        return false;
-      }
-
-      return extractNodeKeywords(node).some((keyword) => keywordMatchesText(keyword, text));
-    });
-
-    if (overrideNode) {
-      return { flow, node: overrideNode };
-    }
-  }
-
-  return null;
 };
 
 const resolveCsatRating = (buttonId: string, text: string) => {
@@ -1855,20 +2080,6 @@ export const botHasInboundTriggerMatch = async (
   return hasBotStoredTriggerKeywordMatch(botId, text, projectId);
 };
 
-const shouldTriggerHumanTakeover = async (conversation: any, incomingText: string) => {
-  if (!conversation?.workspace_id) {
-    return false;
-  }
-
-  const settings = await findConversationSettingsByWorkspace(conversation.workspace_id);
-  if (settings && !settings.allow_agent_takeover) {
-    return false;
-  }
-
-  const sentiment = await analyzeMessageSentiment(incomingText);
-  return sentiment.shouldEscalate;
-};
-
 const handleValidationError = async (
   conversation: any,
   lastNode: any,
@@ -1927,6 +2138,8 @@ export const executeFlowFromNode = async (
   flowMeta?: {
     flowId?: string | null;
     systemFlowType?: string | null;
+    incomingText?: string | null;
+    authType?: "human" | "machine" | "system" | null;
   }
 ): Promise<GenericMessage[]> => {
   const lockKey = `${botId}_${platformUserId}`;
@@ -1940,24 +2153,127 @@ export const executeFlowFromNode = async (
 
   const generatedActions: GenericMessage[] = [];
   const isSystemHandoffFlow = String(flowMeta?.systemFlowType || "").trim().toLowerCase() === "handoff";
+  let currentNode: any = startNode;
+  let activeBotId = botId;
+  let activeNodes = nodes;
+  let activeEdges = edges;
+  let loop = 0;
+  let endedByInputWait = false;
+  let endedByTerminalNode = false;
+  let conversationWorkspaceId: string | null = null;
+  let conversationProjectId: string | null = null;
+  let variables: Record<string, any> = {};
+  let conversationFlowId: string | null = String(flowMeta?.flowId || "").trim() || null;
+  const registryAuthType =
+    String(flowMeta?.authType || "human").trim().toLowerCase() === "machine" ? "machine" : "human";
+  const logRegistryEvent = async (input: Parameters<typeof RegistryAnalyticsService.logEvent>[0]) =>
+    RegistryAnalyticsService.logEvent({
+      ...input,
+      authType: registryAuthType,
+    });
+
+  const normalizeEngineErrorType = (error: any, nodeType: string) => {
+    const explicitType = String(error?.errorType || error?.type || "").trim().toUpperCase();
+    if (explicitType) {
+      return explicitType;
+    }
+
+    if (String(error?.code || "").toUpperCase() === "ETIMEDOUT" || /timeout/i.test(String(error?.message || ""))) {
+      return "TIMEOUT";
+    }
+
+    const status = Number(error?.response?.status || error?.status || 0);
+    if (status === 401) return "UNAUTHORIZED";
+    if (status === 403) return "FORBIDDEN";
+    if (status >= 400 && status < 500) return "VALIDATION_ERROR";
+
+    if (nodeType === "api") return "API_FAILURE";
+    if (nodeType === "knowledge_lookup") return "LOOKUP_FAILURE";
+    if (nodeType === "save") return "SAVE_FAILURE";
+
+    return "ANY";
+  };
+
+  const resolveRegistryErrorFallback = async (
+    error: any,
+    nodeType: string,
+    nodeId: string
+  ) => {
+    if (!conversationWorkspaceId || !conversationFlowId) {
+      return null;
+    }
+
+    const resolution = await ErrorHandlerService.resolve({
+      workspaceId: conversationWorkspaceId,
+      flowId: conversationFlowId,
+      nodeId,
+      errorType: normalizeEngineErrorType(error, nodeType),
+    }).catch((resolveError) => {
+      console.warn("[FlowEngine] Error handler resolution failed:", resolveError);
+      return null;
+    });
+
+    if (!resolution?.targetFlowId) {
+      return null;
+    }
+
+    const eligibleFlows = await loadEligibleFlows(activeBotId, conversationProjectId).catch(() => []);
+    let targetFlow = eligibleFlows.find((flow: FlowRuntimeRecord) => String(flow.id) === String(resolution.targetFlowId)) || null;
+
+    if (!targetFlow) {
+      const targetFlowRes = await query(
+        `SELECT id, flow_json, COALESCE(is_default, false) AS is_default, updated_at, created_at, bot_id
+         FROM flows
+         WHERE id = $1
+           AND COALESCE(is_active, true) = true
+         LIMIT 1`,
+        [resolution.targetFlowId]
+      );
+      const targetFlowRow = targetFlowRes.rows[0];
+      if (targetFlowRow && String(targetFlowRow.bot_id || "").trim() === String(activeBotId || "").trim()) {
+        targetFlow = {
+          ...targetFlowRow,
+          flow_json: normalizeRuntimeFlowJson(targetFlowRow.flow_json),
+        } as FlowRuntimeRecord;
+      }
+    }
+
+    if (!targetFlow) {
+      return null;
+    }
+
+    const targetNodes = Array.isArray(targetFlow.flow_json?.nodes) ? targetFlow.flow_json.nodes : [];
+    const targetEdges = Array.isArray(targetFlow.flow_json?.edges) ? targetFlow.flow_json.edges : [];
+    const targetNode =
+      (resolution.targetNodeId
+        ? targetNodes.find((node: any) => String(node.id) === String(resolution.targetNodeId))
+        : null) ||
+      findTriggerNodeTargetInFlow(targetFlow.flow_json) ||
+      findStartNodeTargetInFlow(targetFlow.flow_json) ||
+      findImplicitEntryNode(targetFlow.flow_json);
+
+    if (!targetNode) {
+      return null;
+    }
+
+    return {
+      flow: targetFlow,
+      node: targetNode,
+      nodes: targetNodes,
+      edges: targetEdges,
+    };
+  };
 
   try {
-    let currentNode = startNode;
-    let activeBotId = botId;
-    let activeNodes = nodes;
-    let activeEdges = edges;
-    let loop = 0;
-    let endedByInputWait = false;
-    let endedByTerminalNode = false;
-
     const conversationRes = await query(
       "SELECT variables, workspace_id, project_id, flow_id, current_node, context_json FROM conversations WHERE id = $1",
       [conversationId]
     );
 
-    let variables = parseVariables(conversationRes.rows[0]?.variables);
-    let conversationWorkspaceId = String(conversationRes.rows[0]?.workspace_id || "").trim() || null;
-    let conversationProjectId = String(conversationRes.rows[0]?.project_id || "").trim() || null;
+    variables = parseVariables(conversationRes.rows[0]?.variables);
+    conversationWorkspaceId = String(conversationRes.rows[0]?.workspace_id || "").trim() || null;
+    conversationProjectId = String(conversationRes.rows[0]?.project_id || "").trim() || null;
+    conversationFlowId = String(conversationRes.rows[0]?.flow_id || conversationFlowId || "").trim() || null;
     const botSystemMessages = await getBotSystemMessages(activeBotId);
     const runSystemFlowMapping = async (eventKey: "handoff" | "conversation_close") => {
       const mappedFlowId = await getBotSystemFlowId(activeBotId, eventKey);
@@ -2162,6 +2478,16 @@ export const executeFlowFromNode = async (
           String(data.saveTo || data.variable || data.outputVariable || "ai_output").trim() || "ai_output";
         if (saveTo) {
           variables[saveTo] = generatedText;
+          recordVariableProvenance(
+            variables,
+            { [saveTo]: generatedText },
+            {
+              nodeId: String(currentNode.id || "").trim() || null,
+              nodeType: currentNodeType,
+              method: "ai_generate",
+              sourceLabel: String(data.label || data.text || currentNodeType || "").trim() || null,
+            }
+          );
           await persistConversationVariables(conversationId, variables);
         }
 
@@ -2170,6 +2496,141 @@ export const executeFlowFromNode = async (
           text: generatedText || replaceVariables(data.text || data.prompt || data.label || "", variables),
         };
         nextHandles = ["next", "response"];
+      } else if (currentNodeType === "ai_intent") {
+        const intents = Array.isArray(data.intents) ? data.intents : [];
+        const validHandles = intents
+          .map((intent: any, index: number) => normalizeIntentHandle(intent?.handle || intent?.value || `intent_${index + 1}`))
+          .filter(Boolean);
+        const fallbackHandle = normalizeIntentHandle(data.fallback || data.fallbackHandle || "fallback") || "fallback";
+        const selectedIntent = await generateStructuredIntent(
+          data,
+          variables,
+          String(flowMeta?.incomingText || "").trim(),
+          validHandles,
+          fallbackHandle
+        );
+        const saveTo = String(data.saveTo || data.variable || data.outputVariable || "detected_intent").trim() || "detected_intent";
+
+        if (saveTo) {
+          variables[saveTo] = selectedIntent;
+          recordVariableProvenance(
+            variables,
+            { [saveTo]: selectedIntent },
+            {
+              nodeId: String(currentNode.id || "").trim() || null,
+              nodeType: currentNodeType,
+              method: "ai_intent",
+              sourceLabel: String(data.label || data.text || currentNodeType || "").trim() || null,
+            }
+          );
+          await persistConversationVariables(conversationId, variables);
+        }
+
+        await logRegistryEvent({
+          workspaceId: String(conversationWorkspaceId || "").trim(),
+          conversationId,
+          eventType: "AI_INTENT_RESULT",
+          flowId: conversationFlowId || null,
+          nodeId: String(currentNode.id || "").trim() || null,
+          metadata: {
+            nodeType: currentNodeType,
+            input: String(flowMeta?.incomingText || "").trim(),
+            selectedHandle: selectedIntent,
+            fallbackHandle,
+            isFallback: selectedIntent === fallbackHandle,
+            intentCount: validHandles.length,
+            prompt: String(data.prompt || "").trim() || null,
+          },
+        });
+
+        nextHandles = [selectedIntent];
+      } else if (currentNodeType === "ai_extract") {
+        const extractionResult = await executeAiExtractionLogic(
+          data,
+          String(flowMeta?.incomingText || "").trim(),
+          variables
+        );
+        const saveConfidenceTo = String(data.saveConfidenceTo || data.confidenceVariable || "").trim();
+
+        if (extractionResult.isComplete) {
+          const provenanceUpdates: Record<string, any> = {};
+          for (const [key, value] of Object.entries(extractionResult.extractedData || {})) {
+            if (value === null || value === undefined || String(value).trim() === "") {
+              continue;
+            }
+            variables[key] = value;
+            provenanceUpdates[key] = value;
+          }
+
+          if (saveConfidenceTo) {
+            variables[saveConfidenceTo] = extractionResult.confidence;
+            provenanceUpdates[saveConfidenceTo] = extractionResult.confidence;
+          }
+
+          if (Object.keys(provenanceUpdates).length > 0) {
+            recordVariableProvenance(
+              variables,
+              provenanceUpdates,
+              {
+                nodeId: String(currentNode.id || "").trim() || null,
+                nodeType: currentNodeType,
+                method: "ai_extract",
+                sourceLabel: String(data.label || data.text || currentNodeType || "").trim() || null,
+                confidence: extractionResult.confidence,
+              }
+            );
+          }
+
+          await persistConversationVariables(conversationId, variables);
+          nextHandles = ["next", "success"];
+        } else {
+          if (saveConfidenceTo) {
+            variables[saveConfidenceTo] = extractionResult.confidence;
+            recordVariableProvenance(
+              variables,
+              { [saveConfidenceTo]: extractionResult.confidence },
+              {
+                nodeId: String(currentNode.id || "").trim() || null,
+                nodeType: currentNodeType,
+                method: "ai_extract",
+                sourceLabel: String(data.label || data.text || currentNodeType || "").trim() || null,
+                confidence: extractionResult.confidence,
+              }
+            );
+            await persistConversationVariables(conversationId, variables);
+          }
+          nextHandles = [String(data.onIncomplete || "incomplete").trim() || "incomplete"];
+        }
+
+        await logRegistryEvent({
+          workspaceId: String(conversationWorkspaceId || "").trim(),
+          conversationId,
+          eventType: "AI_EXTRACT_RESULT",
+          flowId: conversationFlowId || null,
+          nodeId: String(currentNode.id || "").trim() || null,
+          metadata: {
+            nodeType: currentNodeType,
+            input: String(flowMeta?.incomingText || "").trim(),
+            confidence: extractionResult.confidence,
+            minConfidence: Number(data.minConfidence ?? 0.7),
+            isComplete: extractionResult.isComplete,
+            meetsConfidence: extractionResult.meetsConfidence,
+            missingRequired: extractionResult.missingRequired,
+            saveConfidenceTo: saveConfidenceTo || null,
+            reason: extractionResult.isComplete
+              ? "passed"
+              : extractionResult.missingRequired.length > 0
+                ? "missing_data"
+                : "low_confidence",
+          },
+        });
+
+        if (String(data.text || data.label || "").trim()) {
+          payload = {
+            type: "text",
+            text: replaceVariables(String(data.text || data.label || ""), variables),
+          };
+        }
       } else if (currentNodeType === "business_hours") {
         const isOpen = isBusinessHoursOpen(data);
         const routeHandle = isOpen ? "open" : "closed";
@@ -2429,11 +2890,46 @@ export const executeFlowFromNode = async (
           const responseValue = responsePath ? getNestedValue(response.data, responsePath) : response.data;
           if (data.saveTo) {
             variables[data.saveTo] = responseValue;
+            recordVariableProvenance(
+              variables,
+              { [data.saveTo]: responseValue },
+              {
+                nodeId: String(currentNode.id || "").trim() || null,
+                nodeType: currentNodeType,
+                method: "api",
+                sourceLabel: String(data.label || data.text || currentNodeType || "").trim() || null,
+              }
+            );
             await persistConversationVariables(conversationId, variables);
           }
           nextHandles = ["success", "response"];
         } catch (err) {
           console.error("API node error", err);
+          const fallback = await resolveRegistryErrorFallback(err, currentNodeType, String(currentNode.id)).catch(() => null);
+          if (fallback) {
+            await logRegistryEvent({
+              workspaceId: String(conversationWorkspaceId || "").trim(),
+              conversationId,
+              eventType: "ERROR_HANDLED",
+              flowId: conversationFlowId || null,
+              nodeId: String(currentNode.id || "").trim() || null,
+              targetFlowId: String(fallback.flow.id || "").trim() || null,
+              metadata: {
+                error_type: "API_FAILURE",
+                message: String((err as any)?.message || err || "API node error"),
+              },
+            });
+            activeNodes = fallback.nodes;
+            activeEdges = fallback.edges;
+            currentNode = fallback.node;
+            conversationFlowId = String(fallback.flow.id || conversationFlowId || "").trim() || conversationFlowId;
+            await updateConversationRuntimeState({
+              conversationId,
+              currentNodeId: currentNode?.id || null,
+              flowId: conversationFlowId || undefined,
+            });
+            continue;
+          }
           nextHandles = ["fail", "error", "response"];
         }
       } else if (currentNodeType === "knowledge_lookup") {
@@ -2462,14 +2958,59 @@ export const executeFlowFromNode = async (
             });
 
             variables[saveTo] = chunks;
+            recordVariableProvenance(
+              variables,
+              { [saveTo]: chunks },
+              {
+                nodeId: String(currentNode.id || "").trim() || null,
+                nodeType: currentNodeType,
+                method: "knowledge_lookup",
+                sourceLabel: String(data.label || data.text || currentNodeType || "").trim() || null,
+              }
+            );
             if (saveTextTo) {
               variables[saveTextTo] = buildKnowledgeLookupText(chunks);
+              recordVariableProvenance(
+                variables,
+                { [saveTextTo]: variables[saveTextTo] },
+                {
+                  nodeId: String(currentNode.id || "").trim() || null,
+                  nodeType: currentNodeType,
+                  method: "knowledge_lookup",
+                  sourceLabel: String(data.label || data.text || currentNodeType || "").trim() || null,
+                }
+              );
             }
             await persistConversationVariables(conversationId, variables);
             nextHandles = chunks.length > 0 ? ["success", "response"] : ["empty", "no_results", "response"];
           }
         } catch (err) {
           console.error("Knowledge lookup node error", err);
+          const fallback = await resolveRegistryErrorFallback(err, currentNodeType, String(currentNode.id)).catch(() => null);
+          if (fallback) {
+            await logRegistryEvent({
+              workspaceId: String(conversationWorkspaceId || "").trim(),
+              conversationId,
+              eventType: "ERROR_HANDLED",
+              flowId: conversationFlowId || null,
+              nodeId: String(currentNode.id || "").trim() || null,
+              targetFlowId: String(fallback.flow.id || "").trim() || null,
+              metadata: {
+                error_type: "LOOKUP_FAILURE",
+                message: String((err as any)?.message || err || "Knowledge lookup node error"),
+              },
+            });
+            activeNodes = fallback.nodes;
+            activeEdges = fallback.edges;
+            currentNode = fallback.node;
+            conversationFlowId = String(fallback.flow.id || conversationFlowId || "").trim() || conversationFlowId;
+            await updateConversationRuntimeState({
+              conversationId,
+              currentNodeId: currentNode?.id || null,
+              flowId: conversationFlowId || undefined,
+            });
+            continue;
+          }
           nextHandles = ["fail", "error", "response"];
         }
       } else if (currentNodeType === "save") {
@@ -2478,6 +3019,16 @@ export const executeFlowFromNode = async (
             typeof data.value === "string"
               ? replaceVariables(data.value, variables)
               : data.value;
+          recordVariableProvenance(
+            variables,
+            { [data.variable]: variables[data.variable] },
+            {
+              nodeId: String(currentNode.id || "").trim() || null,
+              nodeType: currentNodeType,
+              method: "save",
+              sourceLabel: String(data.label || data.text || currentNodeType || "").trim() || null,
+            }
+          );
         }
 
         await persistConversationVariables(conversationId, variables);
@@ -2552,6 +3103,7 @@ export const executeFlowFromNode = async (
           activeNodes = handoff.nodes;
           activeEdges = handoff.edges;
           currentNode = handoff.targetNode;
+          conversationFlowId = String(handoff.flowId || conversationFlowId || "").trim() || conversationFlowId;
           conversationRes.rows[0] = {
             ...(conversationRes.rows[0] || {}),
             flow_id: handoff.flowId || null,
@@ -2574,7 +3126,7 @@ export const executeFlowFromNode = async (
         await updateConversationRuntimeState({
           conversationId,
           currentNodeId: currentNode?.id || null,
-          flowId: conversationRes.rows[0]?.flow_id || undefined,
+          flowId: conversationFlowId || undefined,
         });
         continue;
       } else if (currentNodeType === "condition") {
@@ -2697,6 +3249,28 @@ export const executeFlowFromNode = async (
     return generatedActions;
   } catch (err: any) {
     console.error("Execute Flow Error:", err.message);
+    const fallback = await resolveRegistryErrorFallback(
+      err,
+      normalizeRuntimeNodeType(currentNode?.type || ""),
+      String(currentNode?.id || "")
+    ).catch(() => null);
+    if (fallback) {
+      const fallbackActions = await executeFlowFromNode(
+        fallback.node,
+        conversationId,
+        activeBotId,
+        platformUserId,
+        fallback.nodes,
+        fallback.edges,
+        normalizedChannel,
+        io,
+        {
+          flowId: String(fallback.flow.id || "").trim() || null,
+          systemFlowType: String(fallback.flow.flow_json?.system_flow_type || "").trim().toLowerCase() || null,
+        }
+      ).catch(() => []);
+      return [...generatedActions, ...fallbackActions];
+    }
     return generatedActions;
   } finally {
     processingLocks.delete(lockKey);
@@ -2720,6 +3294,11 @@ export const processIncomingMessage = async (
         ? normalizeWhatsAppPlatformUserId(platformUserId) || platformUserId
         : platformUserId;
     const text = (incomingText || "").toLowerCase().trim();
+    const logRegistryEvent = async (event: Parameters<typeof RegistryAnalyticsService.logEvent>[0]) =>
+      RegistryAnalyticsService.logEvent({
+        ...event,
+        authType: "human",
+      });
     const resolvedCampaignContext = await resolveCampaignContext(
       botId,
       normalizedChannel,
@@ -2794,20 +3373,25 @@ export const processIncomingMessage = async (
     // 4) Bot-level override / handoff / reset / trigger matching happens after refresh.
     // 5) Fallback is only used when no trigger or active flow can handle the message.
     if (normalizedOptOutText === "STOP" || normalizedOptOutText === "UNSUBSCRIBE") {
-      await query(
-        `UPDATE contacts
-         SET opted_in = false,
-             updated_at = NOW()
-         WHERE id = $1`,
-        [contact.id]
+      const latestConversationForStop = await findLatestConversationForBotContact(
+        botId,
+        contact.id,
+        normalizedChannel,
+        normalizedChannel === "whatsapp" ? null : resolvedContext.projectId || null
       );
+
+      const overrideResult = await TriggerOverrideService.execute("STOP", {
+        conversationId: latestConversationForStop?.id || null,
+        contactId: contact.id,
+        optOutMessage: botSettings.optOutMessage,
+      });
 
       return {
         conversationId: null,
         actions: [
           {
             type: "text",
-            text: botSettings.optOutMessage,
+            text: overrideResult.message,
           },
         ],
       };
@@ -2839,49 +3423,107 @@ export const processIncomingMessage = async (
 
     let campaignMatchedTriggerFlow: any = null;
     let matchedTriggerFlow: any = null;
-    const lockedTriggerMatch =
-      isConversationLocked && !isResetCommandText
-        ? await resolveUnifiedTriggerMatch({
-            campaignId: null,
-            incomingText,
-            text,
-            botId,
-            projectId: resolvedContext.projectId || null,
-            availableFlows,
-            findCampaignHandoffTriggerFlowMatch,
-            findBotStoredTriggerFlowMatch,
-            findBotUniversalRuleMatch,
-          })
-        : null;
+    const registryTrigger = await resolveTrigger({
+      text: incomingText,
+      workspaceId: String(resolvedContext.workspaceId || "").trim(),
+      projectId: resolvedContext.projectId || null,
+      botId,
+      campaignId,
+      conversationStatus: latestConversation?.status || null,
+      currentNode: latestConversation?.current_node || null,
+    });
 
-    // --- UNIFIED TRIGGER SHIELD ---
-    // Only detect NEW triggers if NOT in a node OR typing 'reset'
-    console.log(
-      "[DEBUG] Trigger scan",
-      "current_node:", latestConversation?.current_node,
-      "message:", text
-    );
-    if (!isConversationLocked || isResetCommandText) {
-      const triggerMatch = await resolveUnifiedTriggerMatch({
-        campaignId: isConversationLocked ? null : campaignId,
-        incomingText,
-        text,
-        botId,
-        projectId: resolvedContext.projectId || null,
-        availableFlows,
-        findCampaignHandoffTriggerFlowMatch,
-        findBotStoredTriggerFlowMatch,
-        findBotUniversalRuleMatch,
+    if (registryTrigger.type === "OVERRIDE") {
+      await logRegistryEvent({
+        workspaceId: String(resolvedContext.workspaceId || "").trim(),
+        conversationId: latestConversation?.id || "",
+        eventType: "OVERRIDE_EXECUTED",
+        flowId: latestConversation?.flow_id || null,
+        nodeId: latestConversation?.current_node || null,
+        metadata: {
+          action: registryTrigger.action,
+          source: "trigger_router",
+          input: incomingText,
+        },
       });
 
-      campaignMatchedTriggerFlow = triggerMatch.campaignMatchedTriggerFlow;
-      matchedTriggerFlow = triggerMatch.matchedTriggerFlow;
+      const overrideResult = await TriggerOverrideService.execute(registryTrigger.action, {
+        conversationId: latestConversation?.id || null,
+        contactId: contact.id,
+        optOutMessage: botSettings.optOutMessage,
+        restartMessage: botSettings.fallbackMessage,
+      });
 
-      if (matchedTriggerFlow) {
-        console.log(`[FLOW DEBUG] Trigger Matched: ${(matchedTriggerFlow as any).source || "Standard"}`);
+      return {
+        conversationId: latestConversation?.id || null,
+        actions: [
+          {
+            type: "text",
+            text: overrideResult.message,
+          },
+        ],
+      };
+    }
+
+    if (registryTrigger.type === "FLOW_START") {
+      let registryFlow: FlowRuntimeRecord | null = null;
+      if (registryTrigger.source === "campaign" && campaignId) {
+        registryFlow = await loadCampaignSystemFlowRuntime(campaignId, "handoff");
       }
-    } else {
-      console.log(`[FLOW DEBUG] Shield CLOSED - Skipping trigger execution while active input is locked.`);
+
+      if (!registryFlow && registryTrigger.flowId) {
+        registryFlow =
+          availableFlows.find((flow) => String(flow.id) === String(registryTrigger.flowId)) || null;
+      }
+
+      if (registryFlow) {
+        const flowNodes = Array.isArray(registryFlow.flow_json?.nodes) ? registryFlow.flow_json.nodes : [];
+        const registryNode =
+          (registryTrigger.nodeId
+            ? flowNodes.find((node: any) => String(node.id) === String(registryTrigger.nodeId))
+            : null) ||
+          findTriggerNodeTargetInFlow(registryFlow.flow_json) ||
+          findStartNodeTargetInFlow(registryFlow.flow_json) ||
+          findImplicitEntryNode(registryFlow.flow_json);
+
+        if (registryNode) {
+          matchedTriggerFlow = {
+            flow: registryFlow,
+            node: registryNode,
+            source: registryTrigger.source,
+          };
+
+          await logRegistryEvent({
+            workspaceId: String(resolvedContext.workspaceId || "").trim(),
+            conversationId: latestConversation?.id || "",
+            eventType: "TRIGGER_MATCH",
+            flowId: latestConversation?.flow_id || null,
+            nodeId: latestConversation?.current_node || null,
+            targetFlowId: String(registryTrigger.flowId || "").trim() || null,
+            metadata: {
+              source: registryTrigger.source,
+              keyword: incomingText,
+              nodeId: registryTrigger.nodeId || null,
+            },
+          });
+
+          if (registryTrigger.source === "campaign") {
+            campaignMatchedTriggerFlow = matchedTriggerFlow;
+          }
+
+          console.log(
+            `[FLOW DEBUG] Registry Trigger Matched: ${(matchedTriggerFlow as any).source || "Standard"}`
+          );
+        }
+      }
+    }
+
+    // --- REGISTRY MISS ---
+    if (!matchedTriggerFlow) {
+      console.log(
+        `[FLOW DEBUG] Registry Miss. Path: ${isConversationLocked ? "LOCKED" : "UNLOCKED"}. ` +
+        `Node: ${latestConversation?.current_node || "START"}`
+      );
     }
     const shouldPreferActiveConversation =
       !matchedTriggerFlow &&
@@ -3082,6 +3724,7 @@ export const processIncomingMessage = async (
         {
           flowId: String(campaignMatchedTriggerFlow.flow.id || "").trim() || null,
           systemFlowType: "handoff",
+          incomingText,
         }
       );
 
@@ -3157,9 +3800,23 @@ export const processIncomingMessage = async (
     }
 
     const outgoingActions: GenericMessage[] = [];
-    const conversationContext = parseJsonObject(conversation.context_json);
+    let conversationContext = parseJsonObject(conversation.context_json);
     const resolvedCsatRating = resolveCsatRating(buttonId, text);
-    const confirmationState = readTriggerConfirmation(conversationContext);
+    let confirmationState = readTriggerConfirmation(conversationContext);
+    if (confirmationState && isTriggerConfirmationExpired(confirmationState)) {
+      const expiredConfirmation = await handleExpiredTriggerConfirmation({
+        conversationId: conversation.id,
+        confirmationState,
+        io,
+        notify: false,
+      });
+
+      if (expiredConfirmation.restored && expiredConfirmation.conversation) {
+        conversation = expiredConfirmation.conversation;
+        conversationContext = parseJsonObject(conversation.context_json);
+        confirmationState = null;
+      }
+    }
     const currentFlowForConfirmation =
       latestConversation?.current_node && latestConversation?.campaign_id && latestConversationContext?.active_system_flow
         ? await loadCampaignSystemFlowRuntime(
@@ -3169,12 +3826,6 @@ export const processIncomingMessage = async (
         : latestConversation?.flow_id
           ? availableFlows.find((flow) => String(flow.id) === String(latestConversation.flow_id)) || null
           : null;
-    const currentConversationNodeForConfirmation =
-      latestConversation?.current_node && currentFlowForConfirmation
-        ? (currentFlowForConfirmation.flow_json?.nodes || []).find(
-            (node: any) => String(node.id) === String(latestConversation.current_node)
-          )
-        : null;
     const currentFlowDisplayName = String(
       currentFlowForConfirmation?.flow_json?.flow_name ||
       currentFlowForConfirmation?.flow_json?.name ||
@@ -3239,15 +3890,9 @@ export const processIncomingMessage = async (
       };
     }
 
-    const systemOverrideMatch =
-      conversation.status === "agent_pending" || isConversationLocked
-        ? null
-        : findSystemOverrideMatch(availableFlows, conversation.flow_id || null, text);
-
     if (conversation.status === "closed" || conversation.status === "resolved") {
       const wantsReopen =
         !!matchedTriggerFlow ||
-        !!systemOverrideMatch ||
         isResetCommand(text);
 
       if (!wantsReopen) {
@@ -3300,94 +3945,6 @@ export const processIncomingMessage = async (
       );
     }
 
-    if (isConversationLocked && !isResetCommandText && !confirmationState && lockedTriggerMatch?.matchedTriggerFlow) {
-      const pendingTarget = buildTriggerConfirmationTarget(
-        lockedTriggerMatch.matchedTriggerFlow,
-        campaignId,
-        incomingText
-      );
-
-      const pendingState = buildTriggerConfirmationState({
-        target: pendingTarget,
-        bookmark: buildConversationBookmark(conversation, "trigger_confirmation", {
-          flowName: currentFlowDisplayName,
-          nodeLabel:
-            String(
-              currentConversationNodeForConfirmation?.data?.label ||
-              currentConversationNodeForConfirmation?.data?.text ||
-              currentConversationNodeForConfirmation?.data?.name ||
-              ""
-            ).trim() || null,
-        }),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      await persistConversationBookmark(conversation.id, pendingState.bookmark);
-      await query(
-        `UPDATE conversations
-         SET context_json = COALESCE(context_json, '{}'::jsonb)
-           || jsonb_build_object('trigger_confirmation_pending', $2::jsonb),
-             updated_at = NOW()
-         WHERE id = $1`,
-        [conversation.id, JSON.stringify(pendingState)]
-      );
-
-      return {
-        conversationId: conversation.id,
-        actions: [
-          {
-            type: "text",
-            text: buildTriggerConfirmationText({
-              currentFlowName: currentFlowDisplayName,
-              targetFlowName: pendingTarget.flowName,
-              targetLabel: pendingTarget.nodeLabel,
-            }),
-          },
-        ],
-      };
-    }
-
-    if (systemOverrideMatch) {
-      await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
-      await activateConversationRuntimeState({
-        conversationId: conversation.id,
-        flowId: systemOverrideMatch.flow.id,
-        variables: {},
-        status: "active",
-        retryCount: 0,
-      });
-      await closeSiblingRunnableConversations(
-        conversation.id,
-        botId,
-        contact.id,
-        normalizedChannel,
-        resolvedContext.projectId || null
-      );
-
-      const actions = await executeFlowFromNode(
-        systemOverrideMatch.node,
-        conversation.id,
-        botId,
-        platformUserId,
-        systemOverrideMatch.flow.flow_json?.nodes || [],
-        systemOverrideMatch.flow.flow_json?.edges || [],
-        channel,
-        io,
-        {
-          flowId: String(systemOverrideMatch.flow.id || "").trim() || null,
-          systemFlowType: String(systemOverrideMatch.flow.flow_json?.system_flow_type || "").trim().toLowerCase() || null,
-        }
-      );
-
-      outgoingActions.push(...actions);
-
-      return {
-        conversationId: conversation.id,
-        actions: outgoingActions,
-      };
-    }
-
     if (conversation.status === "agent_pending" && text !== "reset") {
       return {
         conversationId: conversation.id,
@@ -3398,11 +3955,9 @@ export const processIncomingMessage = async (
     if (isResetCommand(text)) {
       const hadCurrentNode = !!conversation.current_node;
       await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
-      await updateConversationRuntimeState({
+      await TriggerOverrideService.execute("RESTART", {
         conversationId: conversation.id,
-        currentNodeId: null,
-        status: "active",
-        retryCount: 0,
+        restartMessage: botSettings.fallbackMessage,
       });
       await closeSiblingRunnableConversations(
         conversation.id,
@@ -3432,11 +3987,12 @@ export const processIncomingMessage = async (
             fallbackFlow.flow_json?.edges || [],
             channel,
             io,
-            {
-              flowId: String(fallbackFlow.id || "").trim() || null,
-              systemFlowType: String(fallbackFlow.flow_json?.system_flow_type || "").trim().toLowerCase() || null,
-            }
-          );
+          {
+            flowId: String(fallbackFlow.id || "").trim() || null,
+            systemFlowType: String(fallbackFlow.flow_json?.system_flow_type || "").trim().toLowerCase() || null,
+            incomingText,
+          }
+        );
 
           return {
             conversationId: conversation.id,
@@ -3465,18 +4021,14 @@ export const processIncomingMessage = async (
       conversation,
       confirmationState,
       currentFlowDisplayName,
-      currentConversationNodeForConfirmation,
       incomingText,
       text,
-      campaignId,
-      lockedTriggerMatch,
+      buttonId,
       availableFlows,
       botId,
       platformUserId,
       channel,
       io,
-      persistConversationBookmark,
-      clearConversationBookmark,
       executeFlowFromNode,
       loadCampaignSystemFlowRuntime,
       findTriggerNodeTargetInFlow,
@@ -3488,46 +4040,6 @@ export const processIncomingMessage = async (
       return {
         conversationId: conversation.id,
         actions: confirmationResult.actions,
-      };
-    }
-
-    if (
-      !isConversationLocked &&
-        text &&
-        conversation.status !== "agent_pending" &&
-        (await shouldTriggerHumanTakeover(conversation, incomingText))
-    ) {
-      await cancelPendingJobsByConversation(conversation.id, FLOW_WAIT_JOB_TYPES);
-      await updateConversationRuntimeState({
-        conversationId: conversation.id,
-        currentNodeId: null,
-        status: "agent_pending",
-        retryCount: 0,
-        touchUpdatedAt: true,
-      });
-
-      if (io) {
-        io.emit("dashboard_update", {
-          conversationId: conversation.id,
-          botId,
-          channel: normalizedChannel,
-          platformUserId,
-          text: incomingText,
-          isBot: false,
-          priorityAlert: true,
-          status: "agent_pending",
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      outgoingActions.push({
-        type: "system",
-        text: "I am connecting you with a human agent for faster help.",
-      });
-
-      return {
-        conversationId: conversation.id,
-        actions: outgoingActions,
       };
     }
 
@@ -3544,13 +4056,32 @@ export const processIncomingMessage = async (
       flowRecord =
         availableFlows.find((flow) => String(flow.id) === String(conversation.flow_id)) || null;
     }
-    const activeFlow = flowRecord;
+    let activeFlow = flowRecord;
     let activeFlowId = activeFlow?.id || null;
     let flowData = activeFlow?.flow_json || { nodes: [], edges: [] };
     let nodes = flowData.nodes || [];
     let edges = flowData.edges || [];
 
     let currentNode = null;
+
+    const resolveNodeInFlow = (flow: FlowRuntimeRecord | null, nodeId: string) => {
+      if (!flow || !nodeId) {
+        return null;
+      }
+
+      const flowNodes = Array.isArray(flow.flow_json?.nodes) ? flow.flow_json.nodes : [];
+      const foundNode = flowNodes.find((node: any) => String(node.id) === String(nodeId));
+      if (!foundNode) {
+        return null;
+      }
+
+      return {
+        flow,
+        node: foundNode,
+        nodes: flowNodes,
+        edges: Array.isArray(flow.flow_json?.edges) ? flow.flow_json.edges : [],
+      };
+    };
 
     if (matchedTriggerFlow) {
       activeFlowId = matchedTriggerFlow.flow.id;
@@ -3583,9 +4114,24 @@ export const processIncomingMessage = async (
     }
 
     if (!currentNode && conversation.current_node) {
-      const lastNode = nodes.find(
-        (node: any) => String(node.id) === String(conversation.current_node)
-      );
+      const currentNodeId = String(conversation.current_node || "").trim();
+      const currentNodeResolution =
+        resolveNodeInFlow(activeFlow, currentNodeId) ||
+        availableFlows
+          .filter((flow) => String(flow.id) !== String(activeFlow?.id || ""))
+          .map((flow) => resolveNodeInFlow(flow, currentNodeId))
+          .find(Boolean);
+
+      if (currentNodeResolution) {
+        activeFlow = currentNodeResolution.flow;
+        activeFlowId = currentNodeResolution.flow.id;
+        flowData = currentNodeResolution.flow.flow_json || { nodes: [], edges: [] };
+        nodes = currentNodeResolution.nodes || [];
+        edges = currentNodeResolution.edges || [];
+        currentNode = currentNodeResolution.node;
+      }
+
+      const lastNode = currentNode;
 
       if (lastNode && isInputNode(normalizeRuntimeNodeType(lastNode.type))) {
         const inputResult = await handleActiveConversationNode({
@@ -3629,6 +4175,23 @@ export const processIncomingMessage = async (
             actions: outgoingActions,
           };
         }
+      }
+
+      if (!currentNode && conversation.current_node) {
+        console.warn(
+          "[FlowEngine] Active node could not be resolved from loaded flows. Skipping trigger/fallback path.",
+          "conversationId:",
+          conversation.id,
+          "current_node:",
+          conversation.current_node,
+          "flow_id:",
+          conversation.flow_id || null
+        );
+
+        return {
+          conversationId: conversation.id,
+          actions: outgoingActions,
+        };
       }
     }
 
@@ -3716,6 +4279,7 @@ export const processIncomingMessage = async (
         {
           flowId: activeFlowId,
           systemFlowType: String(activeFlow?.flow_json?.system_flow_type || "").trim().toLowerCase() || null,
+          incomingText,
         }
       );
 
@@ -3756,8 +4320,22 @@ export const triggerFlowExternally = async (input: {
     entryKey?: string | null;
   } | null;
   io?: any;
+  authType?: "human" | "machine" | "system" | null;
+  authSourceName?: string | null;
 }) => {
   const normalizedChannel = normalizePlatform(input.channel || input.platform || "whatsapp");
+  const registryAuthType =
+    String(input.authType || "human").trim().toLowerCase() === "machine" ? "machine" : "human";
+  const registryAuthSourceName = String(input.authSourceName || "").trim();
+  const logRegistryEvent = async (event: Parameters<typeof RegistryAnalyticsService.logEvent>[0]) =>
+    RegistryAnalyticsService.logEvent({
+      ...event,
+      authType: registryAuthType,
+      metadata: {
+        ...(event.metadata || {}),
+        ...(registryAuthSourceName ? { auth_source_name: registryAuthSourceName } : {}),
+      },
+    });
   const requestedConversationId = String(input.conversationId || "").trim();
   const requestedContactId = String(input.contactId || "").trim();
   const requestedBotId = String(input.botId || "").trim();
@@ -4012,6 +4590,7 @@ export const triggerFlowExternally = async (input: {
     {
       flowId: targetFlow.id,
       systemFlowType: String(targetFlow.flow_json?.system_flow_type || "").trim().toLowerCase() || null,
+      authType: String(input.authType || "human").trim().toLowerCase() === "machine" ? "machine" : "human",
     }
   );
 

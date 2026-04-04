@@ -8,6 +8,42 @@ interface User {
   name: string;
   role: "user" | "admin" | "developer" | "super_admin";
   workspace_id?: string | null;
+  organization_id?: string | null;
+  organization_role?: string | null;
+}
+
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  slug?: string | null;
+  planTier?: string;
+  quotaAiTokens?: number;
+  quotaMessages?: number;
+  isActive?: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  workspaceCount?: number;
+  memberCount?: number;
+}
+
+export interface OrganizationMembershipRecord {
+  organizationId: string;
+  userId: string;
+  role: "owner" | "admin" | "member";
+  createdAt: string | null;
+  updatedAt: string | null;
+  source?: string;
+}
+
+export interface OrganizationImpersonationState {
+  active: boolean;
+  mode: "organization";
+  organizationId: string;
+  organizationName: string;
+  impersonatorId: string;
+  readOnly: boolean;
+  startedAt?: string | null;
+  expiresAt?: string | null;
 }
 
 interface WorkspaceMembership {
@@ -80,6 +116,10 @@ interface AuthState {
   token: string | null;
   memberships: WorkspaceMembership[];
   projectAccesses: ProjectMembership[];
+  organizations: OrganizationSummary[];
+  activeOrganization: OrganizationSummary | null;
+  activeOrganizationMembership: OrganizationMembershipRecord | null;
+  organizationImpersonation: OrganizationImpersonationState | null;
   activeWorkspace: ActiveWorkspace;
   activeProject: ActiveProject | null;
   resolvedAccess: ResolvedAccessSnapshot | null;
@@ -90,7 +130,11 @@ interface AuthState {
     memberships?: WorkspaceMembership[],
     activeWorkspace?: ActiveWorkspace,
     projectAccesses?: ProjectMembership[],
-    resolvedAccess?: ResolvedAccessSnapshot | null
+    resolvedAccess?: ResolvedAccessSnapshot | null,
+    organizations?: OrganizationSummary[],
+    activeOrganization?: OrganizationSummary | null,
+    activeOrganizationMembership?: OrganizationMembershipRecord | null,
+    organizationImpersonation?: OrganizationImpersonationState | null
   ) => void;
   setPermissionSnapshot: (input: {
     user: User | null;
@@ -99,10 +143,20 @@ interface AuthState {
     projectAccesses: ProjectMembership[];
     activeProject?: ActiveProject | null;
     resolvedAccess?: ResolvedAccessSnapshot | null;
+    organizations?: OrganizationSummary[];
+    activeOrganization?: OrganizationSummary | null;
+    activeOrganizationMembership?: OrganizationMembershipRecord | null;
+    organizationImpersonation?: OrganizationImpersonationState | null;
   }) => void;
+  setActiveOrganization: (
+    organization: OrganizationSummary | null,
+    membership?: OrganizationMembershipRecord | null
+  ) => void;
+  setOrganizationImpersonation: (impersonation: OrganizationImpersonationState | null) => void;
   setActiveWorkspace: (workspaceId: string) => void;
   setActiveProject: (project: ActiveProject | null) => void;
   clearSupportContext: () => void;
+  clearOrganizationImpersonation: () => void;
   setHasHydrated: (value: boolean) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
@@ -220,6 +274,10 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       memberships: [],
       projectAccesses: [],
+      organizations: [],
+      activeOrganization: null,
+      activeOrganizationMembership: null,
+      organizationImpersonation: null,
       activeWorkspace: null,
       activeProject: null,
       resolvedAccess: null,
@@ -230,13 +288,21 @@ export const useAuthStore = create<AuthState>()(
         memberships = [],
         activeWorkspace = null,
         projectAccesses = [],
-        resolvedAccess = null
+        resolvedAccess = null,
+        organizations = [],
+        activeOrganization = null,
+        activeOrganizationMembership = null,
+        organizationImpersonation = null
       ) =>
         set({
           user,
           token,
           memberships,
           projectAccesses,
+          organizations,
+          activeOrganization,
+          activeOrganizationMembership,
+          organizationImpersonation,
           activeWorkspace,
           activeProject: null,
           resolvedAccess,
@@ -248,18 +314,50 @@ export const useAuthStore = create<AuthState>()(
         projectAccesses,
         activeProject,
         resolvedAccess,
+        organizations,
+        activeOrganization,
+        activeOrganizationMembership,
+        organizationImpersonation,
       }) =>
         set((state) => ({
           user: user || state.user,
           memberships,
           projectAccesses,
           activeWorkspace,
+          organizations:
+            organizations === undefined ? state.organizations : organizations,
+          activeOrganization:
+            activeOrganization === undefined ? state.activeOrganization : activeOrganization,
+          activeOrganizationMembership:
+            activeOrganizationMembership === undefined
+              ? state.activeOrganizationMembership
+              : activeOrganizationMembership,
+          organizationImpersonation:
+            organizationImpersonation === undefined
+              ? state.organizationImpersonation
+              : organizationImpersonation,
           activeProject:
             activeProject === undefined
               ? state.activeProject
               : activeProject,
           resolvedAccess: resolvedAccess || null,
         })),
+      setActiveOrganization: (organization, membership = null) =>
+        set((state) => ({
+          activeOrganization: organization,
+          activeOrganizationMembership: membership,
+          activeWorkspace: null,
+          activeProject: null,
+          resolvedAccess: null,
+          organizations:
+            organization && !state.organizations.some((item) => item.id === organization.id)
+            ? [organization, ...state.organizations]
+            : state.organizations,
+        })),
+      setOrganizationImpersonation: (impersonation) =>
+        set({
+          organizationImpersonation: impersonation,
+        }),
       setActiveWorkspace: (workspaceId) =>
         set((state) => ({
           activeWorkspace:
@@ -275,6 +373,10 @@ export const useAuthStore = create<AuthState>()(
           activeProject: null,
           resolvedAccess: null,
         }),
+      clearOrganizationImpersonation: () =>
+        set({
+          organizationImpersonation: null,
+        }),
       setHasHydrated: (value) => set({ hasHydrated: value }),
       clearAuth: () =>
         set(() => {
@@ -289,6 +391,7 @@ export const useAuthStore = create<AuthState>()(
             projectAccesses: [],
             activeWorkspace: null,
             activeProject: null,
+            organizationImpersonation: null,
             resolvedAccess: null,
             hasHydrated: true,
           };

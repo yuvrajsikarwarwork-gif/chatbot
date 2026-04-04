@@ -75,7 +75,8 @@ export async function me(
     }
 
     const user = await getUserService(
-      req.user.id
+      req.user.id,
+      req.activeOrganizationId || req.user?.organization_id || null
     );
 
     res.json(user);

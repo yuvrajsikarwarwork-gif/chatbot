@@ -21,6 +21,7 @@ import {
 import { listPublicPlansCtrl } from "../controllers/planController";
 
 import { authMiddleware } from "../middleware/authMiddleware";
+import { resolveOrganizationContext } from "../middleware/organizationContextMiddleware";
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.post("/verify-password-reset-otp", verifyPasswordResetOtp);
 router.post("/reset-password", resetPassword);
 router.get("/workspace-export", downloadWorkspaceExport);
 
-router.get("/me", authMiddleware, me);
+router.get("/me", authMiddleware, resolveOrganizationContext, me);
 router.post("/logout", authMiddleware, logout);
 router.post("/support-session", authMiddleware, createSupportWorkspaceSession);
 router.delete("/support-session", authMiddleware, endSupportWorkspaceSession);

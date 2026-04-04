@@ -1,5 +1,8 @@
 type JsonRecord = Record<string, any>;
 
+export const TRIGGER_CONFIRMATION_TIMEOUT_MS =
+  Number(process.env.FLOW_CONFIRMATION_TIMEOUT_MINUTES || 10) * 60 * 1000;
+
 export type TriggerSource = "campaign" | "bot" | "universal";
 
 export interface TriggerBookmark {
@@ -28,6 +31,7 @@ export interface TriggerConfirmationState {
   bookmark: TriggerBookmark;
   createdAt?: string | null | undefined;
   updatedAt?: string | null | undefined;
+  expiresAt?: string | null | undefined;
 }
 
 const CONFIRMATION_KEY = "trigger_confirmation_pending";
@@ -107,6 +111,7 @@ export const readTriggerConfirmation = (contextJson: any): TriggerConfirmationSt
     },
     createdAt: String(pending.createdAt || pending.created_at || "").trim() || null,
     updatedAt: String(pending.updatedAt || pending.updated_at || "").trim() || null,
+    expiresAt: String(pending.expiresAt || pending.expires_at || "").trim() || null,
   };
 };
 
@@ -115,14 +120,24 @@ export const buildTriggerConfirmationState = (input: {
   bookmark: TriggerBookmark;
   createdAt?: string | null | undefined;
   updatedAt?: string | null | undefined;
+  expiresAt?: string | null | undefined;
 }): TriggerConfirmationState => ({
   target: input.target,
   bookmark: input.bookmark,
   createdAt: input.createdAt || null,
   updatedAt: input.updatedAt || null,
+  expiresAt: input.expiresAt || null,
 });
 
-export const parseTriggerConfirmationDecision = (text: string) => {
+export const parseTriggerConfirmationDecision = (
+  text: string,
+  buttonId?: string | null | undefined
+) => {
+  const normalizedButtonId = normalizeText(buttonId);
+  if (["yes", "no"].includes(normalizedButtonId)) {
+    return normalizedButtonId as "yes" | "no";
+  }
+
   const normalized = normalizeText(text);
   if (!normalized) {
     return "unknown" as const;
@@ -150,7 +165,7 @@ export const buildTriggerConfirmationPrompt = (input: {
   return [
     `You are currently in ${currentName}.`,
     `Switch to ${targetName}?`,
-    "Reply YES to switch or NO to stay where you are.",
+    "Use the buttons below to choose Yes or No.",
   ].join(" ");
 };
 
@@ -159,3 +174,40 @@ export const buildTriggerConfirmationText = (input: {
   targetFlowName?: string | null | undefined;
   targetLabel?: string | null | undefined;
 }) => buildTriggerConfirmationPrompt(input);
+
+export const buildTriggerConfirmationButtonsMessage = (input: {
+  currentFlowName?: string | null | undefined;
+  targetFlowName?: string | null | undefined;
+  targetLabel?: string | null | undefined;
+}) => ({
+  type: "interactive" as const,
+  text: buildTriggerConfirmationPrompt(input),
+  buttons: [
+    { id: "yes", title: "Yes" },
+    { id: "no", title: "No" },
+  ],
+});
+
+export const isTriggerConfirmationExpired = (
+  state: TriggerConfirmationState | null,
+  nowMs = Date.now()
+) => {
+  if (!state) {
+    return false;
+  }
+
+  const explicitExpiry = Date.parse(String(state.expiresAt || ""));
+  if (Number.isFinite(explicitExpiry)) {
+    return explicitExpiry <= nowMs;
+  }
+
+  const createdAtMs = Date.parse(String(state.createdAt || ""));
+  if (!Number.isFinite(createdAtMs)) {
+    return false;
+  }
+
+  return createdAtMs + TRIGGER_CONFIRMATION_TIMEOUT_MS <= nowMs;
+};
+
+export const buildTriggerConfirmationExpiryAt = (createdAt = new Date().toISOString()) =>
+  new Date(Date.parse(createdAt) + TRIGGER_CONFIRMATION_TIMEOUT_MS).toISOString();

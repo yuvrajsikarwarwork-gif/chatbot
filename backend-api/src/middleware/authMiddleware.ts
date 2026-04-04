@@ -17,10 +17,20 @@ export interface JwtPayload {
   id?: string;
   user_id?: string;
   role?: string;
+  organization_id?: string | null;
+  organization_role?: string | null;
+  impersonator_id?: string | null;
+  impersonated_organization_id?: string | null;
+  impersonation_mode?: string | null;
 }
 
 export interface AuthRequest extends Request {
   user?: JwtPayload;
+  activeOrganizationId?: string | null;
+  activeOrganization?: any | null;
+  activeOrganizationMembership?: any | null;
+  organizationMembership?: any | null;
+  organizations?: any[];
 }
 
 export const authMiddleware: RequestHandler = (req, res, next) => {

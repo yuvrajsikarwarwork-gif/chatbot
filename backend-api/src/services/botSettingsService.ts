@@ -284,7 +284,7 @@ export async function findBotUniversalRuleMatch(
   text: string
 ): Promise<{ flowId: string | null; keywords: string[] } | null> {
   const settings = await getBotGlobalSettings(botId);
-  const normalizedText = String(text || "").toLowerCase();
+  const normalizedText = String(text || "").trim().toLowerCase();
   if (!normalizedText) {
     return null;
   }
@@ -295,7 +295,7 @@ export async function findBotUniversalRuleMatch(
     }
 
     const matched = rule.keywords.some((keyword) =>
-      normalizedText.includes(String(keyword).toLowerCase())
+      normalizedText === String(keyword).trim().toLowerCase()
     );
     if (matched) {
       return {

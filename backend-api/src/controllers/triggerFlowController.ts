@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 
 import { env } from "../config/env";
+import { query } from "../config/db";
 import {
   buildFlowTriggerFingerprint,
   completeFlowTriggerReceipt,
@@ -10,6 +11,8 @@ import {
   findRecentFlowTriggerReceiptByFingerprint,
 } from "../models/flowTriggerReceiptModel";
 import { triggerFlowExternally } from "../services/flowEngine";
+import { validateApiKeyForBotService } from "../services/apiKeyService";
+import { MachineAuthRequest } from "../middleware/machineAuthMiddleware";
 
 function hasInternalTriggerAccess(req: Request) {
   const headerSecret = String(req.headers["x-engine-secret"] || req.headers["x-trigger-secret"] || "").trim();
@@ -23,9 +26,33 @@ function hasInternalTriggerAccess(req: Request) {
   return headerSecret === expectedSecret || bodySecret === expectedSecret;
 }
 
+async function resolveTriggerBotId(triggerPayload: { botId?: string; conversationId?: string }) {
+  if (triggerPayload.botId) {
+    return triggerPayload.botId;
+  }
+
+  if (!triggerPayload.conversationId) {
+    return "";
+  }
+
+  const res = await query(
+    `SELECT bot_id
+     FROM conversations
+     WHERE id = $1
+     LIMIT 1`,
+    [triggerPayload.conversationId]
+  ).catch(() => ({ rows: [] as any[] }));
+
+  return String(res.rows[0]?.bot_id || "").trim();
+}
+
 export async function triggerFlowCtrl(req: Request, res: Response, next: NextFunction) {
   try {
-    if (!hasInternalTriggerAccess(req)) {
+    const authReq = req as MachineAuthRequest;
+    const hasMachineApiKey = authReq.machineAuth?.type === "api_key" && authReq.machineAuth.apiKey;
+    const hasInternalSecret = authReq.machineAuth?.type === "internal_secret" || hasInternalTriggerAccess(req);
+
+    if (!hasMachineApiKey && !hasInternalSecret) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -49,6 +76,22 @@ export async function triggerFlowCtrl(req: Request, res: Response, next: NextFun
         req.body?.context && typeof req.body.context === "object" ? req.body.context : undefined,
       io: req.app.get("io"),
     };
+    let machineApiKeyName: string | null = null;
+
+    if (hasMachineApiKey) {
+      const resolvedBotId = await resolveTriggerBotId({
+        botId: triggerPayload.botId,
+        conversationId: triggerPayload.conversationId,
+      });
+      const validation = await validateApiKeyForBotService(
+        String(req.headers["x-api-key"] || "").trim(),
+        resolvedBotId
+      );
+      if (!validation) {
+        return res.status(403).json({ error: "API key is not authorized for this bot" });
+      }
+      machineApiKeyName = validation.apiKey?.name || null;
+    }
 
     const explicitIdempotencyKey =
       typeof req.body?.idempotencyKey === "string"
@@ -136,7 +179,11 @@ export async function triggerFlowCtrl(req: Request, res: Response, next: NextFun
     }
 
     try {
-      const result = await triggerFlowExternally(triggerPayload);
+      const result = await triggerFlowExternally({
+        ...triggerPayload,
+        authType: hasMachineApiKey ? "machine" : "human",
+        authSourceName: machineApiKeyName,
+      });
 
       await completeFlowTriggerReceipt({
         id: receipt.id,

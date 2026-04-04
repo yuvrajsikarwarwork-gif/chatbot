@@ -34,12 +34,12 @@ export default function ConversationList({ list, activeId, onSelect, loading = f
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-border-main bg-surface shadow-sm">
-      <div className="flex items-center justify-between border-b border-border-main bg-canvas px-4 pb-3 pt-4">
+    <div className="flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border-main bg-bg-card shadow-sm">
+      <div className="flex items-center justify-between border-b border-border-main bg-bg-muted px-4 pb-3 pt-4">
         <h2 className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
           Live Threads
         </h2>
-        <div className="rounded-full bg-primary px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-sm">
+        <div className="rounded-xs border border-primary bg-primary-soft px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-primary">
           {queuedCount} queue
         </div>
       </div>
@@ -70,13 +70,13 @@ export default function ConversationList({ list, activeId, onSelect, loading = f
             <button
                 key={convo.id}
                 onClick={() => onSelect(convo)}
-                className={`flex w-full items-start gap-3 rounded-[1.25rem] border px-4 py-4 text-left transition-all shadow-sm ${
-                  activeId === convo.id
-                    ? "border-primary/20 bg-primary-fade"
-                    : "border-transparent bg-canvas hover:border-border-main hover:bg-surface"
+            className={`flex w-full items-start gap-3 border-l-4 px-4 py-4 text-left transition-all ${
+              activeId === convo.id
+                    ? "border-l-primary bg-primary-fade"
+                    : "border-l-transparent bg-bg-card hover:bg-bg-muted"
                 }`}
               >
-              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-surface text-text-main">
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border-main bg-bg-card text-text-main">
                 <User size={18} />
                 {hasUnreadSignal ? (
                   <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-surface bg-primary" />
@@ -93,7 +93,7 @@ export default function ConversationList({ list, activeId, onSelect, loading = f
                     </div>
                   </div>
                   {convo.assigned_to_name ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary-fade px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-primary/20 bg-primary-fade px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
                       <User size={10} />
                       {convo.assigned_to_name}
                     </span>
@@ -101,18 +101,18 @@ export default function ConversationList({ list, activeId, onSelect, loading = f
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em]">
                   {(convo.agent_pending || convo.inbox_status === "pending") ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-rose-700">
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-700">
                       <User size={10} />
                       Pending
                     </span>
                   ) : convo.inbox_status && String(convo.inbox_status).toLowerCase() !== "bot" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-canvas px-2.5 py-1 text-text-muted">
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-border-main bg-bg-muted px-2.5 py-1 text-text-muted">
                       <Bot size={10} />
                       {formatStatusLabel(String(convo.inbox_status))}
                     </span>
                   ) : null}
                   {isWaitingForReply ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-canvas px-2.5 py-1 text-text-muted">
+                    <span className="inline-flex items-center gap-1 rounded-xs border border-border-main bg-bg-muted px-2.5 py-1 text-text-muted">
                       <span className="h-1.5 w-1.5 rounded-full bg-current" />
                       Waiting
                     </span>
@@ -125,7 +125,7 @@ export default function ConversationList({ list, activeId, onSelect, loading = f
                   ) : null}
                   {csatLabel ? (
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${
+                      className={`inline-flex items-center gap-1 rounded-xs border px-2.5 py-1 ${
                         csatRating === "csat_bad"
                           ? "bg-rose-100 text-rose-700"
                           : csatRating === "csat_good"
@@ -147,7 +147,7 @@ export default function ConversationList({ list, activeId, onSelect, loading = f
         })}
         </div>
         {loading ? (
-          <div className="p-8 text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+        <div className="p-8 text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
             Loading inbox
           </div>
         ) : safeList.length === 0 ? (

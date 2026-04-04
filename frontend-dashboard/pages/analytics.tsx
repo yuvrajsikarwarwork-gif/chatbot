@@ -2,13 +2,56 @@ import { type ComponentType, useEffect, useState } from "react";
 import { Activity, BarChart3, Layers3, Radar, TrendingUp } from "lucide-react";
 
 import PageAccessNotice from "../components/access/PageAccessNotice";
+import OptimizationImpactChart from "../components/analytics/OptimizationImpactChart";
+import RegistryAnalyticsDashboard from "../components/analytics/RegistryAnalyticsDashboard";
 import DashboardLayout from "../components/layout/DashboardLayout";
 import { useVisibility } from "../hooks/useVisibility";
 import { analyticsService } from "../services/analyticsService";
 import { conversationService, type AssignmentCapacityResponse } from "../services/conversationService";
 import { useAuthStore } from "../store/authStore";
 
+type AnalyticsTimeRange = "24h" | "7d" | "30d";
+
 type StatTone = "slate" | "emerald" | "cyan" | "amber" | "violet" | "rose";
+
+const ANALYTICS_TIME_RANGE_HOURS: Record<AnalyticsTimeRange, number> = {
+  "24h": 24,
+  "7d": 24 * 7,
+  "30d": 24 * 30,
+};
+
+function TimeRangeSelector({
+  value,
+  onChange,
+}: {
+  value: AnalyticsTimeRange;
+  onChange: (value: AnalyticsTimeRange) => void;
+}) {
+  const options: Array<{ value: AnalyticsTimeRange; label: string }> = [
+    { value: "24h", label: "Last 24h" },
+    { value: "7d", label: "Last 7d" },
+    { value: "30d", label: "Last 30d" },
+  ];
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
+            value === option.value
+              ? "border-primary bg-primary text-white"
+              : "border-border-main bg-canvas text-text-muted hover:text-text-main"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function StatCard({
   label,
@@ -86,12 +129,16 @@ export default function AnalyticsPage() {
   const activeWorkspace = useAuthStore((state) => state.activeWorkspace);
   const activeProject = useAuthStore((state) => state.activeProject);
   const { canViewPage } = useVisibility();
+  const [timeRange, setTimeRange] = useState<AnalyticsTimeRange>("24h");
   const [overview, setOverview] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [usageSummary, setUsageSummary] = useState<any>(null);
   const [assignmentCapacity, setAssignmentCapacity] = useState<AssignmentCapacityResponse | null>(null);
   const [presence, setPresence] = useState<any[]>([]);
+  const [optimizationPerformance, setOptimizationPerformance] = useState<any[]>([]);
   const canViewAnalyticsPage = canViewPage("analytics");
+  const timeRangeHours = ANALYTICS_TIME_RANGE_HOURS[timeRange];
+  const performanceDays = timeRange === "24h" ? 1 : timeRange === "7d" ? 7 : 30;
 
   useEffect(() => {
     if (!canViewAnalyticsPage) {
@@ -100,6 +147,7 @@ export default function AnalyticsPage() {
       setUsageSummary(null);
       setAssignmentCapacity(null);
       setPresence([]);
+      setOptimizationPerformance([]);
       return;
     }
 
@@ -110,20 +158,25 @@ export default function AnalyticsPage() {
       setEvents([]);
       setAssignmentCapacity(null);
       setPresence([]);
+      setOptimizationPerformance([]);
       return;
     }
 
     analyticsService
-      .getWorkspaceStats(activeWorkspace.workspace_id, activeProject?.id)
+      .getWorkspaceStats(activeWorkspace.workspace_id, activeProject?.id, timeRangeHours)
       .then(setOverview)
       .catch(console.error);
     analyticsService
-      .getWorkspaceEvents(activeWorkspace.workspace_id, activeProject?.id)
+      .getWorkspaceEvents(activeWorkspace.workspace_id, activeProject?.id, timeRangeHours)
       .then(setEvents)
       .catch(console.error);
     analyticsService
       .getWorkspacePresence(activeWorkspace.workspace_id, activeProject?.id)
       .then(setPresence)
+      .catch(console.error);
+    analyticsService
+      .getWorkspaceOptimizationPerformance(activeWorkspace.workspace_id, performanceDays)
+      .then(setOptimizationPerformance)
       .catch(console.error);
     conversationService
       .getAssignmentCapacity({
@@ -132,7 +185,7 @@ export default function AnalyticsPage() {
       })
       .then(setAssignmentCapacity)
       .catch(console.error);
-  }, [activeWorkspace?.workspace_id, activeProject?.id, canViewAnalyticsPage]);
+  }, [activeWorkspace?.workspace_id, activeProject?.id, canViewAnalyticsPage, timeRangeHours, performanceDays]);
 
   const stats = overview?.stats || {
     totalEvents: 0,
@@ -178,11 +231,30 @@ export default function AnalyticsPage() {
                   Usage, runtime activity, and subscription state in one clean workspace view.
                 </p>
               </div>
-              <div className="rounded-2xl border border-border-main bg-canvas p-3 text-primary">
-                <Radar size={22} />
+              <div className="flex flex-col items-end gap-3">
+                <div className="rounded-2xl border border-border-main bg-canvas p-3 text-primary">
+                  <Radar size={22} />
+                </div>
+                <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
               </div>
             </div>
           </section>
+
+          <div className="rounded-[1.25rem] border border-border-main bg-canvas/70 px-4 py-3 text-xs text-text-muted">
+            Showing analytics for the last{" "}
+            {timeRange === "24h" ? "24 hours" : timeRange === "7d" ? "7 days" : "30 days"}.
+          </div>
+
+          <OptimizationImpactChart
+            data={optimizationPerformance}
+            title="Optimizer impact over time"
+          />
+
+          <RegistryAnalyticsDashboard
+            workspaceId={activeWorkspace?.workspace_id || null}
+            scopeLabel={activeWorkspace?.workspace_name || null}
+            timeRange={timeRange}
+          />
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard

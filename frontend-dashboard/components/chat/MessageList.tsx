@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef } from "react";
+import React from "react";
 
 interface MessageListProps {
   messages: any[];
@@ -113,7 +113,7 @@ function renderDeliveryTrace(message: any) {
   );
 
   return (
-    <div className="mt-2 rounded-xl border border-current/10 bg-current/5 px-3 py-2 text-[10px] font-medium uppercase tracking-[0.14em] opacity-80">
+    <div className="mt-3 rounded-sm border border-border-main bg-bg-card px-3 py-2 text-[10px] font-medium uppercase tracking-[0.14em] text-text-muted">
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         {trace.deliveryStatus ? <span>Status: {trace.deliveryStatus}</span> : null}
         {trace.providerMessageId ? (
@@ -129,7 +129,7 @@ function renderDeliveryTrace(message: any) {
         </div>
       ) : null}
       {trace.deliveryError ? (
-        <div className="mt-1 break-words normal-case tracking-normal opacity-90">
+        <div className="mt-1 break-words normal-case tracking-normal text-text-main">
           {trace.deliveryError}
         </div>
       ) : null}
@@ -161,20 +161,20 @@ function renderMessageContent(msg: any) {
   if (messageType === "template" && payload.templateContent) {
     const tpl = safeParse(payload.templateContent);
     return (
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         {tpl.header?.text ? (
-          <div className="mb-1 border-b border-current/20 pb-1 text-[13px] font-bold">
+          <div className="border-b border-border-main pb-2 text-[13px] font-semibold text-text-main">
             {tpl.header.text}
           </div>
         ) : null}
-        <div className="whitespace-pre-wrap">{tpl.body || text}</div>
-        {tpl.footer ? <div className="mt-1 text-[11px] opacity-70">{tpl.footer}</div> : null}
+        <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">{tpl.body || text}</div>
+        {tpl.footer ? <div className="text-[11px] text-text-muted">{tpl.footer}</div> : null}
         {tpl.buttons && tpl.buttons.length > 0 ? (
           <div className="mt-2 flex flex-col gap-1">
             {tpl.buttons.map((button: any, index: number) => (
               <div
                 key={index}
-                className="rounded bg-current/10 px-3 py-1.5 text-center text-xs font-semibold"
+                className="rounded-xs border border-border-main bg-bg-muted px-3 py-2 text-center text-xs font-semibold text-text-main"
               >
                 {button.title || button.text || "Action"}
               </div>
@@ -190,13 +190,13 @@ function renderMessageContent(msg: any) {
     payload.buttons
   ) {
     return (
-      <div className="flex flex-col gap-1">
-        <div className="whitespace-pre-wrap">{text}</div>
+      <div className="flex flex-col gap-2">
+        <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">{text}</div>
         <div className="mt-2 flex flex-col gap-1">
           {payload.buttons.map((button: any, index: number) => (
             <div
               key={index}
-              className="rounded bg-current/10 px-3 py-1.5 text-center text-xs font-semibold"
+              className="rounded-xs border border-border-main bg-bg-muted px-3 py-2 text-center text-xs font-semibold text-text-main"
             >
               {button.title || button.text || "Option"}
             </div>
@@ -213,9 +213,9 @@ function renderMessageContent(msg: any) {
           <img
             src={mediaUrl}
             alt={text || "Message attachment"}
-            className="max-h-72 rounded-xl object-cover"
+            className="max-h-72 rounded-sm border border-border-main object-cover"
           />
-          {text ? <div className="whitespace-pre-wrap">{text}</div> : null}
+          {text ? <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">{text}</div> : null}
         </div>
       );
     }
@@ -223,10 +223,10 @@ function renderMessageContent(msg: any) {
     if (messageType === "video") {
       return (
         <div className="flex flex-col gap-2">
-          <video controls className="max-h-72 rounded-xl">
+          <video controls className="max-h-72 rounded-sm border border-border-main">
             <source src={mediaUrl} />
           </video>
-          {text ? <div className="whitespace-pre-wrap">{text}</div> : null}
+          {text ? <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">{text}</div> : null}
         </div>
       );
     }
@@ -237,7 +237,7 @@ function renderMessageContent(msg: any) {
           <audio controls className="max-w-full">
             <source src={mediaUrl} />
           </audio>
-          {text ? <div className="whitespace-pre-wrap">{text}</div> : null}
+          {text ? <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">{text}</div> : null}
         </div>
       );
     }
@@ -249,36 +249,20 @@ function renderMessageContent(msg: any) {
             href={mediaUrl}
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg bg-current/10 px-3 py-2 text-xs font-semibold underline-offset-2 hover:underline"
+            className="rounded-xs border border-border-main bg-bg-muted px-3 py-2 text-xs font-semibold text-text-main underline-offset-2 hover:underline"
           >
             Open attachment
           </a>
-          {text ? <div className="whitespace-pre-wrap">{text}</div> : null}
+          {text ? <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">{text}</div> : null}
         </div>
       );
     }
   }
 
-  return <div className="whitespace-pre-wrap">{text || "[Unsupported Format]"}</div>;
+  return <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">{text || "[Unsupported Format]"}</div>;
 }
 
 export default function MessageList({ messages }: MessageListProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const hasInitializedRef = useRef(false);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior: hasInitializedRef.current ? "smooth" : "auto",
-    });
-    hasInitializedRef.current = true;
-  }, [messages]);
-
   if (!messages || messages.length === 0) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center text-sm font-bold text-text-muted">
@@ -288,11 +272,8 @@ export default function MessageList({ messages }: MessageListProps) {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 flex flex-col gap-4 overflow-y-auto p-5 custom-scrollbar md:p-6"
-    >
-      <div className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.22em] text-text-muted">
+    <div className="flex flex-col gap-3">
+      <div className="mb-1 text-center text-[10px] font-black uppercase tracking-[0.22em] text-text-muted">
         Conversation Started
       </div>
 
@@ -315,35 +296,35 @@ export default function MessageList({ messages }: MessageListProps) {
             safeParse(message.content).type ||
             "text"
         ).toLowerCase();
+        const nodeId =
+          String(
+            message.node_id ||
+              message.nodeId ||
+              message.source_node_id ||
+              safeParse(message.content)?.nodeId ||
+              ""
+          ).trim() || null;
 
         return (
-          <div
-            key={message.id || index}
-            className={`flex w-full ${isSystem ? "justify-end" : "justify-start"}`}
-          >
-            <div className="flex max-w-[min(78%,42rem)] min-w-0 flex-col">
-              <div
-                className={`rounded-2xl p-3 text-sm shadow-sm ${
-                  isAgent
-                    ? "rounded-br-none bg-primary text-white"
-                    : isBot
-                      ? "rounded-br-none bg-primary text-white"
-                      : "rounded-bl-none border border-border-main bg-surface text-text-main"
-                }`}
-              >
-                {renderMessageContent(message)}
-                {isSystem ? renderDeliveryTrace(message) : null}
-              </div>
-              <div
-                className={`mt-1 flex flex-wrap gap-x-2 gap-y-1 break-all text-[9px] font-bold uppercase tracking-[0.22em] opacity-70 ${
-                  isSystem ? "justify-end text-text-muted" : "justify-start text-text-muted"
-                }`}
-              >
+          <div key={message.id || index} className="flex w-full justify-start">
+            <div
+              className={`w-full max-w-[min(84%,56rem)] rounded-sm border px-4 py-3 shadow-sm ${
+                isAgent
+                  ? "border-primary/20 bg-primary-fade text-text-main"
+                  : isBot
+                    ? "border-border-main bg-bg-card text-text-main"
+                    : "border-border-main bg-bg-card text-text-main"
+              }`}
+            >
+              <div className="mb-3 flex flex-wrap gap-x-2 gap-y-1 border-b border-border-main pb-2 text-[10px] font-black uppercase tracking-[0.22em] text-text-muted">
                 <span>{sender}</span>
+                {nodeId ? <span>{nodeId}</span> : null}
                 {typeLabel && typeLabel !== "text" ? <span>{typeLabel}</span> : null}
                 {deliveryStatus ? <span>{deliveryStatus}</span> : null}
                 {timestamp ? <span>{timestamp}</span> : null}
               </div>
+              <div className="text-sm leading-6">{renderMessageContent(message)}</div>
+              {isSystem ? renderDeliveryTrace(message) : null}
             </div>
           </div>
         );
@@ -351,4 +332,3 @@ export default function MessageList({ messages }: MessageListProps) {
     </div>
   );
 }
-

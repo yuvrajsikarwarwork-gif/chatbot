@@ -54,6 +54,8 @@ export const NODE_CATEGORIES = [
       { type: "save", label: "Save Data", icon: Database, info: "Persist data to lead profile." },
       { type: "knowledge_lookup", label: "Knowledge Lookup", icon: BrainCircuit, info: "Search workspace knowledge." },
       { type: "ai_generate", label: "AI Generate", icon: Bot, info: "Prompt an AI model." },
+      { type: "ai_intent", label: "AI Intent", icon: BrainCircuit, info: "Classify user intent into routing branches." },
+      { type: "ai_extract", label: "AI Extract", icon: BrainCircuit, info: "Extract structured variables from user text." },
       { type: "assign_agent", label: "Assign Agent", icon: Headset, info: "Handoff to a Human." },
     ],
   },

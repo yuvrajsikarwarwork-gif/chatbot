@@ -2,6 +2,7 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
+import ImpersonationBanner from "./ImpersonationBanner";
 import { createContext, ReactNode, useContext } from "react";
 import GlobalBackStrip from "../navigation/GlobalBackStrip";
 import WorkspaceStatusBanner from "../workspace/WorkspaceStatusBanner";
@@ -60,6 +61,7 @@ function DashboardLayoutRuntimeFrame({ children, title, fullBleed = false }: Das
       ) : null}
       <div className="relative flex flex-1 flex-col overflow-y-auto bg-canvas text-text-main">
         <div className="relative z-10 flex min-h-0 flex-1 flex-col px-3 py-3 md:px-4 md:py-4">
+          <ImpersonationBanner />
           <Navbar />
           <GlobalBackStrip className="mb-2 mt-2" />
           {!isWorkspaceShellRoute && banner ? (

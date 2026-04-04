@@ -403,7 +403,7 @@ export default function SystemBotsModal({ isOpen, onClose, workspaceId, projectI
                           type="text"
                           value={handoffKeywords}
                           onChange={(event) => scheduleKeywordSave(campaignId, event.target.value)}
-                          placeholder="human, support, agent, help desk"
+                          placeholder="human, agent, help desk, live agent"
                           className="mt-2 w-full rounded-2xl border border-border-main bg-canvas px-4 py-3 text-sm text-text-main outline-none transition focus:border-primary/40"
                         />
                       </div>

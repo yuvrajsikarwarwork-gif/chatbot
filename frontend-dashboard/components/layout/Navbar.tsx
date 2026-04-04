@@ -6,6 +6,7 @@ import { authService } from "../../services/authService";
 import { botService } from "../../services/botService";
 import { projectService, type ProjectSummary } from "../../services/projectService";
 import { userAdminService } from "../../services/userAdminService";
+import OrgSwitcher from "./OrgSwitcher";
 import NotificationBell from "../notifications/NotificationBell";
 import { useAuthStore } from "../../store/authStore";
 import { useBotStore } from "../../store/botStore";
@@ -292,6 +293,7 @@ export default function Navbar() {
   const topRibbonLabel =
     activeWorkspace?.workspace_name ||
     (isPlatformOperator ? "Platform" : "Workspace");
+  const isFlowBuilderRoute = router.pathname === "/flows" || router.pathname === "/flow-builder";
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border-main bg-surface px-6">
@@ -307,7 +309,8 @@ export default function Navbar() {
       </div>
 
       <div className="flex items-center gap-3">
-        <NotificationBell />
+        <OrgSwitcher />
+        {!isFlowBuilderRoute ? <NotificationBell /> : null}
         {!isPlatformRoute && activeWorkspaceMemberships.length > 1 ? (
           <select
             value={activeWorkspace?.workspace_id || activeWorkspaceMemberships[0]?.workspace_id || ""}

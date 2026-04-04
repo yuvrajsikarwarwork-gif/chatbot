@@ -9,6 +9,21 @@ import { findLegacyPlatformAccountByBotAndPlatform } from "../../services/integr
 
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v22.0";
 
+async function verifyOptIn(botId: string, toPhone: string): Promise<boolean> {
+  const res = await query(
+    `SELECT COALESCE(ct.opted_in, true) AS opted_in
+     FROM contacts ct
+     WHERE ct.bot_id = $1
+       AND (ct.platform_user_id = $2 OR ct.phone = $2)
+       AND ct.deleted_at IS NULL
+     ORDER BY ct.updated_at DESC NULLS LAST, ct.created_at DESC
+     LIMIT 1`,
+    [botId, toPhone]
+  );
+
+  return res.rows[0]?.opted_in === true;
+}
+
 function getChannelCredentials(channel: any) {
   if (!channel?.config || typeof channel.config !== "object") {
     return null;
@@ -254,6 +269,14 @@ export const sendWhatsAppAdapter = async (
   channelId?: string | null,
   platformAccountId?: string | null
 ): Promise<OutboundDeliveryResult> => {
+  if (!(await verifyOptIn(botId, toPhone))) {
+    console.log(`[WhatsApp Guard] Suppressed message to opted-out contact ${toPhone}`);
+    return {
+      providerMessageId: null,
+      status: "suppressed",
+    };
+  }
+
   const channel = channelId
     ? await findCampaignChannelRuntimeById(channelId)
     : null;

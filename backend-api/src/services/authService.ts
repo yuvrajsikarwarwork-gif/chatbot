@@ -8,6 +8,11 @@ import { listUserWorkspaceMembershipsService } from "./workspaceAccessService";
 import { listUserProjectAccessService } from "./projectAccessService";
 import { buildResolvedAccessSnapshot } from "./appAccessService";
 import {
+  findOrganizationByWorkspaceIdService,
+  getUserOrganizationContextService,
+  resolveOrganizationMembershipService,
+} from "./organizationService";
+import {
   startAgentPresenceSession,
   stopAgentPresenceSession,
 } from "./agentPresenceService";
@@ -64,9 +69,17 @@ async function buildSupportModeWorkspace(user: any) {
   };
 }
 
-async function buildAuthContext(user: any) {
+async function buildAuthContext(user: any, preferredOrganizationId?: string | null) {
   const memberships = await listUserWorkspaceMembershipsService(user.id);
   const projectAccesses = await listUserProjectAccessService(user.id).catch(() => []);
+  const organizationContext = await getUserOrganizationContextService(
+    user.id,
+    preferredOrganizationId || user.workspace_id || null
+  ).catch(() => ({
+    organizations: [],
+    activeOrganization: null,
+    activeMembership: null,
+  }));
   const isPlatformOperator =
     String(user?.role || "").trim().toLowerCase() === "super_admin" ||
     String(user?.role || "").trim().toLowerCase() === "developer";
@@ -105,12 +118,20 @@ async function buildAuthContext(user: any) {
       : eligibleMemberships.find((membership: any) => membership.workspace_id === user.workspace_id) ||
         (!isPlatformOperator ? eligibleMemberships[0] || recoveryMemberships[0] || null : null);
   const activeWorkspace = supportModeWorkspace || directActiveWorkspace || null;
+  const activeOrganization = activeWorkspace?.workspace_id
+    ? await findOrganizationByWorkspaceIdService(activeWorkspace.workspace_id, user.id).catch(() => null)
+    : organizationContext.activeOrganization || null;
 
   return {
     user,
     memberships: eligibleMemberships,
     projectAccesses,
     activeWorkspace,
+    organizations: organizationContext.organizations,
+    activeOrganization,
+    activeOrganizationMembership: activeOrganization
+      ? await resolveOrganizationMembershipService(user.id, activeOrganization.id).catch(() => null)
+      : null,
     resolvedAccess: buildResolvedAccessSnapshot({
       platformRole: user.role,
       activeWorkspace,
@@ -177,11 +198,11 @@ export async function registerService(email: string, password: string, name: str
   return { ...context, token };
 }
 
-export async function getUserService(id: string) {
+export async function getUserService(id: string, preferredOrganizationId?: string | null) {
   const user = await findUserById(id);
   if(user) {
     const { password: _, ...userWithoutPassword } = user;
-    return buildAuthContext(userWithoutPassword);
+    return buildAuthContext(userWithoutPassword, preferredOrganizationId);
   }
   return null;
 }

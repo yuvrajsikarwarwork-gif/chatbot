@@ -30,12 +30,24 @@ apiClient.interceptors.request.use((config) => {
       config.headers.set("x-bot-id", activeBotId);
     }
 
-    const activeWorkspaceId = useAuthStore.getState().activeWorkspace?.workspace_id;
+    const state = useAuthStore.getState();
+    const activeWorkspaceId = state.activeWorkspace?.workspace_id;
     if (activeWorkspaceId) {
       config.headers.set("x-workspace-id", activeWorkspaceId);
     }
 
-    const activeProjectId = useAuthStore.getState().activeProject?.id;
+    const activeOrganizationId = state.activeOrganization?.id;
+    const organizationImpersonation = state.organizationImpersonation;
+    if (organizationImpersonation?.active && organizationImpersonation.organizationId) {
+      config.headers.set("x-impersonation-mode", organizationImpersonation.mode);
+      config.headers.set("x-impersonation-organization-id", organizationImpersonation.organizationId);
+      config.headers.set("x-impersonator-id", organizationImpersonation.impersonatorId);
+      config.headers.set("x-impersonation-readonly", organizationImpersonation.readOnly ? "true" : "false");
+    } else if (!activeWorkspaceId && activeOrganizationId) {
+      config.headers.set("x-organization-id", activeOrganizationId);
+    }
+
+    const activeProjectId = state.activeProject?.id;
     if (activeProjectId) {
       config.headers.set("x-project-id", activeProjectId);
     }

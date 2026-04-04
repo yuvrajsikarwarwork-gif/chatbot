@@ -179,6 +179,84 @@ function normalizeLegacyNodeData(nodeType: string, nodeData: any, sourceType?: s
     return data;
   }
 
+  if (normalizedType === "ai_intent") {
+    const normalizeHandle = (value: any) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_]/g, "")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, "");
+
+    const rawIntents = Array.isArray(data.intents) ? data.intents : [];
+    const seenHandles = new Set<string>();
+    data.intents = rawIntents
+      .map((intent: any, index: number) => {
+        const handle = normalizeHandle(intent?.handle || intent?.value || `intent_${index + 1}`);
+        if (!handle || seenHandles.has(handle)) {
+          return null;
+        }
+        seenHandles.add(handle);
+        return {
+          handle,
+          label: String(intent?.label || intent?.name || handle).trim(),
+          description: String(intent?.description || intent?.prompt || "").trim(),
+        };
+      })
+      .filter(Boolean);
+    data.provider = String(data.provider || data.aiProvider || "auto").trim().toLowerCase() || "auto";
+    data.model = String(data.model || data.aiModel || "").trim();
+    data.prompt = String(data.prompt || data.systemPrompt || data.instructions || "").trim();
+    data.saveTo = String(data.saveTo || data.outputVariable || "detected_intent").trim() || "detected_intent";
+    data.fallback = normalizeHandle(data.fallback || data.fallbackHandle || "fallback") || "fallback";
+    data.text = String(data.text || "Thinking...").trim();
+    return data;
+  }
+
+  if (normalizedType === "ai_extract") {
+    const normalizeField = (field: any) => ({
+      key: String(field?.key || field?.name || "").trim(),
+      type: String(field?.type || "string").trim().toLowerCase() || "string",
+      description: String(field?.description || field?.prompt || "").trim(),
+    });
+
+    const normalizeFieldList = (fields: any[]) =>
+      (Array.isArray(fields) ? fields : [])
+        .map(normalizeField)
+        .filter((field) => Boolean(field.key));
+
+    const requiredFields = normalizeFieldList(data.requiredFields);
+    const optionalFields = normalizeFieldList(data.optionalFields);
+    const fallbackFields = requiredFields.length + optionalFields.length > 0 ? [] : normalizeFieldList(data.fields);
+    const seen = new Set<string>();
+    const dedupe = (fields: Array<{ key: string; type: string; description: string }>) =>
+      fields.filter((field) => {
+        const key = String(field.key || "").trim();
+        if (!key || seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+
+    const normalizedRequiredFields = dedupe(requiredFields);
+    const normalizedOptionalFields = dedupe(optionalFields);
+    const normalizedFallbackFields = dedupe(fallbackFields);
+
+    data.requiredFields = normalizedRequiredFields.length > 0 ? normalizedRequiredFields.map((field) => ({ ...field, required: true })) : normalizedFallbackFields.map((field) => ({ ...field, required: true }));
+    data.optionalFields = normalizedOptionalFields.map((field) => ({ ...field, required: false }));
+    data.fields = dedupe([...normalizedRequiredFields, ...normalizedOptionalFields, ...normalizedFallbackFields]);
+    data.provider = String(data.provider || data.aiProvider || "auto").trim().toLowerCase() || "auto";
+    data.model = String(data.model || data.aiModel || "").trim();
+    data.prompt = String(data.prompt || data.systemPrompt || data.instructions || "").trim();
+    data.text = String(data.text || "Updating...").trim();
+    data.minConfidence = Number.isFinite(Number(data.minConfidence)) ? Number(data.minConfidence) : 0.7;
+    data.onIncomplete = String(data.onIncomplete || "incomplete").trim().toLowerCase() || "incomplete";
+    data.saveConfidenceTo = String(data.saveConfidenceTo || data.confidenceVariable || "").trim();
+    return data;
+  }
+
   if (normalizedType === "business_hours") {
     data.timezone = String(data.timezone || "Asia/Kolkata").trim() || "Asia/Kolkata";
     data.days = String(data.days || data.daysCsv || "mon,tue,wed,thu,fri").trim();
@@ -239,6 +317,8 @@ const FLOW_NODE_TYPES = new Set([
   "menu_list",
   "knowledge_lookup",
   "ai_generate",
+  "ai_intent",
+  "ai_extract",
   "condition",
   "split_traffic",
   "business_hours",
@@ -439,6 +519,106 @@ function validateFlowTopology(flowJson: any) {
       continue;
     }
 
+    if (nodeType === "ai_intent") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "AI intent nodes need an incoming connection.");
+        continue;
+      }
+
+      const intents = Array.isArray(node?.data?.intents) ? node.data.intents : [];
+      const normalizeHandle = (value: any) =>
+        String(value || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_")
+          .replace(/[^a-z0-9_]/g, "")
+          .replace(/_+/g, "_")
+          .replace(/^_+|_+$/g, "");
+
+      const handles = intents
+        .map((intent: any, index: number) => normalizeHandle(intent?.handle || intent?.value || `intent_${index + 1}`))
+        .filter(Boolean);
+      const uniqueHandles = Array.from(new Set(handles));
+      const fallbackHandle = normalizeHandle(node?.data?.fallback || "fallback") || "fallback";
+
+      if (uniqueHandles.length === 0) {
+        markInvalid(nodeId, "AI intent nodes need at least one intent branch.");
+        continue;
+      }
+
+      if (uniqueHandles.length !== handles.length) {
+        markInvalid(nodeId, "AI intent handles must be unique.");
+        continue;
+      }
+
+      for (const handle of uniqueHandles) {
+        if (!hasOutgoingHandle(nodeId, String(handle))) {
+          markInvalid(nodeId, "Connect every AI intent branch before saving.");
+          break;
+        }
+      }
+
+      if (fallbackHandle && !hasOutgoingHandle(nodeId, String(fallbackHandle))) {
+        markInvalid(nodeId, "AI intent nodes need a fallback connection.");
+      }
+      continue;
+    }
+
+    if (nodeType === "ai_extract") {
+      if (incomingCount === 0) {
+        markInvalid(nodeId, "AI extract nodes need an incoming connection.");
+        continue;
+      }
+
+      const requiredFields = Array.isArray(node?.data?.requiredFields) && node.data.requiredFields.length
+        ? node.data.requiredFields
+        : Array.isArray(node?.data?.fields)
+          ? node.data.fields
+          : [];
+      const optionalFields = Array.isArray(node?.data?.optionalFields) ? node.data.optionalFields : [];
+      const allFields = [...requiredFields, ...optionalFields];
+      const seenKeys = new Set<string>();
+      const normalizeKey = (value: any) =>
+        String(value || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_")
+          .replace(/[^a-z0-9_]/g, "")
+          .replace(/_+/g, "_")
+          .replace(/^_+|_+$/g, "");
+
+      const uniqueKeys = allFields
+        .map((field: any, index: number) => normalizeKey(field?.key || field?.name || `field_${index + 1}`))
+        .filter(Boolean);
+      const duplicateKeys = uniqueKeys.filter((key) => {
+        if (seenKeys.has(key)) {
+          return true;
+        }
+        seenKeys.add(key);
+        return false;
+      });
+
+      if (uniqueKeys.length === 0) {
+        markInvalid(nodeId, "AI extract nodes need at least one field.");
+        continue;
+      }
+
+      if (duplicateKeys.length > 0) {
+        markInvalid(nodeId, "AI extract field keys must be unique.");
+        continue;
+      }
+
+      if (!hasOutgoingHandle(nodeId, "next")) {
+        markInvalid(nodeId, "AI extract nodes need a success connection.");
+      }
+
+      const incompleteHandle = String(node?.data?.onIncomplete || "incomplete").trim().toLowerCase() || "incomplete";
+      if (!hasOutgoingHandle(nodeId, incompleteHandle)) {
+        markInvalid(nodeId, "AI extract nodes need an incomplete connection.");
+      }
+      continue;
+    }
+
     if (incomingCount === 0) {
       markInvalid(nodeId, `${String(node?.data?.label || node?.data?.text || node?.type || nodeId).trim()} needs an incoming connection.`);
     }
@@ -629,16 +809,28 @@ async function getFlowBuilderCapabilitiesInternal(botId: string, userId: string)
     disabledReasons.knowledge_lookup = "AI node permission is disabled for this workspace role";
     allowedNodeTypes.delete("ai_generate");
     disabledReasons.ai_generate = "AI node permission is disabled for this workspace role";
+    allowedNodeTypes.delete("ai_intent");
+    disabledReasons.ai_intent = "AI node permission is disabled for this workspace role";
+    allowedNodeTypes.delete("ai_extract");
+    disabledReasons.ai_extract = "AI node permission is disabled for this workspace role";
   } else if (!aiConfigured) {
     allowedNodeTypes.delete("knowledge_lookup");
     disabledReasons.knowledge_lookup = "AI provider settings are not configured yet";
     allowedNodeTypes.delete("ai_generate");
     disabledReasons.ai_generate = "AI provider settings are not configured yet";
+    allowedNodeTypes.delete("ai_intent");
+    disabledReasons.ai_intent = "AI provider settings are not configured yet";
+    allowedNodeTypes.delete("ai_extract");
+    disabledReasons.ai_extract = "AI provider settings are not configured yet";
   } else if (aiReplyLimit !== null && Number(aiReplyLimit) <= 0) {
     allowedNodeTypes.delete("knowledge_lookup");
     disabledReasons.knowledge_lookup = "This workspace plan does not include AI reply usage";
     allowedNodeTypes.delete("ai_generate");
     disabledReasons.ai_generate = "This workspace plan does not include AI reply usage";
+    allowedNodeTypes.delete("ai_intent");
+    disabledReasons.ai_intent = "This workspace plan does not include AI reply usage";
+    allowedNodeTypes.delete("ai_extract");
+    disabledReasons.ai_extract = "This workspace plan does not include AI reply usage";
   }
 
   return {

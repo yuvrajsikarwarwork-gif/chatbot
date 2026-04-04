@@ -127,19 +127,24 @@ export default function CampaignsPage() {
           ctaLabel="Open dashboard"
         />
       ) : (
-        <div className="mx-auto max-w-7xl space-y-6">
-          <section className="rounded-[1.9rem] border border-border-main bg-surface p-6 shadow-sm">
+        <div className="mx-auto max-w-7xl space-y-6 px-outer">
+          <section className="rounded-xl border border-border-main bg-bg-card p-4 shadow-card">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-3 text-sm text-text-muted">
                 <Layers3 size={16} className="text-primary" />
                 <span>{campaigns.length} campaigns in the active project.</span>
+                {activeProject?.id ? (
+                  <span className="rounded-xs border border-border-main bg-bg-muted px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-soft">
+                    Project bound
+                  </span>
+                ) : null}
               </div>
 
               <RequirePermission permissionKey="can_create_campaign">
                 {canCreateProjectCampaign ? (
                   <Link
                     href="/campaigns/new"
-                    className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-3 text-xs font-semibold uppercase tracking-wider text-white shadow-sm"
+                    className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-white shadow-sm transition hover:opacity-95"
                   >
                     <Plus size={14} />
                     Create Campaign
@@ -156,152 +161,169 @@ export default function CampaignsPage() {
           ) : null}
 
           {!activeProject?.id ? (
-            <section className="rounded-[1.9rem] border-dashed border-border-main bg-canvas p-8 text-sm text-text-muted shadow-sm">
+            <section className="rounded-xl border border-dashed border-border-main bg-bg-card p-6 text-sm text-text-muted shadow-card">
               Select a project before creating or reviewing campaigns. Campaign routing is now project-bound.
             </section>
           ) : null}
 
-          <section className="rounded-[1.9rem] border border-border-main bg-surface p-6 shadow-sm">
-            <div className="mb-5 flex items-center justify-between">
+          <section className="overflow-hidden rounded-xl border border-border-main bg-bg-card shadow-card">
+            <div className="flex items-center justify-between border-b border-border-main bg-bg-muted/60 px-4 py-3">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  Existing Campaigns
+                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-text-soft">
+                  Campaign Registry
                 </div>
-                <div className="mt-1 text-sm text-text-muted">
-                  Open any campaign to edit details, settings, and related routing context.
+                <div className="mt-0.5 text-sm text-text-muted">
+                  Compact registry view with direct actions for edit, launch, duplication, and routing.
                 </div>
               </div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+              <div className="rounded-xs border border-border-main bg-bg-card px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-soft">
                 {campaigns.length} total
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {campaigns.map((campaign) => (
-                <div
-                  key={campaign.id}
-                  className="rounded-[1.75rem] border border-border-main bg-surface p-5 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-base font-semibold text-text-main">
-                        {campaign.name}
-                      </div>
-                      <div className="mt-1 text-xs uppercase tracking-wider text-text-muted">
-                        {campaign.status}
-                      </div>
-                    </div>
-                    <div className="rounded-full border border-border-main bg-canvas px-3 py-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                      Manage inside
-                    </div>
-                  </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left">
+                <thead className="sticky top-0 z-10 bg-bg-muted/80 backdrop-blur">
+                  <tr className="h-10 border-b border-border-main text-[10px] font-black uppercase tracking-[0.18em] text-text-soft">
+                    <th className="px-4">Campaign</th>
+                    <th className="px-4">Status</th>
+                    <th className="px-4">Channels</th>
+                    <th className="px-4">Entry Points</th>
+                    <th className="px-4">Leads</th>
+                    <th className="px-4">Description</th>
+                    <th className="px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-main/70">
+                  {campaigns.map((campaign) => {
+                    const isPaused = campaign.status === "paused";
 
-                  <div className="mt-3 text-sm leading-6 text-text-muted">
-                    {campaign.description || "No description added yet."}
-                  </div>
+                    return (
+                      <tr
+                        key={campaign.id}
+                        className="group h-[var(--row-h-main)] border-l-2 border-l-transparent transition-colors hover:bg-surface-hover"
+                      >
+                        <td className="px-4 align-middle">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-text-main">
+                                {campaign.name}
+                              </div>
+                              <div className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-[0.16em] text-text-soft">
+                                {campaign.slug || campaign.id}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 align-middle">
+                          <span className="inline-flex rounded-xs border border-border-main bg-bg-muted px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-secondary">
+                            {campaign.status}
+                          </span>
+                        </td>
+                        <td className="px-4 align-middle font-mono text-[11px] text-text-secondary">
+                          {campaign.channel_count}
+                        </td>
+                        <td className="px-4 align-middle font-mono text-[11px] text-text-secondary">
+                          {campaign.entry_point_count}
+                        </td>
+                        <td className="px-4 align-middle font-mono text-[11px] text-text-secondary">
+                          {campaign.lead_count}
+                        </td>
+                        <td className="px-4 align-middle">
+                          <div className="max-w-[28rem] truncate text-sm text-text-muted">
+                            {campaign.description || "No description added yet."}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          <div className="flex justify-end gap-2 opacity-100 lg:opacity-0 lg:transition lg:group-hover:opacity-100">
+                            <Link
+                              href={`/campaigns/${campaign.id}`}
+                              className="inline-flex items-center gap-1 rounded-xs border border-border-main bg-bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-main hover:bg-bg-muted"
+                            >
+                              <ArrowRight size={12} />
+                              Open
+                            </Link>
+                            <RequirePermission permissionKey="edit_campaign">
+                              {canEditProjectCampaign ? (
+                                <>
+                                  <Link
+                                    href={`/campaigns/${campaign.id}`}
+                                    className="inline-flex items-center gap-1 rounded-xs border border-border-main bg-bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-main hover:bg-bg-muted"
+                                  >
+                                    <Edit3 size={12} />
+                                    Edit
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTogglePause(campaign).catch(console.error)}
+                                    className="inline-flex items-center gap-1 rounded-xs border border-border-main bg-bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-main hover:bg-bg-muted"
+                                  >
+                                    {isPaused ? <Play size={12} /> : <Pause size={12} />}
+                                    {isPaused ? "Resume" : "Pause"}
+                                  </button>
+                                  <Link
+                                    href={`/campaigns/${campaign.id}/launch`}
+                                    className="inline-flex items-center gap-1 rounded-xs border border-primary bg-primary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white hover:opacity-95"
+                                  >
+                                    <Rocket size={12} />
+                                    Launch
+                                  </Link>
+                                  <Link
+                                    href={`/campaigns/${campaign.id}/channels`}
+                                    className="inline-flex items-center gap-1 rounded-xs border border-border-main bg-bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-main hover:bg-bg-muted"
+                                  >
+                                    <Workflow size={12} />
+                                    Assign
+                                  </Link>
+                                  <Link
+                                    href={`/campaigns/${campaign.id}`}
+                                    className="inline-flex items-center gap-1 rounded-xs border border-border-main bg-bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-main hover:bg-bg-muted"
+                                  >
+                                    <ArrowRight size={12} />
+                                    Move
+                                  </Link>
+                                </>
+                              ) : null}
+                            </RequirePermission>
+                            <RequirePermission permissionKey="can_create_campaign">
+                              {canCreateProjectCampaign ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDuplicate(campaign).catch(console.error)}
+                                  className="inline-flex items-center gap-1 rounded-xs border border-border-main bg-bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-main hover:bg-bg-muted"
+                                >
+                                  <Copy size={12} />
+                                  Duplicate
+                                </button>
+                              ) : null}
+                            </RequirePermission>
+                            <RequirePermission permissionKey="delete_campaign">
+                              {canDeleteProjectCampaign ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(campaign.id).catch(console.error)}
+                                  className="inline-flex items-center gap-1 rounded-xs border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-red-700 hover:bg-red-100"
+                                >
+                                  <Trash2 size={12} />
+                                  Delete
+                                </button>
+                              ) : null}
+                            </RequirePermission>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
-                  <div className="mt-4 grid gap-2 text-xs uppercase tracking-wider text-text-muted">
-                    <div>{campaign.channel_count} channels</div>
-                    <div>{campaign.entry_point_count} entry points</div>
-                    <div>{campaign.lead_count} leads</div>
-                  </div>
-
-                  <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                    <Link
-                      href={`/campaigns/${campaign.id}`}
-                      className="inline-flex items-center gap-2 rounded-md border border-border-main bg-canvas px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-main"
-                    >
-                      Open Campaign
-                      <ArrowRight size={13} />
-                    </Link>
-                    <RequirePermission permissionKey="edit_campaign">
-                      {canEditProjectCampaign ? (
-                        <Link
-                          href={`/campaigns/${campaign.id}`}
-                          className="inline-flex items-center gap-2 rounded-md border border-border-main bg-canvas px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-main"
-                        >
-                          <Edit3 size={13} />
-                          Edit
-                        </Link>
-                      ) : null}
-                    </RequirePermission>
-                    <RequirePermission permissionKey="can_create_campaign">
-                      {canCreateProjectCampaign ? (
-                        <button
-                          type="button"
-                          onClick={() => handleDuplicate(campaign).catch(console.error)}
-                          className="inline-flex items-center gap-2 rounded-md border border-border-main bg-canvas px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-main"
-                        >
-                          <Copy size={13} />
-                          Duplicate
-                        </button>
-                      ) : null}
-                    </RequirePermission>
-                    <RequirePermission permissionKey="edit_campaign">
-                      {canEditProjectCampaign ? (
-                        <Link
-                          href={`/campaigns/${campaign.id}/launch`}
-                          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white"
-                        >
-                          <Rocket size={13} />
-                          Launch
-                        </Link>
-                      ) : null}
-                    </RequirePermission>
-                    <RequirePermission permissionKey="edit_campaign">
-                      {canEditProjectCampaign ? (
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePause(campaign).catch(console.error)}
-                          className="inline-flex items-center gap-2 rounded-md border border-border-main bg-canvas px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-main"
-                        >
-                          {campaign.status === "paused" ? <Play size={13} /> : <Pause size={13} />}
-                          {campaign.status === "paused" ? "Resume" : "Pause"}
-                        </button>
-                      ) : null}
-                    </RequirePermission>
-                    <RequirePermission permissionKey="edit_campaign">
-                      {canEditProjectCampaign ? (
-                        <Link
-                          href={`/campaigns/${campaign.id}/channels`}
-                          className="inline-flex items-center gap-2 rounded-md border border-border-main bg-canvas px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-main"
-                        >
-                          <Workflow size={13} />
-                          Assign Bot
-                        </Link>
-                      ) : null}
-                    </RequirePermission>
-                    <RequirePermission permissionKey="edit_campaign">
-                      {canEditProjectCampaign ? (
-                        <Link
-                          href={`/campaigns/${campaign.id}`}
-                          className="inline-flex items-center gap-2 rounded-md border border-border-main bg-canvas px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-main"
-                        >
-                          <ArrowRight size={13} />
-                          Change Project
-                        </Link>
-                      ) : null}
-                    </RequirePermission>
-                    <RequirePermission permissionKey="delete_campaign">
-                      {canDeleteProjectCampaign ? (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(campaign.id).catch(console.error)}
-                          className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-red-700"
-                        >
-                          <Trash2 size={13} />
-                          Delete
-                        </button>
-                      ) : null}
-                    </RequirePermission>
-                  </div>
-                </div>
-              ))}
-              {campaigns.length === 0 ? (
-                <div className="rounded-xl border-dashed border-border-main bg-canvas p-8 text-sm text-text-muted">
-                  No campaigns yet. Start with the create flow.
-                </div>
-              ) : null}
+                  {campaigns.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-sm text-text-muted">
+                        No campaigns yet. Start with the create flow.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
           </section>
         </div>

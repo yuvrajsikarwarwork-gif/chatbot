@@ -13,6 +13,12 @@ import {
   updateFlowService,
   deleteFlowService,
 } from "../services/flowService";
+import { publishFlow } from "../services/publishFlowService";
+import {
+  getFlowVersionComparison,
+  getFlowVersions,
+  rollbackToVersion,
+} from "../services/flowVersionService";
 
 function getUserId(req: AuthRequest) {
   return req.user?.id || req.user?.user_id || null;
@@ -203,6 +209,88 @@ export async function deleteFlowCtrl(req: AuthRequest, res: Response, next: Next
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
     await deleteFlowService(id, userId);
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function publishFlowCtrl(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const userId = getUserId(req);
+    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const result = await publishFlow(id, userId);
+    res.json({
+      message:
+        `Flow published successfully. ${result.count} triggers registered.` +
+        (typeof result.version === "number" ? ` Version ${result.version}.` : ""),
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getFlowVersionsCtrl(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const userId = getUserId(req);
+    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const data = await getFlowVersions(id);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function compareFlowVersionsCtrl(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const userId = getUserId(req);
+    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const leftVersion = Number(req.query.leftVersion || req.query.left || NaN);
+    const rightVersion = Number(req.query.rightVersion || req.query.right || NaN);
+
+    if (!Number.isFinite(leftVersion) || !Number.isFinite(rightVersion)) {
+      return res.status(400).json({ error: "leftVersion and rightVersion are required" });
+    }
+
+    const data = await getFlowVersionComparison(id, leftVersion, rightVersion);
+    if (!data) {
+      return res.status(404).json({ error: "Flow version comparison not found" });
+    }
+
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function handleRollback(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, versionNumber } = req.params;
+    const userId = getUserId(req);
+    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const parsedVersionNumber = Number(versionNumber);
+    if (!Number.isFinite(parsedVersionNumber) || parsedVersionNumber <= 0) {
+      return res.status(400).json({ error: "versionNumber is required" });
+    }
+
+    const result = await rollbackToVersion(id, parsedVersionNumber, userId);
+    res.json({
+      message:
+        `Successfully rolled back to version ${parsedVersionNumber}.` +
+        (typeof result.newVersion === "number" ? ` Current version is now ${result.newVersion}.` : ""),
+      data: result,
+    });
   } catch (err) {
     next(err);
   }

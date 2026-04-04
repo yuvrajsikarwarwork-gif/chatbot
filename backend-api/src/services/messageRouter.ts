@@ -83,6 +83,20 @@ async function getTemplateColumnSupport() {
   return templateColumnSupport;
 }
 
+async function canSendMessage(conversationId: string) {
+  const res = await query(
+    `SELECT COALESCE(ct.opted_in, true) AS opted_in
+     FROM conversations c
+     JOIN contacts ct ON ct.id = c.contact_id
+     WHERE c.id = $1
+       AND c.deleted_at IS NULL
+     LIMIT 1`,
+    [conversationId]
+  );
+
+  return res.rows[0]?.opted_in === true;
+}
+
 function parseJsonLike<T = any>(value: any): T | null {
   if (!value) return null;
   if (typeof value === "object") return value as T;
@@ -599,6 +613,11 @@ export const routeMessage = async (
   );
   if (tenantDeletionRes.rows[0]?.workspace_deleted || tenantDeletionRes.rows[0]?.bot_deleted) {
     console.log(`[Router] Dropping outbound message for soft-deleted tenant conversation=${conversationId}`);
+    return;
+  }
+
+  if (!(await canSendMessage(conversationId))) {
+    console.log(`[Router] Dropping outbound message for opted-out conversation=${conversationId}`);
     return;
   }
 

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Loader2, Send, X } from "lucide-react";
 
 import apiClient from "../../services/apiClient";
@@ -56,39 +56,39 @@ function getTemplatePreview(template: any) {
 const platformPreviewThemes: Record<string, any> = {
   whatsapp: {
     label: "WhatsApp",
-    shell: "bg-emerald-50 border-emerald-200 text-emerald-950",
-    message: "bg-emerald-100 text-emerald-950",
-    note: "bg-emerald-100/70 text-emerald-900",
+    shell: "bg-bg-card border-border-main text-text-main",
+    message: "bg-primary-fade text-text-main border border-primary/15",
+    note: "bg-bg-muted text-text-muted",
   },
   telegram: {
     label: "Telegram",
-    shell: "bg-sky-50 border-sky-200 text-sky-950",
-    message: "bg-sky-100 text-sky-950",
-    note: "bg-sky-100/70 text-sky-900",
+    shell: "bg-bg-card border-border-main text-text-main",
+    message: "bg-primary-fade text-text-main border border-primary/15",
+    note: "bg-bg-muted text-text-muted",
   },
   email: {
     label: "Email",
-    shell: "bg-violet-50 border-violet-200 text-violet-950",
-    message: "bg-violet-100 text-violet-950",
-    note: "bg-violet-100/70 text-violet-900",
+    shell: "bg-bg-card border-border-main text-text-main",
+    message: "bg-primary-fade text-text-main border border-primary/15",
+    note: "bg-bg-muted text-text-muted",
   },
   instagram: {
     label: "Instagram",
-    shell: "bg-pink-50 border-pink-200 text-pink-950",
-    message: "bg-pink-100 text-pink-950",
-    note: "bg-pink-100/70 text-pink-900",
+    shell: "bg-bg-card border-border-main text-text-main",
+    message: "bg-primary-fade text-text-main border border-primary/15",
+    note: "bg-bg-muted text-text-muted",
   },
   facebook: {
     label: "Facebook",
-    shell: "bg-blue-50 border-blue-200 text-blue-950",
-    message: "bg-blue-100 text-blue-950",
-    note: "bg-blue-100/70 text-blue-900",
+    shell: "bg-bg-card border-border-main text-text-main",
+    message: "bg-primary-fade text-text-main border border-primary/15",
+    note: "bg-bg-muted text-text-muted",
   },
   website: {
     label: "Website",
-    shell: "bg-canvas border-border-main text-text-main",
-    message: "bg-canvas text-text-main",
-    note: "bg-canvas/70 text-text-main",
+    shell: "bg-bg-card border-border-main text-text-main",
+    message: "bg-primary-fade text-text-main border border-primary/15",
+    note: "bg-bg-muted text-text-muted",
   },
 };
 
@@ -101,7 +101,7 @@ function getVariableLabel(template: any, token: string) {
   const friendly = mappedField
     .replace(/_/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-  return `Variable {{${token}}} Â· ${friendly}`;
+  return `Variable {{${token}}} · ${friendly}`;
 }
 
 export default function TemplateSelectModal({
@@ -197,9 +197,9 @@ export default function TemplateSelectModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[var(--glass-border)] bg-[var(--glass-surface-strong)] shadow-[var(--shadow-glass)] backdrop-blur-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--glass-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.06))] p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-bg-overlay p-4 backdrop-blur-sm">
+      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-sm border border-border-main bg-bg-card shadow-[0_30px_70px_rgba(15,23,42,0.16)]">
+        <div className="flex items-center justify-between border-b border-border-main bg-bg-card p-4">
           <div>
             <h3 className="text-xl font-black text-text-main">
               Send {previewTheme.label} Template
@@ -208,20 +208,23 @@ export default function TemplateSelectModal({
               Choose a template, fill variables, and send it from the inbox.
             </p>
           </div>
-          <button onClick={onClose} className="rounded-full border border-[var(--glass-border)] p-2 text-text-muted transition duration-300 hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:text-text-main">
+          <button
+            onClick={onClose}
+            className="rounded-sm border border-border-main p-2 text-text-muted transition hover:border-primary hover:text-primary"
+          >
             <X size={20} />
           </button>
         </div>
 
         <div className="grid max-h-[70vh] gap-0 overflow-hidden lg:grid-cols-[320px_1fr]">
-          <div className="max-h-[70vh] overflow-y-auto border-r border-border-main bg-canvas/90 p-4">
+          <div className="max-h-[70vh] overflow-y-auto border-r border-border-main bg-bg-muted/50 p-4">
             {isLoading ? (
-              <div className="flex items-center gap-2 py-4 text-sm text-[var(--muted)]">
+              <div className="flex items-center gap-2 py-4 text-sm text-text-muted">
                 <Loader2 size={16} className="animate-spin" />
                 Loading templates...
               </div>
             ) : templates.length === 0 ? (
-              <p className="py-4 text-center text-sm text-[var(--muted)]">
+              <p className="py-4 text-center text-sm text-text-muted">
                 No approved templates found.
               </p>
             ) : (
@@ -231,19 +234,19 @@ export default function TemplateSelectModal({
                     key={template.id}
                     type="button"
                     onClick={() => setSelectedTemplateId(template.id)}
-                    className={`group w-full rounded-2xl border p-4 text-left transition-all duration-300 ${
+                    className={`group w-full rounded-sm border p-4 text-left transition-colors ${
                       String(selectedTemplateId) === String(template.id)
-                        ? "border-[var(--line-strong)] bg-[var(--surface)] shadow-[var(--shadow-soft)]"
-                        : "border-[var(--glass-border)] bg-[var(--surface)] hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:bg-[var(--glass-surface-strong)]"
+                        ? "border-primary bg-primary-fade"
+                        : "border-border-main bg-bg-card hover:border-primary/40 hover:bg-bg-muted"
                     }`}
                   >
                     <div className="mb-2 flex items-start justify-between">
-                      <p className="text-xs font-black uppercase tracking-wider text-[var(--accent)]">
+                      <p className="text-xs font-black uppercase tracking-wider text-primary">
                         {template.name}
                       </p>
-                      <Send size={14} className="text-[var(--muted)] group-hover:text-[var(--accent)]" />
+                      <Send size={14} className="text-text-muted group-hover:text-primary" />
                     </div>
-                    <p className="line-clamp-4 break-words text-sm leading-snug text-[var(--muted)]">
+                    <p className="line-clamp-4 break-words text-sm leading-snug text-text-muted">
                       {getTemplatePreview(template)}
                     </p>
                   </button>
@@ -252,28 +255,28 @@ export default function TemplateSelectModal({
             )}
           </div>
 
-          <div className="max-h-[70vh] overflow-y-auto p-5">
+          <div className="max-h-[70vh] overflow-y-auto bg-bg-card p-5">
             {selectedTemplate ? (
               <div className="space-y-5">
-                <div className={`rounded-2xl border ${previewTheme.shell} p-4`}>
+                <div className={`rounded-sm border ${previewTheme.shell} p-4`}>
                   <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">
                     Preview
                   </div>
-                  <div className="mt-3 rounded-2xl bg-surface px-4 py-3 shadow-sm">
-                    <div className={`rounded-2xl ${previewTheme.message} px-4 py-3 text-sm leading-6`}>
+                  <div className="mt-3 rounded-sm border border-border-main bg-bg-muted px-4 py-3 shadow-sm">
+                    <div className={`rounded-sm ${previewTheme.message} px-4 py-3 text-sm leading-6`}>
                       {getTemplatePreview(selectedTemplate)}
                     </div>
                   </div>
                 </div>
 
                 {tokens.length > 0 ? (
-                  <div className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-[var(--muted)]">
+                  <div className="space-y-3 rounded-sm border border-border-main bg-bg-card p-4">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">
                       Template variables
                     </div>
                     {tokens.map((token) => (
                       <div key={token}>
-                        <label className="mb-1 block text-[11px] font-bold text-[var(--text)]">
+                        <label className="mb-1 block text-[11px] font-bold text-text-main">
                           {getVariableLabel(selectedTemplate, token)}
                         </label>
                         <input
@@ -286,30 +289,30 @@ export default function TemplateSelectModal({
                             }))
                           }
                           placeholder={`Value for {{${token}}}`}
-                          className="w-full rounded-xl border border-[var(--glass-border)] bg-[var(--surface-strong)] px-4 py-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--line-strong)]"
+                          className="w-full rounded-sm border border-border-main bg-bg-card px-4 py-3 text-sm text-text-main outline-none transition focus:border-primary"
                         />
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-4 text-sm text-[var(--muted)]">
+                  <div className="rounded-sm border border-border-main bg-bg-muted px-4 py-4 text-sm text-text-muted">
                     This template has no variables, so it can be sent immediately.
                   </div>
                 )}
               </div>
             ) : (
-              <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-4 text-sm text-[var(--muted)]">
+              <div className="rounded-sm border border-border-main bg-bg-muted px-4 py-4 text-sm text-text-muted">
                 Choose an approved template to continue.
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-[var(--glass-border)] p-4">
+        <div className="flex justify-end gap-3 border-t border-border-main bg-bg-card p-4">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl border border-[var(--glass-border)] px-4 py-2 text-xs font-black uppercase tracking-widest text-[var(--muted)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--line-strong)] hover:text-[var(--text)]"
+            className="rounded-sm border border-border-main px-4 py-2 text-xs font-black uppercase tracking-widest text-text-muted transition hover:border-primary hover:text-primary"
           >
             Cancel
           </button>
@@ -317,7 +320,7 @@ export default function TemplateSelectModal({
             type="button"
             disabled={!selectedTemplate || isSending}
             onClick={handleSendTemplate}
-            className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(129,140,248,0.34)] bg-[linear-gradient(135deg,var(--accent),var(--accent-strong))] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-[0_18px_32px_var(--accent-glow)] transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-sm border border-primary bg-primary px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
           >
             {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Send Template
@@ -327,4 +330,3 @@ export default function TemplateSelectModal({
     </div>
   );
 }
-

@@ -92,7 +92,10 @@ export default function InviteAcceptScreen({ token, sourceLabel = "Workspace Inv
         data.memberships || [],
         data.activeWorkspace || null,
         data.projectAccesses || [],
-        data.resolvedAccess || null
+        data.resolvedAccess || null,
+        data.organizations || [],
+        data.activeOrganization || null,
+        data.activeOrganizationMembership || null
       );
       setSuccess(true);
       redirectTimer.current = window.setTimeout(() => {

@@ -1,13 +1,11 @@
 import { GenericMessage } from "./messageRouter";
 import { patchConversationContext } from "./conversationContextPatchService";
 import {
-  resetConversationRuntimeState,
-  updateConversationRuntimeState,
-} from "./conversationRuntimeStateService";
+  cancelTriggerConfirmationTimeout,
+  restoreTriggerConfirmationBookmark,
+} from "./flowConfirmationBookmarkService";
 import {
-  buildTriggerConfirmationState,
-  buildTriggerConfirmationText,
-  buildTriggerConfirmationTarget,
+  buildTriggerConfirmationButtonsMessage,
   parseTriggerConfirmationDecision,
   TriggerConfirmationState,
 } from "./flowConfirmationService";
@@ -17,28 +15,18 @@ type FlowLike = {
   flow_json?: any;
 };
 
-type TriggerMatch = {
-  flow: FlowLike;
-  node: any;
-  source?: string;
-};
-
 type HandleTriggerConfirmationInput = {
   conversation: any;
   confirmationState: TriggerConfirmationState | null;
   currentFlowDisplayName: string;
-  currentConversationNodeForConfirmation: any;
   incomingText: string;
   text: string;
-  campaignId: string | null;
-  lockedTriggerMatch: { matchedTriggerFlow: TriggerMatch | null } | null;
+  buttonId?: string | null | undefined;
   availableFlows: FlowLike[];
   botId: string;
   platformUserId: string;
   channel: string;
   io: any;
-  persistConversationBookmark: (conversationId: string, bookmark: any) => Promise<void>;
-  clearConversationBookmark: (conversationId: string) => Promise<void>;
   executeFlowFromNode: (
     node: any,
     conversationId: string,
@@ -54,7 +42,6 @@ type HandleTriggerConfirmationInput = {
   findTriggerNodeTargetInFlow: (flowJson: any) => any;
   findStartNodeTargetInFlow: (flowJson: any) => any;
   findImplicitEntryNode: (flowJson: any) => any;
-  onBookmarkReplacement?: (bookmark: any) => any;
 };
 
 export const handleTriggerConfirmation = async (
@@ -64,82 +51,26 @@ export const handleTriggerConfirmation = async (
     conversation,
     confirmationState,
     currentFlowDisplayName,
-    currentConversationNodeForConfirmation,
     incomingText,
     text,
-    campaignId,
-    lockedTriggerMatch,
+    buttonId,
     availableFlows,
     botId,
     platformUserId,
     channel,
     io,
-    persistConversationBookmark,
-    clearConversationBookmark,
     executeFlowFromNode,
     loadCampaignSystemFlowRuntime,
     findTriggerNodeTargetInFlow,
     findStartNodeTargetInFlow,
     findImplicitEntryNode,
-    onBookmarkReplacement,
   } = input;
 
   if (!confirmationState) {
     return null;
   }
 
-  const confirmationDecision = parseTriggerConfirmationDecision(text);
-
-  if (lockedTriggerMatch?.matchedTriggerFlow && confirmationDecision === "unknown") {
-    const replacementTarget = buildTriggerConfirmationTarget(
-      lockedTriggerMatch.matchedTriggerFlow,
-      campaignId,
-      incomingText
-    );
-    const replacementState = buildTriggerConfirmationState({
-      target: replacementTarget as any,
-      bookmark: confirmationState.bookmark,
-      createdAt: confirmationState.createdAt,
-      updatedAt: new Date().toISOString(),
-    });
-
-    await persistConversationBookmark(conversation.id, {
-      ...confirmationState.bookmark,
-      flowName: confirmationState.bookmark.flowName || currentFlowDisplayName,
-      nodeLabel:
-        confirmationState.bookmark.nodeLabel ||
-        String(
-          currentConversationNodeForConfirmation?.data?.label ||
-            currentConversationNodeForConfirmation?.data?.text ||
-            currentConversationNodeForConfirmation?.data?.name ||
-            ""
-        ).trim() ||
-        null,
-    });
-
-    if (onBookmarkReplacement) {
-      await onBookmarkReplacement(replacementState);
-    } else {
-      await patchConversationContext({
-        conversationId: conversation.id,
-        set: { trigger_confirmation_pending: replacementState },
-      });
-    }
-
-    return {
-      handled: true,
-      actions: [
-        {
-          type: "text",
-          text: buildTriggerConfirmationText({
-            currentFlowName: currentFlowDisplayName,
-            targetFlowName: replacementTarget.flowName,
-            targetLabel: replacementTarget.nodeLabel,
-          }),
-        },
-      ],
-    };
-  }
+  const confirmationDecision = parseTriggerConfirmationDecision(text, buttonId);
 
   if (confirmationDecision === "yes") {
     const confirmedTarget = confirmationState.target;
@@ -158,7 +89,7 @@ export const handleTriggerConfirmation = async (
           : null;
 
     if (!confirmedFlow || !confirmedNode) {
-      await clearConversationBookmark(conversation.id);
+      await cancelTriggerConfirmationTimeout(conversation.id);
       await patchConversationContext({
         conversationId: conversation.id,
         removeKeys: ["trigger_confirmation_pending", "bookmarked_state"],
@@ -167,21 +98,25 @@ export const handleTriggerConfirmation = async (
       return {
         handled: true,
         actions: [
-          {
-            type: "text",
-            text: "Sorry, I couldn't switch flows right now.",
-          },
+          buildTriggerConfirmationButtonsMessage({
+            currentFlowName: currentFlowDisplayName,
+            targetFlowName: confirmationState.target.flowName,
+            targetLabel: confirmationState.target.nodeLabel,
+          }),
         ],
       };
     }
 
-    await clearConversationBookmark(conversation.id);
-    await resetConversationRuntimeState({
+    await cancelTriggerConfirmationTimeout(conversation.id);
+    await restoreTriggerConfirmationBookmark({
       conversationId: conversation.id,
-      flowId: confirmedFlow.id,
-      variables: {},
-      status: "active",
-      retryCount: 0,
+      bookmark: {
+        flowId: confirmedFlow.id,
+        nodeId: confirmedNode.id,
+        variables: {},
+      },
+      notify: false,
+      io,
     });
     await patchConversationContext({
       conversationId: conversation.id,
@@ -215,15 +150,15 @@ export const handleTriggerConfirmation = async (
 
   if (confirmationDecision === "no") {
     const bookmark = confirmationState.bookmark;
-    await clearConversationBookmark(conversation.id);
-    await updateConversationRuntimeState({
+    await cancelTriggerConfirmationTimeout(conversation.id);
+    await restoreTriggerConfirmationBookmark({
       conversationId: conversation.id,
-      currentNodeId: bookmark.nodeId || conversation.current_node || null,
-      flowId: bookmark.flowId || undefined,
-      variables: bookmark.variables || {},
-      status: "active",
-      retryCount: 0,
-      touchUpdatedAt: true,
+      bookmark: {
+        ...bookmark,
+        nodeId: bookmark.nodeId || conversation.current_node || null,
+      },
+      notify: false,
+      io,
     });
     await patchConversationContext({
       conversationId: conversation.id,
@@ -241,50 +176,14 @@ export const handleTriggerConfirmation = async (
     };
   }
 
-  if (lockedTriggerMatch?.matchedTriggerFlow) {
-    const replacementTarget = buildTriggerConfirmationTarget(
-      lockedTriggerMatch.matchedTriggerFlow,
-      campaignId,
-      incomingText
-    );
-    const replacementState = buildTriggerConfirmationState({
-      target: replacementTarget as any,
-      bookmark: confirmationState.bookmark,
-      createdAt: confirmationState.createdAt,
-      updatedAt: new Date().toISOString(),
-    });
-
-    await patchConversationContext({
-      conversationId: conversation.id,
-      set: { trigger_confirmation_pending: replacementState },
-    });
-
-    return {
-      handled: true,
-      actions: [
-        {
-          type: "text",
-          text: buildTriggerConfirmationText({
-            currentFlowName: currentFlowDisplayName,
-            targetFlowName: replacementTarget.flowName,
-            targetLabel: replacementTarget.nodeLabel,
-          }),
-        },
-      ],
-    };
-  }
-
   return {
     handled: true,
     actions: [
-      {
-        type: "text",
-        text: buildTriggerConfirmationText({
-          currentFlowName: currentFlowDisplayName,
-          targetFlowName: confirmationState.target.flowName,
-          targetLabel: confirmationState.target.nodeLabel,
-        }),
-      },
+      buildTriggerConfirmationButtonsMessage({
+        currentFlowName: currentFlowDisplayName,
+        targetFlowName: confirmationState.target.flowName,
+        targetLabel: confirmationState.target.nodeLabel,
+      }),
     ],
   };
 };

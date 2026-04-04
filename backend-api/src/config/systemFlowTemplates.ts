@@ -9,7 +9,7 @@ export const DEFAULT_HANDOFF_FLOW = {
       data: {
         label: "Support Trigger",
         triggerType: "keyword",
-        triggerKeywords: "human, support, agent, help desk",
+        triggerKeywords: "human, agent, help desk, live agent",
       },
     },
     {

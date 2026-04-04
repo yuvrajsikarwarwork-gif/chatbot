@@ -32,6 +32,7 @@ interface FlowHeaderProps {
   onDeleteFlow: () => void;
   onSave: () => void;
   onOpenGlobalRulesInfo?: () => void;
+  onOpenVersionHistory?: () => void;
   onCloseBuilder: () => void;
   isDirty: boolean;
   isSaving: boolean;
@@ -69,6 +70,7 @@ export default function FlowHeader({
   onDeleteFlow,
   onSave,
   onOpenGlobalRulesInfo,
+  onOpenVersionHistory,
   onCloseBuilder,
   isDirty,
   isSaving,
@@ -204,6 +206,16 @@ export default function FlowHeader({
             >
             <Globe2 size={13} />
             Universal Keywords
+          </button>
+        ) : null}
+        {currentFlowId && onOpenVersionHistory ? (
+          <button
+            onClick={onOpenVersionHistory}
+            className="flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-300 transition-all hover:border-cyan-400/50 hover:bg-cyan-500/20 hover:text-white hover:shadow-sm hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            title="Open version history"
+          >
+            <Clock size={13} />
+            Version History
           </button>
         ) : null}
         {canEditWorkflow ? (

@@ -11,7 +11,11 @@ import {
   updateFlowCtrl,
   patchFlowNodeCtrl,
   deleteFlowCtrl,
-  saveFlowCtrl
+  saveFlowCtrl,
+  publishFlowCtrl,
+  getFlowVersionsCtrl,
+  compareFlowVersionsCtrl,
+  handleRollback,
 } from "../controllers/flowController";
 
 import { authMiddleware } from "../middleware/authMiddleware";
@@ -57,6 +61,30 @@ router.post(
   "/save",
   requireActiveWorkspaceEditAccess(),
   saveFlowCtrl
+);
+
+router.post(
+  "/:id/publish",
+  requireActiveWorkspaceEditAccess(),
+  publishFlowCtrl
+);
+
+router.get(
+  "/:id/versions",
+  requireBotPermission(WORKSPACE_PERMISSIONS.viewFlows),
+  getFlowVersionsCtrl
+);
+
+router.get(
+  "/:id/versions/compare",
+  requireBotPermission(WORKSPACE_PERMISSIONS.viewFlows),
+  compareFlowVersionsCtrl
+);
+
+router.post(
+  "/:id/versions/:versionNumber/rollback",
+  requireActiveWorkspaceEditAccess(),
+  handleRollback
 );
 
 router.put("/:id", requireActiveWorkspaceEditAccess(), updateFlowCtrl);

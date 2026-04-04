@@ -455,6 +455,8 @@ async function triggerLeadAutomationFlow(input: {
       entryKey: String(input.rule.id || "").trim(),
     },
     io: input.io,
+    authType: "machine",
+    authSourceName: "Automation",
   });
 
   return result;
